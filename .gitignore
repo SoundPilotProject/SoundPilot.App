@@ -137,3 +137,69 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# =========================================
+# Android Studio / IntelliJ
+# =========================================
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# =========================================
+# Gradle
+# =========================================
+.gradle/
+**/build/
+**/captures/
+local.properties
+.gradle/
+.gradle-cache/
+**/.gradle/
+**/.gradle-cache/
+
+# =========================================
+# Android
+# =========================================
+# Signierdateien & Keys (niemals committen!)
+**/keystore.properties
+**/*.jks
+**/*.keystore
+
+# =========================================
+# Flutter / Dart
+# =========================================
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+build/
+# Falls ihr web buildet:
+lib/generated_plugin_registrant.dart
+
+# =========================================
+# Firebase / Google Services
+# =========================================
+# Die hier nie ins Repo packen (enthält private API Keys)
+**/google-services.json
+**/GoogleService-Info.plist
+
+# =========================================
+# macOS / Windows / Linux Artefakte
+# =========================================
+.DS_Store
+Thumbs.db
+*.swp
+*.lock
+*.tmp
+
+# =========================================
+# Logs & temporäre Files
+# =========================================
+*.log
+*.pid
+*.seed
+*.tmp
+*.bak*
