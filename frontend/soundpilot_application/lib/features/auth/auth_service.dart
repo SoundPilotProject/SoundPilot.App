@@ -1,68 +1,74 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../models/user_model.dart';
-import '../../core/app_logger.dart'; // Import our global logger
+import '../../core/app_logger.dart';
 
-/// Service class to handle Firebase Authentication operations.
+/// Service to handle Email/Password and Google Authentication.
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  /// Signs in a user and logs the process using [logger].
-  Future<UserModel?> login(String email, String password) async {
+  /// Sign in with Email and Password.
+  Future<UserModel?> loginWithEmail(String email, String password) async {
     try {
-      logger.i("AuthService: Attempting login for $email");
-
+      logger.i("AuthService: Attempting Email login for $email");
       final UserCredential result = await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password.trim(),
       );
-
-      final User? firebaseUser = result.user;
-
-      if (firebaseUser != null) {
-        logger.d("AuthService: Login successful for UID: ${firebaseUser.uid}");
-        return UserModel(
-          id: firebaseUser.uid,
-          username: firebaseUser.displayName ?? 'Unknown User',
-          email: firebaseUser.email ?? '',
-        );
-      }
+      return _mapFirebaseUser(result.user);
     } on FirebaseAuthException catch (e) {
-      // Use logger.w (Warning) for expected Auth errors like wrong passwords
-      logger.w("AuthService: Firebase Auth Exception [${e.code}]: ${e.message}");
-    } catch (e) {
-      // Use logger.e (Error) for unexpected system failures
-      logger.e("AuthService: Unexpected error during login", error: e);
+      logger.w("AuthService: Email login failed [${e.code}]");
+      return null;
     }
-    return null;
   }
 
-  /// Registers a new user and logs success or failure.
-  Future<UserModel?> register(String email, String password, String name) async {
+  /// Sign in with Google Account.
+  Future<UserModel?> signInWithGoogle() async {
     try {
-      logger.i("AuthService: Starting registration for $email");
+      logger.i("AuthService: Starting Google Sign-In flow");
 
-      final UserCredential result = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password.trim(),
+      // Trigger the authentication flow
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        logger.w("AuthService: Google Sign-In aborted by user");
+        return null;
+      }
+
+      // Obtain the auth details from the request
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+      // Create a new credential
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
       );
 
-      final User? firebaseUser = result.user;
+      // Once signed in, return the UserCredential
+      final UserCredential result = await _auth.signInWithCredential(credential);
+      logger.d("AuthService: Google login successful for ${result.user?.email}");
 
-      if (firebaseUser != null) {
-        await firebaseUser.updateDisplayName(name);
-        logger.d("AuthService: User registered and display name set to $name");
-
-        return UserModel(
-          id: firebaseUser.uid,
-          username: name,
-          email: email,
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      logger.w("AuthService: Registration failed [${e.code}]: ${e.message}");
+      return _mapFirebaseUser(result.user);
     } catch (e) {
-      logger.e("AuthService: Critical registration error", error: e);
+      logger.e("AuthService: Critical error during Google Sign-In", error: e);
+      return null;
     }
-    return null;
+  }
+
+  /// Helper to convert Firebase User to our custom UserModel.
+  UserModel? _mapFirebaseUser(User? user) {
+    if (user == null) return null;
+    return UserModel(
+      id: user.uid,
+      username: user.displayName ?? 'No Name',
+      email: user.email ?? '',
+    );
+  }
+
+  /// Sign out from both Firebase and Google.
+  Future<void> logout() async {
+    await _auth.signOut();
+    await _googleSignIn.signOut();
+    logger.i("AuthService: User logged out");
   }
 }
