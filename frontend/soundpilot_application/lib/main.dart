@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'core/app_logger.dart'; // Our logger from before
@@ -28,16 +30,736 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SoundPilot Application',
+      title: 'Verwaltung',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true, // As specified in pubspec.yaml
+        useMaterial3: true,
       ),
-      home: const Scaffold(
-        body: Center(
-          child: Text('Firebase is initialized!'),
+      home: const ManagementPage(),
+    );
+  }
+}
+
+class ManagementPage extends StatefulWidget {
+  const ManagementPage({super.key});
+
+  @override
+  State<ManagementPage> createState() => _ManagementPageState();
+}
+
+class _ManagementPageState extends State<ManagementPage> {
+  // Lists to manage devices
+  List<String> earbuds = ['EarbudsGerät01', 'EarbudsGerät02'];
+  List<String> belts = ['GürtelGerät01', 'GürtelGerät02'];
+
+  void _removeEarbud(String device) {
+    setState(() {
+      earbuds.remove(device);
+    });
+  }
+
+  void _removeBelt(String device) {
+    setState(() {
+      belts.remove(device);
+    });
+  }
+
+  void _showAddDeviceDialog() {
+    String? selectedType;
+    final TextEditingController nameController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Gerät hinzufügen'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: selectedType,
+                hint: const Text('Typ auswählen'),
+                items: const [
+                  DropdownMenuItem(value: 'Earbuds', child: Text('Earbuds')),
+                  DropdownMenuItem(value: 'Gürtel', child: Text('Gürtel')),
+                ],
+                onChanged: (value) {
+                  selectedType = value;
+                },
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Gerätename',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (selectedType != null && nameController.text.isNotEmpty) {
+                  setState(() {
+                    if (selectedType == 'Earbuds') {
+                      earbuds.add(nameController.text);
+                    } else if (selectedType == 'Gürtel') {
+                      belts.add(nameController.text);
+                    }
+                  });
+                  Navigator.pop(context);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Hinzufügen'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          // White header with login/register buttons and plus button
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            color: Colors.white,
+            child: Row(
+              children: [
+                // Plus button in the middle-left
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.blue,
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.add, color: Colors.white),
+                    onPressed: _showAddDeviceDialog,
+                    tooltip: 'Gerät hinzufügen',
+                  ),
+                ),
+                const Spacer(),
+                // Login/Register buttons (inverted - blue on white)
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoginPage()),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Anmelden'),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const RegisterPage()),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Registrieren'),
+                ),
+              ],
+            ),
+          ),
+          // Main content
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Verwaltung',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCategory(
+                    title: 'Earbuds:',
+                    items: earbuds,
+                    onRemove: _removeEarbud,
+                    onTap: (device) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => EarbudCalibrationPage(deviceName: device),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  _buildCategory(
+                    title: 'Gürtel:',
+                    items: belts,
+                    onRemove: _removeBelt,
+                    onTap: (device) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => BeltCalibrationPage(deviceName: device),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 32),
+                  // Legend section
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        LegendItem(
+                          symbol: '🟢',
+                          description: 'bedeutet, dass das Gerät verbunden ist',
+                        ),
+                        SizedBox(width: 24),
+                        LegendItem(
+                          symbol: '🔴',
+                          description: 'bedeutet, dass das Gerät nicht verbunden ist',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategory({
+    required String title,
+    required List<String> items,
+    required Function(String) onRemove,
+    required Function(String) onTap,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...items.map((device) => _buildDeviceButton(device, onRemove, onTap)),
+      ],
+    );
+  }
+
+  Widget _buildDeviceButton(
+      String deviceName,
+      Function(String) onRemove,
+      Function(String) onTap,
+      ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => onTap(deviceName),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        deviceName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => onRemove(deviceName),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '×',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class EarbudCalibrationPage extends StatefulWidget {
+  final String deviceName;
+
+  const EarbudCalibrationPage({super.key, required this.deviceName});
+
+  @override
+  State<EarbudCalibrationPage> createState() => _EarbudCalibrationPageState();
+}
+
+class _EarbudCalibrationPageState extends State<EarbudCalibrationPage> {
+  double leftVolume = 5;
+  double rightVolume = 5;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.deviceName),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            const Text(
+              'Kalibrierung',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'SOUNDPILOT',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 40),
+
+            // Left side
+            const Text(
+              'Linke Seite:',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [4, 5, 6].map((number) {
+                return _buildNumberBox(number.toString());
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Lautstärke:',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [7, 8, 9, 10].map((number) {
+                return _buildNumberBox(number.toString());
+              }).toList(),
+            ),
+            const SizedBox(height: 40),
+
+            // Right side
+            const Text(
+              'Rechte Seite:',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [4, 5, 6].map((number) {
+                return _buildNumberBox(number.toString());
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Lautstärke:',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [7, 8].map((number) {
+                return _buildNumberBox(number.toString());
+              }).toList(),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildNumberBox(String number) {
+    return Container(
+      width: 50,
+      height: 50,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: Colors.blue,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Center(
+        child: Text(
+          number,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class BeltCalibrationPage extends StatefulWidget {
+  final String deviceName;
+
+  const BeltCalibrationPage({super.key, required this.deviceName});
+
+  @override
+  State<BeltCalibrationPage> createState() => _BeltCalibrationPageState();
+}
+
+class _BeltCalibrationPageState extends State<BeltCalibrationPage> {
+  double rangeValue = 50;
+  double intensityValue = 50;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.deviceName),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Kalibrierung',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 32),
+
+            // Range Slider
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Reichweite',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Slider(
+                            value: rangeValue,
+                            min: 0,
+                            max: 100,
+                            divisions: 100,
+                            label: rangeValue.round().toString(),
+                            onChanged: (value) {
+                              setState(() {
+                                rangeValue = value;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${rangeValue.round()}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Intensity Slider
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Intensität',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Slider(
+                            value: intensityValue,
+                            min: 0,
+                            max: 100,
+                            divisions: 100,
+                            label: intensityValue.round().toString(),
+                            onChanged: (value) {
+                              setState(() {
+                                intensityValue = value;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${intensityValue.round()}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class LoginPage extends StatelessWidget {
+  const LoginPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Anmelden'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const TextField(
+              decoration: InputDecoration(
+                labelText: 'E-Mail',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const TextField(
+              decoration: InputDecoration(
+                labelText: 'Passwort',
+                border: OutlineInputBorder(),
+              ),
+              obscureText: true,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                // TODO: Implement login logic
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Login wird implementiert')),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+              ),
+              child: const Text('Anmelden'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class RegisterPage extends StatelessWidget {
+  const RegisterPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Registrieren'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const TextField(
+              decoration: InputDecoration(
+                labelText: 'E-Mail',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const TextField(
+              decoration: InputDecoration(
+                labelText: 'Passwort',
+                border: OutlineInputBorder(),
+              ),
+              obscureText: true,
+            ),
+            const SizedBox(height: 16),
+            const TextField(
+              decoration: InputDecoration(
+                labelText: 'Passwort bestätigen',
+                border: OutlineInputBorder(),
+              ),
+              obscureText: true,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                // TODO: Implement registration logic
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Registrierung wird implementiert')),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+              ),
+              child: const Text('Registrieren'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class LegendItem extends StatelessWidget {
+  final String symbol;
+  final String description;
+
+  const LegendItem({
+    super.key,
+    required this.symbol,
+    required this.description,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          symbol,
+          style: const TextStyle(fontSize: 20),
+        ),
+        const SizedBox(width: 8),
+        Text(description),
+      ],
     );
   }
 }
