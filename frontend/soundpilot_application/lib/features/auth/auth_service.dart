@@ -8,18 +8,60 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
+  /// Register with Email and Password.
+  Future<UserModel?> registerWithEmail(String email, String password) async {
+    try {
+      logger.i("AuthService: Attempting Email registration for $email");
+
+      final UserCredential result = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+
+      logger.d("AuthService: Email registration successful for ${result.user?.email}");
+      return _mapFirebaseUser(result.user);
+    } on FirebaseAuthException catch (e) {
+      logger.w("AuthService: Email registration failed [${e.code}]");
+      return null;
+    } catch (e) {
+      logger.e("AuthService: Critical error during Email registration", error: e);
+      return null;
+    }
+  }
+
   /// Sign in with Email and Password.
   Future<UserModel?> loginWithEmail(String email, String password) async {
     try {
       logger.i("AuthService: Attempting Email login for $email");
+
       final UserCredential result = await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password.trim(),
       );
+
+      logger.d("AuthService: Email login successful for ${result.user?.email}");
       return _mapFirebaseUser(result.user);
     } on FirebaseAuthException catch (e) {
       logger.w("AuthService: Email login failed [${e.code}]");
       return null;
+    } catch (e) {
+      logger.e("AuthService: Critical error during Email login", error: e);
+      return null;
+    }
+  }
+
+  /// Optional: Password reset email.
+  Future<bool> sendPasswordReset(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      logger.i("AuthService: Password reset email sent to $email");
+      return true;
+    } on FirebaseAuthException catch (e) {
+      logger.w("AuthService: Password reset failed [${e.code}]");
+      return false;
+    } catch (e) {
+      logger.e("AuthService: Critical error during password reset", error: e);
+      return false;
     }
   }
 
