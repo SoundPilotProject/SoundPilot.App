@@ -37,27 +37,57 @@ exports.deleteUserDoc = exports.createUserDoc = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
+const firebase_functions_1 = require("firebase-functions");
 (0, app_1.initializeApp)();
 const db = (0, firestore_1.getFirestore)();
-// Runs automatically for every new user:
-// eslint-disable-next-line max-len
-exports.createUserDoc = functions.region("europe-central2").auth.user().onCreate(async (user) => {
-    const ref = db.doc(`users/${user.uid}`);
-    const data = {
-        email: user.email,
-        providers: (user.providerData || []).map((p) => p.providerId),
-        createdAt: firestore_1.FieldValue.serverTimestamp(),
-        settings: {
-            language: "de",
-            theme: "system",
-        },
-    };
-    await ref.set(data, { merge: true });
+/**
+ * Automatically creates a Firestore document when a new user is registered.
+ * Region: europe-central2 (Germany/Poland)
+ */
+exports.createUserDoc = functions
+    .region("europe-central2")
+    .auth.user()
+    .onCreate(async (user) => {
+    const { uid, email, displayName, providerData } = user;
+    const userRef = db.doc(`users/${uid}`);
+    try {
+        firebase_functions_1.logger.info(`Attempting to create document for user: ${uid}`);
+        const data = {
+            uid: uid,
+            email: email || null,
+            displayName: displayName || "New User",
+            providers: (providerData || []).map((p) => p.providerId),
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
+            settings: {
+                language: "system",
+                theme: "system",
+            },
+        };
+        // Using { merge: true } to prevent accidental overwrites
+        await userRef.set(data, { merge: true });
+        firebase_functions_1.logger.info(`Successfully created Firestore document for UID: ${uid}`);
+    }
+    catch (error) {
+        // This will show up as a red error in your Firebase Logs
+        firebase_functions_1.logger.error(`Error creating document for UID: ${uid}`, error);
+    }
 });
-// eslint-disable-next-line max-len
-exports.deleteUserDoc = functions.region("europe-central2").auth.user().onDelete(async (user) => {
-    const ref = db.doc(`users/${user.uid}`);
-    await ref.delete();
-    console.log(`User-Document ${user.uid} deleted.`);
+/**
+ * Automatically deletes the Firestore document when a user account is deleted.
+ */
+exports.deleteUserDoc = functions
+    .region("europe-central2")
+    .auth.user()
+    .onDelete(async (user) => {
+    const userRef = db.doc(`users/${user.uid}`);
+    try {
+        firebase_functions_1.logger.info(`Attempting to delete document for user: ${user.uid}`);
+        await userRef.delete();
+        // eslint-disable-next-line max-len
+        firebase_functions_1.logger.info(`Successfully deleted Firestore document for UID: ${user.uid}`);
+    }
+    catch (error) {
+        firebase_functions_1.logger.error(`Error deleting document for UID: ${user.uid}`, error);
+    }
 });
 //# sourceMappingURL=index.js.map
