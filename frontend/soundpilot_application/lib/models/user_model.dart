@@ -23,7 +23,7 @@ class UserModel {
       id: id,
       username: data['username'] ?? 'User',
       email: data['email'] ?? '',
-      language: settings['language'] ?? 'en',
+      language: settings['language'] ?? 'system',
       theme: settings['theme'] ?? 'system',
     );
   }
