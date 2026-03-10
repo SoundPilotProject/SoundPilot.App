@@ -10,13 +10,13 @@ class UserModel {
     required this.id,
     required this.username,
     required this.email,
-    this.language = 'en',
+    this.language = 'system',
     this.theme = 'system',
   });
 
   /// Factory method to create a UserModel from a Firestore document snippet.
   factory UserModel.fromFirestore(Map<String, dynamic> data, String id) {
-    // Accessing nested 'settings' map as seen in your Firestore structure
+    // Accessing nested 'settings' map as seen in the Firestore structure
     final settings = data['settings'] as Map<String, dynamic>? ?? {};
 
     return UserModel(
