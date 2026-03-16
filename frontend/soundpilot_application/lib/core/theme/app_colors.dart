@@ -8,7 +8,6 @@ class AppColors {
   static const Color _surfaceLight = Color(0xFFD1D5DB);
   static const Color _inputBorderLight = Color(0xFF4F596D);
   static const Color _mutedTextLight = Color(0xFF6B788C);
-  static const Color _inactiveButtonLight = Color(0xFF7A8496);
   static const Color _legendBgLight = Color(0x66FFFFFF);
   static const Color _legendBorderLight = Color(0xFF9FA8B6);
 
@@ -50,8 +49,7 @@ class AppColors {
   static Color mutedText(BuildContext context) =>
       isDark(context) ? _mutedTextDark : _mutedTextLight;
 
-  static Color inactiveButton(BuildContext context) =>
-      _inactiveButtonDark;
+  static Color inactiveButton(BuildContext context) => _inactiveButtonDark;
 
   static Color legendBackground(BuildContext context) =>
       isDark(context) ? _legendBgDark : _legendBgLight;
