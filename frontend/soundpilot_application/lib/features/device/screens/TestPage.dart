@@ -1,33 +1,11 @@
-// lib/features/device/screens/TestPage.dart
+import 'dart:math' as math;
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/loading_screen.dart';
-
-/// Plays a stereo test tone through the native Android AudioTrack API.
-/// Left and right channel volumes are mapped from the calibration range
-/// 1–100  →  0.0–1.0 float gain.
-class _AudioTestService {
-  static const MethodChannel _channel =
-  MethodChannel('com.soundpilot/audio_devices');
-
-  static Future<void> playTestTone({
-    required int leftVolume,
-    required int rightVolume,
-  }) async {
-    await _channel.invokeMethod('playTestTone', {
-      'leftVolume': leftVolume,
-      'rightVolume': rightVolume,
-    });
-  }
-
-  static Future<void> stopTestTone() async {
-    await _channel.invokeMethod('stopTestTone');
-  }
-}
 
 class TestPage extends StatefulWidget {
   final int leftVolume;
@@ -44,28 +22,82 @@ class TestPage extends StatefulWidget {
 }
 
 class _TestPageState extends State<TestPage> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlaying = false;
 
-  Future<void> _startTone() async {
-    if (_isPlaying) return;
-    setState(() => _isPlaying = true);
-    await _AudioTestService.playTestTone(
-      leftVolume: widget.leftVolume,
-      rightVolume: widget.rightVolume,
-    );
+  double _clamp01(double value) {
+    return value.clamp(0.0, 1.0);
   }
 
-  Future<void> _stopTone() async {
+  double _calculateOverallVolume() {
+    final left = _clamp01(widget.leftVolume / 100.0);
+    final right = _clamp01(widget.rightVolume / 100.0);
+    return math.max(left, right);
+  }
+
+  double _calculateBalance() {
+    final left = _clamp01(widget.leftVolume / 100.0);
+    final right = _clamp01(widget.rightVolume / 100.0);
+    final maxSide = math.max(left, right);
+
+    if (maxSide == 0) return 0.0;
+
+    final balance = (right - left) / maxSide;
+    return balance.clamp(-1.0, 1.0);
+  }
+
+  Future<void> _startAudio() async {
+    if (_isPlaying) return;
+
+    final overallVolume = _calculateOverallVolume();
+    final balance = _calculateBalance();
+
+    await _audioPlayer.stop();
+    await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+    await _audioPlayer.setSource(AssetSource('audio/Marschieren.mp3'));
+    await _audioPlayer.setVolume(overallVolume);
+    await _audioPlayer.setBalance(balance);
+    await _audioPlayer.resume();
+
+    if (!mounted) return;
+    setState(() => _isPlaying = true);
+  }
+
+  Future<void> _stopAudio() async {
     if (!_isPlaying) return;
-    await _AudioTestService.stopTestTone();
-    if (mounted) setState(() => _isPlaying = false);
+
+    await _audioPlayer.stop();
+
+    if (!mounted) return;
+    setState(() => _isPlaying = false);
   }
 
   @override
   void dispose() {
-    // Make sure tone stops if user navigates away
-    _AudioTestService.stopTestTone();
+    _audioPlayer.dispose();
     super.dispose();
+  }
+
+  Future<void> _finishExercise() async {
+    await _stopAudio();
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LoadingScreen(
+          text: 'Übung wird abgeschlossen...',
+        ),
+      ),
+    );
+
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (!mounted) return;
+
+    Navigator.pop(context);
+    Navigator.pop(context, true);
   }
 
   @override
@@ -75,52 +107,30 @@ class _TestPageState extends State<TestPage> {
       body: SafeArea(
         child: Column(
           children: [
-            _TestTopBar(onBackPressed: () {
-              _stopTone();
-              Navigator.pop(context);
-            }),
+            _TestTopBar(
+              onBackPressed: () async {
+                await _stopAudio();
+                if (!mounted) return;
+                Navigator.pop(context);
+              },
+            ),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(28, 16, 28, 14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Volume display card
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 22, horizontal: 24),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface(context),
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _VolumeBadge(
-                            label: 'Links',
-                            value: widget.leftVolume,
-                          ),
-                          Container(
-                            width: 1.5,
-                            height: 50,
-                            color: AppColors.inputBorder(context),
-                          ),
-                          _VolumeBadge(
-                            label: 'Rechts',
-                            value: widget.rightVolume,
-                          ),
-                        ],
-                      ),
+                    _WaveCard(
+                      leftVolume: widget.leftVolume,
+                      rightVolume: widget.rightVolume,
+                      isPlaying: _isPlaying,
                     ),
                     const SizedBox(height: 16),
-
-                    // Start button
                     SizedBox(
                       width: double.infinity,
                       height: 64,
                       child: ElevatedButton(
-                        onPressed: _isPlaying ? null : _startTone,
+                        onPressed: _isPlaying ? null : _startAudio,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _isPlaying
                               ? AppColors.inactiveButton(context)
@@ -154,13 +164,11 @@ class _TestPageState extends State<TestPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // Stop button
                     SizedBox(
                       width: double.infinity,
                       height: 64,
                       child: ElevatedButton(
-                        onPressed: _isPlaying ? _stopTone : null,
+                        onPressed: _isPlaying ? _stopAudio : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _isPlaying
                               ? const Color(0xFFFF0000)
@@ -174,14 +182,14 @@ class _TestPageState extends State<TestPage> {
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
+                          children: const [
+                            Icon(
                               Icons.stop_rounded,
                               color: Colors.white,
                               size: 28,
                             ),
-                            const SizedBox(width: 8),
-                            const Text(
+                            SizedBox(width: 8),
+                            Text(
                               'Stop',
                               style: TextStyle(
                                 fontSize: 23,
@@ -194,8 +202,6 @@ class _TestPageState extends State<TestPage> {
                       ),
                     ),
                     const SizedBox(height: 18),
-
-                    // Description
                     Text(
                       'Beschreibung',
                       style: GoogleFonts.poppins(
@@ -208,7 +214,7 @@ class _TestPageState extends State<TestPage> {
                     const SizedBox(height: 10),
                     Center(
                       child: Text(
-                        'Drücke Start um einen Testton\nzu hören. Der Ton entspricht\ndeinen Kalibrierungseinstellungen.\nPrüfe ob links und rechts\nkorrekt klingen.',
+                        'Drücke Start um die Marschieren-MP3\nabzuspielen. Die Wiedergabe wird an\ndeine Links/Rechts-Kalibrierung\nangepasst.',
                         textAlign: TextAlign.center,
                         style: GoogleFonts.poppins(
                           fontSize: 15,
@@ -218,35 +224,12 @@ class _TestPageState extends State<TestPage> {
                         ),
                       ),
                     ),
-
                     const Spacer(),
-
-                    // Finish button
                     SizedBox(
                       width: double.infinity,
                       height: 70,
                       child: ElevatedButton(
-                        onPressed: () async {
-                          await _stopTone();
-
-                          if (!mounted) return;
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const LoadingScreen(
-                                text: 'Übung wird abgeschlossen...',
-                              ),
-                            ),
-                          );
-
-                          await Future.delayed(const Duration(seconds: 2));
-
-                          if (!mounted) return;
-
-                          Navigator.pop(context); // loading
-                          Navigator.pop(context, true); // TestPage
-                        },
+                        onPressed: _finishExercise,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary(context),
                           foregroundColor: AppColors.onPrimary(context),
@@ -277,46 +260,141 @@ class _TestPageState extends State<TestPage> {
   }
 }
 
-// ── Volume Badge ──────────────────────────────────────────────────────────────
+class _WaveCard extends StatelessWidget {
+  final int leftVolume;
+  final int rightVolume;
+  final bool isPlaying;
 
-class _VolumeBadge extends StatelessWidget {
-  final String label;
-  final int value;
+  const _WaveCard({
+    required this.leftVolume,
+    required this.rightVolume,
+    required this.isPlaying,
+  });
 
-  const _VolumeBadge({required this.label, required this.value});
+  List<double> _buildBars({
+    required int count,
+    required double strength,
+    required bool animated,
+  }) {
+    final List<double> values = [];
+    for (int i = 0; i < count; i++) {
+      final wave = math.sin((i + 1) * 0.9).abs();
+      final shape = 0.25 + (wave * 0.75);
+      final pulse = animated ? (0.88 + (math.cos(i * 0.7).abs() * 0.22)) : 1.0;
+      values.add((shape * strength * pulse).clamp(0.10, 1.0));
+    }
+    return values;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final bool isDark = AppColors.isDark(context);
+    final cardColor = isDark ? const Color(0xFF121212) : AppColors.surface(context);
+    final lineColor = isDark
+        ? const Color(0xFFF2E38A)
+        : AppColors.primary(context);
+
+    final leftStrength = (leftVolume / 100).clamp(0.0, 1.0);
+    final rightStrength = (rightVolume / 100).clamp(0.0, 1.0);
+
+    final leftBars = _buildBars(
+      count: 22,
+      strength: leftStrength.toDouble(),
+      animated: isPlaying,
+    );
+    final rightBars = _buildBars(
+      count: 22,
+      strength: rightStrength.toDouble(),
+      animated: isPlaying,
+    );
+
+    return Container(
+      width: double.infinity,
+      height: 108,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _WaveHalf(
+              bars: leftBars,
+              color: lineColor,
+              alignRight: true,
+            ),
+          ),
+          Container(
+            width: 2,
+            height: 62,
+            color: lineColor.withOpacity(0.9),
+          ),
+          Expanded(
+            child: _WaveHalf(
+              bars: rightBars,
+              color: lineColor,
+              alignRight: false,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WaveHalf extends StatelessWidget {
+  final List<double> bars;
+  final Color color;
+  final bool alignRight;
+
+  const _WaveHalf({
+    required this.bars,
+    required this.color,
+    required this.alignRight,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final children = bars.map((value) {
+      final barHeight = 10 + (value * 42);
+      return Container(
+        width: 4,
+        height: barHeight,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.35),
+              blurRadius: 5,
+              spreadRadius: 0.3,
+            ),
+          ],
+        ),
+      );
+    }).toList();
+
+    return Row(
+      mainAxisAlignment:
+      alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: AppColors.mutedText(context),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '$value %',
-          style: GoogleFonts.poppins(
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            color: AppColors.text(context),
-          ),
-        ),
+        for (int i = 0; i < children.length; i++) ...[
+          children[i],
+          if (i != children.length - 1) const SizedBox(width: 3),
+        ],
       ],
     );
   }
 }
 
-// ── Top Bar ───────────────────────────────────────────────────────────────────
-
 class _TestTopBar extends StatelessWidget {
   final VoidCallback onBackPressed;
 
-  const _TestTopBar({required this.onBackPressed});
+  const _TestTopBar({
+    required this.onBackPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
