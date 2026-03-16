@@ -1,4 +1,3 @@
-import '../../../core/services/audio_device_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +6,7 @@ import 'calibration.dart';
 import 'belt_warning_distance_screen.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/loading_screen.dart';
+import '../../../core/services/device_storage_service.dart';
 import '../../auth/screens/login_screen.dart';
 import '../../auth/screens/register_screen.dart';
 
@@ -15,17 +15,17 @@ import '../../auth/screens/register_screen.dart';
 // Replace this list / function with a real BLE/bluetooth_classic scan result.
 // ---------------------------------------------------------------------------
 Future<List<String>> _scanForSystemHeadphones() async {
-  const excludedTypes = {
-    'Lautsprecher',
-    'Ohrhörer (intern)',
-  };
-
-  final devices = await AudioDeviceService.getConnectedOutputDevices();
-
-  return devices
-      .where((d) => !excludedTypes.contains(d.type))
-      .map((d) => '${d.productName}  •  ${d.type}')
-      .toList();
+  // Simulate a ~1.5 s scan delay.
+  await Future.delayed(const Duration(milliseconds: 1500));
+  // TODO: replace with real platform scan, e.g. flutter_blue_plus or
+  //       bluetooth_classic:  BluetoothClassic().getPairedDevices()
+  return [
+    'AirPods Pro',
+    'Sony WH-1000XM5',
+    'Bose QC45',
+    'JBL Live 660NC',
+    'Sennheiser HD 450BT',
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -38,15 +38,47 @@ class DeviceScreen extends StatefulWidget {
 }
 
 class _DeviceScreenState extends State<DeviceScreen> {
-  final List<_DeviceItem> _earbuds = [
-    _DeviceItem(name: 'Earbuds01', isConnected: true),
-    _DeviceItem(name: 'Earbuds02', isConnected: false),
-  ];
+  List<_DeviceItem> _earbuds = [];
+  List<_DeviceItem> _belts = [];
+  bool _isLoadingDevices = true;
 
-  final List<_DeviceItem> _belts = [
-    _DeviceItem(name: 'Gürtel01', isConnected: true),
-    _DeviceItem(name: 'Gürtel02', isConnected: false),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadDevices();
+  }
+
+  Future<void> _loadDevices() async {
+    final stored = await DeviceStorageService.loadDevices();
+    if (!mounted) return;
+    setState(() {
+      _earbuds = stored
+          .where((d) => d.category == 'Earbuds')
+          .map((d) => _DeviceItem(name: d.name, isConnected: d.isConnected))
+          .toList();
+      _belts = stored
+          .where((d) => d.category == 'Gürtel')
+          .map((d) => _DeviceItem(name: d.name, isConnected: d.isConnected))
+          .toList();
+      _isLoadingDevices = false;
+    });
+  }
+
+  Future<void> _persistDevices() async {
+    final all = [
+      ..._earbuds.map((d) => DeviceItem(
+        name: d.name,
+        category: 'Earbuds',
+        isConnected: d.isConnected,
+      )),
+      ..._belts.map((d) => DeviceItem(
+        name: d.name,
+        category: 'Gürtel',
+        isConnected: d.isConnected,
+      )),
+    ];
+    await DeviceStorageService.saveDevices(all);
+  }
 
   bool get _isLoggedIn => FirebaseAuth.instance.currentUser != null;
 
@@ -65,7 +97,14 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
     if (!mounted) return;
     Navigator.pop(context);
-    setState(() {});
+
+    // Geräte für den neuen Zustand (Gast) neu laden
+    setState(() {
+      _isLoadingDevices = true;
+      _earbuds = [];
+      _belts = [];
+    });
+    await _loadDevices();
   }
 
   // ── Remove ───────────────────────────────────────────────────────────────
@@ -78,6 +117,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
         _belts.removeAt(index);
       }
     });
+    _persistDevices();
   }
 
   // ── Calibration / Setup ──────────────────────────────────────────────────
@@ -93,6 +133,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
       setState(() {
         _earbuds[index].isConnected = true;
       });
+      _persistDevices();
     }
   }
 
@@ -107,6 +148,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
       setState(() {
         _belts[index].isConnected = true;
       });
+      _persistDevices();
     }
   }
 
@@ -126,6 +168,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
       setState(() {
         _earbuds.add(_DeviceItem(name: result.name, isConnected: false));
       });
+      _persistDevices();
 
       // Immediately open calibration for the newly added earbud.
       if (result.openCalibration) {
@@ -136,6 +179,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
       setState(() {
         _belts.add(_DeviceItem(name: result.name, isConnected: false));
       });
+      _persistDevices();
 
       if (result.openCalibration) {
         await _openBeltSetup(newIndex);
@@ -147,6 +191,17 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingDevices) {
+      return Scaffold(
+        backgroundColor: AppColors.background(context),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: AppColors.primary(context),
+          ),
+        ),
+      );
+    }
+
     final totalDevices = _earbuds.length + _belts.length;
     final shouldScroll = totalDevices > 4;
 

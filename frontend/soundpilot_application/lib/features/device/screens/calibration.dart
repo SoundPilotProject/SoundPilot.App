@@ -1,7 +1,11 @@
+// lib/features/device/screens/calibration.dart
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/loading_screen.dart';
+import '../../../core/services/calibration_service.dart';
 import 'TestPage.dart';
 
 class CalibrationScreen extends StatefulWidget {
@@ -14,17 +18,40 @@ class CalibrationScreen extends StatefulWidget {
 class _CalibrationScreenState extends State<CalibrationScreen> {
   int _leftVolume = 50;
   int _rightVolume = 50;
+  bool _isLoading = true;
 
-  late final FixedExtentScrollController _leftController;
-  late final FixedExtentScrollController _rightController;
+  late FixedExtentScrollController _leftController;
+  late FixedExtentScrollController _rightController;
 
   final List<int> _values = List.generate(100, (index) => index + 1);
 
   @override
   void initState() {
     super.initState();
+    // Temporary controllers — replaced after data loads
     _leftController = FixedExtentScrollController(initialItem: 49);
     _rightController = FixedExtentScrollController(initialItem: 49);
+    _loadSavedCalibration();
+  }
+
+  Future<void> _loadSavedCalibration() async {
+    final data = await CalibrationService.load();
+
+    if (!mounted) return;
+
+    // Dispose old controllers before replacing them
+    _leftController.dispose();
+    _rightController.dispose();
+
+    setState(() {
+      _leftVolume = data.leftVolume;
+      _rightVolume = data.rightVolume;
+      _leftController =
+          FixedExtentScrollController(initialItem: data.leftVolume - 1);
+      _rightController =
+          FixedExtentScrollController(initialItem: data.rightVolume - 1);
+      _isLoading = false;
+    });
   }
 
   @override
@@ -35,10 +62,21 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   }
 
   Future<void> _openTestPage() async {
+    // Save current values before opening the test page so TestPage
+    // can read them.
+    await CalibrationService.save(
+      CalibrationData(leftVolume: _leftVolume, rightVolume: _rightVolume),
+    );
+
+    if (!mounted) return;
+
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => const TestPage(),
+        builder: (_) => TestPage(
+          leftVolume: _leftVolume,
+          rightVolume: _rightVolume,
+        ),
       ),
     );
 
@@ -49,15 +87,17 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const LoadingScreen(text: 'Kalibrierung wird geladen...');
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
             _CalibrationTopBar(
-              onBackPressed: () {
-                Navigator.pop(context);
-              },
+              onBackPressed: () => Navigator.pop(context),
             ),
             Expanded(
               child: Padding(
@@ -148,12 +188,12 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   }
 }
 
+// ── Top Bar ──────────────────────────────────────────────────────────────────
+
 class _CalibrationTopBar extends StatelessWidget {
   final VoidCallback onBackPressed;
 
-  const _CalibrationTopBar({
-    required this.onBackPressed,
-  });
+  const _CalibrationTopBar({required this.onBackPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -193,6 +233,8 @@ class _CalibrationTopBar extends StatelessWidget {
     );
   }
 }
+
+// ── Volume Picker ─────────────────────────────────────────────────────────────
 
 class _VolumeSection extends StatelessWidget {
   final String label;
@@ -245,7 +287,6 @@ class _VolumeSection extends StatelessWidget {
                       builder: (context, index) {
                         final value = values[index];
                         final bool isSelected = value == selectedValue;
-
                         return Center(
                           child: Text(
                             value.toString(),
