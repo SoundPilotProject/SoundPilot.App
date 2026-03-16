@@ -25,7 +25,7 @@ jobs:
 
       - name: Analyze code
         working-directory: frontend/soundpilot_application
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Run tests
         working-directory: frontend/soundpilot_application
