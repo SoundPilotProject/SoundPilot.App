@@ -59,6 +59,6 @@ jobs:
 
       - name: Deploy to Firebase
         working-directory: firebase
-        run: firebase deploy --only firestore:rules,functions --no-predeploy
+        run: firebase deploy --only firestore:rules,functions
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
