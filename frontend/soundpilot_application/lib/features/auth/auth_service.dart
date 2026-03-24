@@ -134,7 +134,7 @@ class AuthService {
     if (user == null) return null;
     return UserModel(
       id: user.uid,
-      username: user.displayName ?? 'No Name',
+      displayName: user.displayName ?? 'No Name',
       email: user.email ?? '',
     );
   }
