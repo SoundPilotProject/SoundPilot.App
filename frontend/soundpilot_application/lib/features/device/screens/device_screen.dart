@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../models/user_model.dart';
 import 'calibration.dart';
 import 'belt_warning_distance_screen.dart';
 import '../../../core/theme/app_colors.dart';
@@ -38,8 +39,10 @@ class DeviceScreen extends StatefulWidget {
 }
 
 class _DeviceScreenState extends State<DeviceScreen> {
-  List<_DeviceItem> _earbuds = [];
-  List<_DeviceItem> _belts = [];
+  // We now use Maps, matching the UserModel and Storage Service.
+  // Key is the Bluetooth Address (MAC), Value is the Calibration object.
+  Map<String, HeadphoneCalib> _earbuds = {};
+  Map<String, BeltCalib> _belts = {};
   bool _isLoadingDevices = true;
 
   @override
@@ -49,35 +52,25 @@ class _DeviceScreenState extends State<DeviceScreen> {
   }
 
   Future<void> _loadDevices() async {
-    final stored = await DeviceStorageService.loadDevices();
+    // Call the new method from the storage service
+    final stored = await DeviceStorageService.loadUserCalibration();
+
     if (!mounted) return;
+
     setState(() {
-      _earbuds = stored
-          .where((d) => d.category == 'Earbuds')
-          .map((d) => _DeviceItem(name: d.name, isConnected: d.isConnected))
-          .toList();
-      _belts = stored
-          .where((d) => d.category == 'Gürtel')
-          .map((d) => _DeviceItem(name: d.name, isConnected: d.isConnected))
-          .toList();
+      // Assign the maps directly from the result
+      _earbuds = stored['headphones'] as Map<String, HeadphoneCalib>? ?? {};
+      _belts = stored['belts'] as Map<String, BeltCalib>? ?? {};
       _isLoadingDevices = false;
     });
   }
 
   Future<void> _persistDevices() async {
-    final all = [
-      ..._earbuds.map((d) => DeviceItem(
-        name: d.name,
-        category: 'Earbuds',
-        isConnected: d.isConnected,
-      )),
-      ..._belts.map((d) => DeviceItem(
-        name: d.name,
-        category: 'Gürtel',
-        isConnected: d.isConnected,
-      )),
-    ];
-    await DeviceStorageService.saveDevices(all);
+    // Call the new save method and pass the maps
+    await DeviceStorageService.saveUserCalibration(
+      headphones: _earbuds,
+      belts: _belts,
+    );
   }
 
   bool get _isLoggedIn => FirebaseAuth.instance.currentUser != null;
@@ -98,11 +91,11 @@ class _DeviceScreenState extends State<DeviceScreen> {
     if (!mounted) return;
     Navigator.pop(context);
 
-    // Geräte für den neuen Zustand (Gast) neu laden
+    // Reload devices for the new (guest) state
     setState(() {
       _isLoadingDevices = true;
-      _earbuds = [];
-      _belts = [];
+      _earbuds = {};
+      _belts = {};
     });
     await _loadDevices();
   }
@@ -112,9 +105,11 @@ class _DeviceScreenState extends State<DeviceScreen> {
   void _removeDevice(String category, int index) {
     setState(() {
       if (category == 'Earbuds') {
-        _earbuds.removeAt(index);
+        final keyToRemove = _earbuds.keys.elementAt(index);
+        _earbuds.remove(keyToRemove);
       } else {
-        _belts.removeAt(index);
+        final keyToRemove = _belts.keys.elementAt(index);
+        _belts.remove(keyToRemove);
       }
     });
     _persistDevices();
@@ -131,7 +126,9 @@ class _DeviceScreenState extends State<DeviceScreen> {
     if (!mounted) return;
     if (result == true && index >= 0 && index < _earbuds.length) {
       setState(() {
-        _earbuds[index].isConnected = true;
+        // Find the key by index to update the connected state
+        final key = _earbuds.keys.elementAt(index);
+        _earbuds[key]!.isConnected = true;
       });
       _persistDevices();
     }
@@ -146,7 +143,9 @@ class _DeviceScreenState extends State<DeviceScreen> {
     if (!mounted) return;
     if (result == true && index >= 0 && index < _belts.length) {
       setState(() {
-        _belts[index].isConnected = true;
+        // Find the key by index to update the connected state
+        final key = _belts.keys.elementAt(index);
+        _belts[key]!.isConnected = true;
       });
       _persistDevices();
     }
@@ -158,15 +157,22 @@ class _DeviceScreenState extends State<DeviceScreen> {
     final result = await showDialog<_AddDeviceResult>(
       context: context,
       barrierDismissible: true,
-      builder: (dialogContext) => _AddDeviceDialog(),
+      builder: (dialogContext) => const _AddDeviceDialog(),
     );
 
     if (!mounted || result == null) return;
 
+    // Generate a temporary unique ID since we don't have real MAC addresses yet
+    final tempMacAddress = 'dummy_mac_${DateTime.now().millisecondsSinceEpoch}';
+
     if (result.type == 'Earbuds') {
       final newIndex = _earbuds.length;
       setState(() {
-        _earbuds.add(_DeviceItem(name: result.name, isConnected: false));
+        // Add to map using the new MAC address key
+        _earbuds[tempMacAddress] = HeadphoneCalib(
+          modelId: result.name,
+          isConnected: false,
+        );
       });
       _persistDevices();
 
@@ -177,7 +183,11 @@ class _DeviceScreenState extends State<DeviceScreen> {
     } else {
       final newIndex = _belts.length;
       setState(() {
-        _belts.add(_DeviceItem(name: result.name, isConnected: false));
+        // Add to map using the new MAC address key
+        _belts[tempMacAddress] = BeltCalib(
+          modelId: result.name,
+          isConnected: false,
+        );
       });
       _persistDevices();
 
@@ -249,17 +259,21 @@ class _DeviceScreenState extends State<DeviceScreen> {
         ),
       ),
       SizedBox(height: spacing),
+      // Iterate through the Map values for Earbuds
       ...List.generate(
         _earbuds.length,
-            (index) => Padding(
-          padding: EdgeInsets.only(bottom: spacing),
-          child: _DeviceCard(
-            name: _earbuds[index].name,
-            isConnected: _earbuds[index].isConnected,
-            onDelete: () => _removeDevice('Earbuds', index),
-            onTap: () => _openCalibrationForEarbud(index),
-          ),
-        ),
+            (index) {
+          final device = _earbuds.values.elementAt(index);
+          return Padding(
+            padding: EdgeInsets.only(bottom: spacing),
+            child: _DeviceCard(
+              name: device.modelId, // Updated from .name to .modelId
+              isConnected: device.isConnected,
+              onDelete: () => _removeDevice('Earbuds', index),
+              onTap: () => _openCalibrationForEarbud(index),
+            ),
+          );
+        },
       ),
       SizedBox(height: spacing),
       Text(
@@ -272,17 +286,21 @@ class _DeviceScreenState extends State<DeviceScreen> {
         ),
       ),
       SizedBox(height: spacing),
+      // Iterate through the Map values for Belts
       ...List.generate(
         _belts.length,
-            (index) => Padding(
-          padding: EdgeInsets.only(bottom: spacing),
-          child: _DeviceCard(
-            name: _belts[index].name,
-            isConnected: _belts[index].isConnected,
-            onDelete: () => _removeDevice('Gürtel', index),
-            onTap: () => _openBeltSetup(index),
-          ),
-        ),
+            (index) {
+          final device = _belts.values.elementAt(index);
+          return Padding(
+            padding: EdgeInsets.only(bottom: spacing),
+            child: _DeviceCard(
+              name: device.modelId, // Updated from .name to .modelId
+              isConnected: device.isConnected,
+              onDelete: () => _removeDevice('Gürtel', index),
+              onTap: () => _openBeltSetup(index),
+            ),
+          );
+        },
       ),
     ];
 
@@ -339,8 +357,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                  const LoginScreen(returnToDeviceOnBack: true),
+                  builder: (_) => const LoginScreen(returnToDeviceOnBack: true),
                 ),
               );
             },
@@ -355,8 +372,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                  const RegisterScreen(returnToDeviceOnBack: true),
+                  builder: (_) => const RegisterScreen(returnToDeviceOnBack: true),
                 ),
               );
             },
@@ -394,6 +410,8 @@ class _AddDeviceResult {
 }
 
 class _AddDeviceDialog extends StatefulWidget {
+  const _AddDeviceDialog();
+
   @override
   State<_AddDeviceDialog> createState() => _AddDeviceDialogState();
 }
@@ -402,13 +420,13 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // ── Shared state ──────────────────────────────────────────────────────────
+  // Shared state
   String _selectedType = 'Earbuds';
 
-  // ── Manual-entry tab state ─────────────────────────────────────────────
+  // Manual-entry tab state
   final TextEditingController _nameController = TextEditingController();
 
-  // ── System-scan tab state ─────────────────────────────────────────────
+  // System-scan tab state
   bool _isScanning = false;
   List<String> _scannedDevices = [];
   String? _selectedScannedDevice;
@@ -928,15 +946,8 @@ class _TypeSelector extends StatelessWidget {
 }
 
 // ============================================================================
-// Shared reusable widgets (unchanged from original)
+// Shared reusable widgets
 // ============================================================================
-
-class _DeviceItem {
-  final String name;
-  bool isConnected;
-
-  _DeviceItem({required this.name, required this.isConnected});
-}
 
 class _TopActionButton extends StatelessWidget {
   final String text;
