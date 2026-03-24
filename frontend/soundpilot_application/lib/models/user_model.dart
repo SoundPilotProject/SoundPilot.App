@@ -61,14 +61,14 @@ class BeltCalib {
 
 class UserModel {
   final String id;
-  final String username;
+  final String displayName;
   final String email;
   final Map<String, HeadphoneCalib> headphones; // Key: BD_ADDR
   final Map<String, BeltCalib> belts;           // Key: BD_ADDR
 
   UserModel({
     required this.id,
-    required this.username,
+    required this.displayName,
     required this.email,
     this.headphones = const {},
     this.belts = const {},
@@ -91,7 +91,7 @@ class UserModel {
 
     return UserModel(
       id: id,
-      username: data['username'] ?? 'User',
+      displayName: data['displayName'] ?? 'User',
       email: data['email'] ?? '',
       headphones: parsedHeadphones,
       belts: parsedBelts,
