@@ -30,14 +30,18 @@ export const createUserDoc = functions
           language: "system",
           theme: "system",
         },
+        calibration: {
+          headphones: {},
+          belts: {},
+        },
       };
 
       // Using { merge: true } to prevent accidental overwrites
       await userRef.set(data, {merge: true});
 
+      // eslint-disable-next-line max-len
       logger.info(`Successfully created Firestore document for UID: ${uid}`);
     } catch (error) {
-      // This will show up as a red error in your Firebase Logs
       logger.error(`Error creating document for UID: ${uid}`, error);
     }
   });
@@ -50,12 +54,9 @@ export const deleteUserDoc = functions
   .auth.user()
   .onDelete(async (user) => {
     const userRef = db.doc(`users/${user.uid}`);
-
     try {
       logger.info(`Attempting to delete document for user: ${user.uid}`);
-
       await userRef.delete();
-
       // eslint-disable-next-line max-len
       logger.info(`Successfully deleted Firestore document for UID: ${user.uid}`);
     } catch (error) {
