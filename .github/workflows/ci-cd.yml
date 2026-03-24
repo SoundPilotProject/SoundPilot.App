@@ -49,14 +49,16 @@ jobs:
       - name: Install Firebase CLI
         run: curl -sL https://firebase.tools | bash
 
-      - name: Deploy Firestore Rules
-        working-directory: firebase
-        run: firebase deploy --only firestore:rules
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      - name: Install Functions Dependencies
+        working-directory: firebase/functions
+        run: npm install
 
-      - name: Deploy Firebase Functions
+      - name: Build Functions (TypeScript to JS)
+        working-directory: firebase/functions
+        run: npm run build
+
+      - name: Deploy to Firebase
         working-directory: firebase
-        run: firebase deploy --only functions
+        run: firebase deploy --only firestore:rules,functions
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
