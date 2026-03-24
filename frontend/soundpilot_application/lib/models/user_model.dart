@@ -14,8 +14,9 @@
 ///   into type-safe Dart objects.
 /// - To Firestore: .toMap() methods convert objects back into maps for updates.
 ///
-/// NOTE: Devices are stored in Maps using their Bluetooth MAC Address as the Key
-/// to allow one user to have multiple calibrated devices of the same type.
+/// NOTE:
+/// - Devices are stored in Maps using their Bluetooth MAC Address as the Key.
+/// - 'isConnected' is a RUNTIME property and is NOT persisted in the database.
 library;
 
 /// Calibration data for headphones
@@ -24,20 +25,30 @@ class HeadphoneCalib {
   final double volumeLeft;
   final double volumeRight;
 
+  // UI & Runtime helpers (Not stored in Firestore)
+  bool isConnected;
+  final String category = 'Earbuds';
+
   HeadphoneCalib({
     required this.modelId,
     this.volumeLeft = 0.5,
     this.volumeRight = 0.5,
+    this.isConnected = false, // Defaults to disconnected on app start
   });
 
+  /// Converts Firestore Map to Object.
+  /// Note: isConnected is always initialized as false here.
   factory HeadphoneCalib.fromMap(Map<String, dynamic> map) {
     return HeadphoneCalib(
       modelId: map['modelId'] ?? 'unknown',
       volumeLeft: (map['volLeft'] ?? 0.5).toDouble(),
       volumeRight: (map['volRight'] ?? 0.5).toDouble(),
+      isConnected: false,
     );
   }
 
+  /// Converts Object to Map for Firestore.
+  /// Note: isConnected and category are EXCLUDED from the map.
   Map<String, dynamic> toMap() => {
     'modelId': modelId,
     'volLeft': volumeLeft,
@@ -45,26 +56,38 @@ class HeadphoneCalib {
   };
 }
 
-/// Placeholder for future belt calibration data
+/// Calibration data for the hardware belt
 class BeltCalib {
   final String modelId;
-  // Add more belt-specific fields here later
 
-  BeltCalib({required this.modelId});
+  // UI & Runtime helpers (Not stored in Firestore)
+  bool isConnected;
+  final String category = 'Belt';
+
+  BeltCalib({
+    required this.modelId,
+    this.isConnected = false, // Defaults to disconnected on app start
+  });
 
   factory BeltCalib.fromMap(Map<String, dynamic> map) {
-    return BeltCalib(modelId: map['modelId'] ?? 'unknown');
+    return BeltCalib(
+      modelId: map['modelId'] ?? 'unknown',
+      isConnected: false,
+    );
   }
 
-  Map<String, dynamic> toMap() => {'modelId': modelId};
+  /// Only saves the modelId to Firestore
+  Map<String, dynamic> toMap() => {
+    'modelId': modelId,
+  };
 }
 
 class UserModel {
   final String id;
   final String displayName;
   final String email;
-  final Map<String, HeadphoneCalib> headphones; // Key: BD_ADDR
-  final Map<String, BeltCalib> belts;           // Key: BD_ADDR
+  final Map<String, HeadphoneCalib> headphones; // Key: BD_ADDR (MAC Address)
+  final Map<String, BeltCalib> belts;           // Key: BD_ADDR (MAC Address)
 
   UserModel({
     required this.id,
@@ -77,16 +100,16 @@ class UserModel {
   factory UserModel.fromFirestore(Map<String, dynamic> data, String id) {
     final calib = data['calibration'] as Map<String, dynamic>? ?? {};
 
-    // Parse Headphones
+    // Parse Headphones Map
     final hpMap = calib['headphones'] as Map<String, dynamic>? ?? {};
     Map<String, HeadphoneCalib> parsedHeadphones = hpMap.map(
-            (key, value) => MapEntry(key, HeadphoneCalib.fromMap(value))
+            (key, value) => MapEntry(key, HeadphoneCalib.fromMap(value as Map<String, dynamic>))
     );
 
-    // Parse Belts
+    // Parse Belts Map
     final beltMap = calib['belts'] as Map<String, dynamic>? ?? {};
     Map<String, BeltCalib> parsedBelts = beltMap.map(
-            (key, value) => MapEntry(key, BeltCalib.fromMap(value))
+            (key, value) => MapEntry(key, BeltCalib.fromMap(value as Map<String, dynamic>))
     );
 
     return UserModel(
@@ -96,5 +119,17 @@ class UserModel {
       headphones: parsedHeadphones,
       belts: parsedBelts,
     );
+  }
+
+  /// Helper to convert the whole user back to a Firestore-compatible map
+  Map<String, dynamic> toMap() {
+    return {
+      'displayName': displayName,
+      'email': email,
+      'calibration': {
+        'headphones': headphones.map((k, v) => MapEntry(k, v.toMap())),
+        'belts': belts.map((k, v) => MapEntry(k, v.toMap())),
+      },
+    };
   }
 }
