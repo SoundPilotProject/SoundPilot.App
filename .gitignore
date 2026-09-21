@@ -138,9 +138,9 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Compiled JavaScript files
-lib/**/*.js
-lib/**/*.js.map
+# Compiled JavaScript files (Cloud Functions build output)
+**/lib/**/*.js
+**/lib/**/*.js.map
 
 # TypeScript v1 declaration files
 typings/
@@ -161,7 +161,6 @@ out/
 **/build/
 **/captures/
 local.properties
-.gradle/
 .gradle-cache/
 **/.gradle/
 **/.gradle-cache/
@@ -180,10 +179,13 @@ local.properties
 .pub-cache/
 build/
 # Falls ihr web buildet:
-lib/generated_plugin_registrant.dart
+**/lib/generated_plugin_registrant.dart
 
 # Firebase / Google Services
-# Die hier nie ins Repo packen (enthält private API Keys)
+# Bewusste Team-Entscheidung: nicht im Repo. Die Datei enthaelt keine
+# geheimen Schluessel (siehe Firebase-Doku zu API-Keys), der Schutz laeuft
+# ueber Security Rules und App Check. Wer klont, muss sie aus der Firebase
+# Console herunterladen, sonst schlaegt der Android-Build fehl.
 **/google-services.json
 **/GoogleService-Info.plist
 
@@ -191,12 +193,13 @@ lib/generated_plugin_registrant.dart
 .DS_Store
 Thumbs.db
 *.swp
-*.lock
 *.tmp
 
 # Logs & temporäre Files
-*.log
 *.pid
 *.seed
-*.tmp
 *.bak*
+
+# Claude Code
+.claude/settings.local.json
+CLAUDE.local.md

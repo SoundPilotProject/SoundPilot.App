@@ -1,4 +1,6 @@
 // lib/features/device/screens/calibration.dart
+//
+// Left/right volume calibration for an earbud (two scroll wheels).
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,6 +10,19 @@ import '../../../core/widgets/loading_screen.dart';
 import '../../../core/services/calibration_service.dart';
 import 'TestPage.dart';
 
+/// Screen where the user sets the left and right volume (1–100) of an earbud.
+///
+/// The values are saved through [CalibrationService] and passed to the
+/// [TestPage]. The screen pops with `true` once the test exercise was finished.
+///
+/// TODO(improve): The volumes are not tied to a device. The screen takes no
+/// device key and only returns `true`, so `HeadphoneCalib.volumeLeft` /
+/// `volumeRight` are never set and every earbud shares one calibration (stored
+/// per user in [CalibrationService]). Pass the device key (BD_ADDR) in and
+/// save the values per device (e.g. `calibration.headphones.<BD_ADDR>.volLeft`).
+///
+/// TODO(improve): Rename the file to `calibration_screen.dart` so it matches
+/// the class name (same for `TestPage.dart` -> `test_page.dart`).
 class CalibrationScreen extends StatefulWidget {
   const CalibrationScreen({super.key});
 
@@ -16,13 +31,17 @@ class CalibrationScreen extends StatefulWidget {
 }
 
 class _CalibrationScreenState extends State<CalibrationScreen> {
+  /// Currently selected volumes (default 50, replaced by the saved values).
   int _leftVolume = 50;
   int _rightVolume = 50;
+
+  /// True until the saved calibration has been loaded.
   bool _isLoading = true;
 
   late FixedExtentScrollController _leftController;
   late FixedExtentScrollController _rightController;
 
+  /// Selectable volumes 1..100 (wheel item index = value - 1).
   final List<int> _values = List.generate(100, (index) => index + 1);
 
   @override
@@ -34,6 +53,8 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     _loadSavedCalibration();
   }
 
+  /// Loads the saved values and rebuilds the wheel controllers with them as
+  /// the initial item.
   Future<void> _loadSavedCalibration() async {
     final data = await CalibrationService.load();
 
@@ -61,6 +82,8 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     super.dispose();
   }
 
+  /// Saves the current values and opens the [TestPage]. If the test was
+  /// finished (`true`), this screen pops with `true` as well.
   Future<void> _openTestPage() async {
     // Save current values before opening the test page so TestPage
     // can read them.
@@ -162,6 +185,8 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                           backgroundColor: AppColors.primary(context),
                           foregroundColor: AppColors.onPrimary(context),
                           elevation: 4,
+                          // TODO(improve): `withOpacity` is deprecated, use
+                          // `withValues(alpha: ...)` (see LoginScreen).
                           shadowColor: Colors.black.withOpacity(0.18),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(40),
@@ -190,6 +215,10 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
 // ── Top Bar ──────────────────────────────────────────────────────────────────
 
+/// Blue top bar with a back arrow and the title 'Kalibrierung'.
+///
+/// TODO(improve): Duplicate of the other screens' top bars, see
+/// `_LoginTopBar`.
 class _CalibrationTopBar extends StatelessWidget {
   final VoidCallback onBackPressed;
 
@@ -234,8 +263,12 @@ class _CalibrationTopBar extends StatelessWidget {
   }
 }
 
-// ── Volume Picker ─────────────────────────────────────────────────────────────
+// ── Volume Picker ────────────────────────────────────────────────────────────
 
+/// One row of the screen: a [label] and a scroll wheel for the volume.
+///
+/// The selected value is drawn transparent inside the wheel and shown in the
+/// highlighted box that is stacked on top of it instead.
 class _VolumeSection extends StatelessWidget {
   final String label;
   final int selectedValue;

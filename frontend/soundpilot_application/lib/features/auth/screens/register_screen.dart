@@ -1,3 +1,7 @@
+// lib/features/auth/screens/register_screen.dart
+//
+// Registration form (name, e-mail, password, belt) that creates the account.
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,7 +13,12 @@ import '../auth_service.dart';
 import 'login_screen.dart';
 import 'start_screen.dart';
 
+/// Registration screen: creates an account with e-mail and password.
+///
+/// Also offers a link to the [LoginScreen].
 class RegisterScreen extends StatefulWidget {
+  /// Where the back arrow leads: `true` returns to the [DeviceScreen] (used
+  /// when opened from there as a guest), `false` to the [StartScreen].
   final bool returnToDeviceOnBack;
 
   const RegisterScreen({
@@ -22,6 +31,11 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  // NOTE: First name, last name and the belt selection are collected in the
+  // form but not used yet: registerWithEmail() only receives e-mail and
+  // password.
+  // TODO(improve): Save them (e.g. as `displayName` of the user and as a belt
+  // entry) or remove the fields from the form.
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
@@ -31,8 +45,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool _obscurePassword = true;
   bool _isLoading = false;
+  /// Answer to the 'Gürtel' (belt) question of the form: 'NEIN' or 'JA'.
+  /// Not used yet, see the note at the name controllers.
   String _selectedBelt = 'NEIN';
 
+  /// Options of the belt dropdown.
   final List<String> _beltOptions = ['NEIN', 'JA'];
 
   @override
@@ -44,6 +61,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  /// Validates the input, registers the user and replaces the whole navigation
+  /// stack with the [DeviceScreen]. A [LoadingScreen] is shown meanwhile.
+  ///
+  /// The minimum password length of 6 matches the Firebase Auth minimum.
+  ///
+  /// TODO(improve): Same points as LoginScreen._finishLogin: `setState` before
+  /// the `mounted` check, redundant `_isLoading` next to the [LoadingScreen],
+  /// and one generic error message for every failure.
   Future<void> _finishRegister() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -64,6 +89,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (!mounted) return;
 
+    // Loading route on top of this screen; it is popped again below.
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -88,11 +114,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    // A signed-in user must not be treated as a guest on the next start.
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('continueAsGuestThisSession', false);
 
     if (!mounted) return;
 
+    // Remove all previous routes so back cannot return to the auth screens.
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const DeviceScreen()),
@@ -100,12 +128,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  /// Shows [message] in a SnackBar.
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
   }
 
+  /// Back arrow: replaces this screen with the [DeviceScreen] or the
+  /// [StartScreen], depending on [RegisterScreen.returnToDeviceOnBack].
   void _handleBack() {
     Navigator.pushReplacement(
       context,
@@ -119,6 +150,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // TODO(improve): `canPop: false` without a callback disables the system
+    // back button/gesture completely (see LoginScreen).
     return PopScope(
       canPop: false,
       child: Scaffold(
@@ -253,6 +286,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             backgroundColor: AppColors.primary(context),
                             foregroundColor: AppColors.onPrimary(context),
                             elevation: 3,
+                            // TODO(improve): `withOpacity` is deprecated, use
+                            // `withValues(alpha: ...)` (see LoginScreen).
                             shadowColor: Colors.black.withOpacity(0.22),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(50),
@@ -324,6 +359,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 }
 
+/// Blue top bar with a back arrow and the title 'Registrieren'.
+///
+/// TODO(improve): Duplicate of the other screens' top bars, see
+/// `_LoginTopBar`.
 class _RegisterTopBar extends StatelessWidget {
   final VoidCallback onBackPressed;
 
@@ -370,6 +409,11 @@ class _RegisterTopBar extends StatelessWidget {
   }
 }
 
+/// Rounded text field with a leading icon and an optional trailing icon (used
+/// for the password visibility toggle).
+///
+/// TODO(improve): Almost the same field exists as `_LoginTextField`; share one
+/// widget.
 class _RegisterTextField extends StatelessWidget {
   final TextEditingController controller;
   final String hintText;
@@ -423,6 +467,8 @@ class _RegisterTextField extends StatelessWidget {
               width: 2,
             ),
           ),
+          // TODO(improve): Same as `enabledBorder`, so there is no focus
+          // feedback (see _LoginTextField).
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(20),
             borderSide: BorderSide(
@@ -436,6 +482,7 @@ class _RegisterTextField extends StatelessWidget {
   }
 }
 
+/// Dropdown with the answers ('NEIN' / 'JA') to the belt question of the form.
 class _BeltDropdown extends StatelessWidget {
   final String value;
   final List<String> items;

@@ -3,6 +3,13 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // every user can only read/write his own /users/{uid}/...
+    // NOTE: `write` includes create, update and delete, so the client may also
+    // create and delete its own document (creation is meant for the cloud
+    // function `createUserDoc`).
+    // TODO(improve): No field validation. A client can overwrite `email`,
+    // `createdAt`, `providers` or `uid` in its own document. Restrict
+    // `update` to `calibration` and `settings` if that is not intended, and
+    // consider `allow create, delete: if false;` (see CLAUDE.md).
     match /users/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid; // only logged in users
     }

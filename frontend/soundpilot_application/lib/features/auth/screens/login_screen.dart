@@ -1,3 +1,7 @@
+// lib/features/auth/screens/login_screen.dart
+//
+// E-mail/password login with password reset and a link to registration.
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,7 +13,12 @@ import '../auth_service.dart';
 import 'register_screen.dart';
 import 'start_screen.dart';
 
+/// Login screen with e-mail and password.
+///
+/// Also offers the password reset and a link to the [RegisterScreen].
 class LoginScreen extends StatefulWidget {
+  /// Where the back arrow leads: `true` returns to the [DeviceScreen] (used
+  /// when opened from there as a guest), `false` to the [StartScreen].
   final bool returnToDeviceOnBack;
 
   const LoginScreen({
@@ -37,6 +46,17 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  /// Validates the input, signs in and replaces the whole navigation stack with
+  /// the [DeviceScreen]. A [LoadingScreen] is shown while the login runs.
+  ///
+  /// TODO(improve): `setState` is called before the `mounted` check. The check
+  /// belongs before the `setState`. (Same in RegisterScreen._finishRegister.)
+  ///
+  /// TODO(improve): `_isLoading` (spinner in the button) is redundant because
+  /// a full-screen [LoadingScreen] is pushed as well; use only one of them.
+  ///
+  /// TODO(improve): A failed login always shows the same generic message,
+  /// because AuthService returns `null` without a reason.
   Future<void> _finishLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -52,6 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
 
+    // Loading route on top of this screen; it is popped again below.
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -76,11 +97,13 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // A signed-in user must not be treated as a guest on the next start.
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('continueAsGuestThisSession', false);
 
     if (!mounted) return;
 
+    // Remove all previous routes so back cannot return to the auth screens.
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const DeviceScreen()),
@@ -88,12 +111,15 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// Shows [message] in a SnackBar.
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
   }
 
+  /// Back arrow: replaces this screen with the [DeviceScreen] or the
+  /// [StartScreen], depending on [LoginScreen.returnToDeviceOnBack].
   void _handleBack() {
     Navigator.pushReplacement(
       context,
@@ -107,6 +133,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // TODO(improve): `canPop: false` without a callback disables the system
+    // back button/gesture completely; only the arrow in the top bar works. Add
+    // `onPopInvokedWithResult` that calls `_handleBack()` (same in
+    // RegisterScreen).
     return PopScope(
       canPop: false,
       child: Scaffold(
@@ -183,6 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 22),
                       GestureDetector(
+                        // Sends a password reset e-mail to the address typed above.
                         onTap: () async {
                           final email = _emailController.text.trim();
 
@@ -222,6 +253,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             backgroundColor: AppColors.primary(context),
                             foregroundColor: AppColors.onPrimary(context),
                             elevation: 3,
+                            // TODO(improve): `withOpacity` is deprecated, use
+                            // `withValues(alpha: ...)` (applies to all
+                            // withOpacity calls in the app).
                             shadowColor: Colors.black.withOpacity(0.20),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(50),
@@ -296,6 +330,12 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+/// Blue top bar with a back arrow and the title 'Anmelden'.
+///
+/// TODO(improve): Nearly identical top bars exist in RegisterScreen,
+/// CalibrationScreen, TestPage, BeltVibrationScreen and
+/// BeltWarningDistanceScreen (only title, height and font size differ).
+/// Replace them by one shared `AppTopBar` widget in `core/widgets/`.
 class _LoginTopBar extends StatelessWidget {
   final VoidCallback onBackPressed;
 
@@ -342,6 +382,11 @@ class _LoginTopBar extends StatelessWidget {
   }
 }
 
+/// Rounded text field with a leading icon and an optional trailing icon (used
+/// for the password visibility toggle).
+///
+/// TODO(improve): Almost the same field exists as `_RegisterTextField`; share
+/// one widget.
 class _LoginTextField extends StatelessWidget {
   final TextEditingController controller;
   final String hintText;
@@ -402,6 +447,9 @@ class _LoginTextField extends StatelessWidget {
               width: 2.2,
             ),
           ),
+          // TODO(improve): Same colour and width as `enabledBorder`, so a
+          // focused field looks the same as an unfocused one. Use a different
+          // colour/width for focus feedback (same in _RegisterTextField).
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(22),
             borderSide: BorderSide(

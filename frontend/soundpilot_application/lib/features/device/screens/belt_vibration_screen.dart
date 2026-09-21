@@ -1,9 +1,25 @@
+// lib/features/device/screens/belt_vibration_screen.dart
+//
+// Belt setup, step 2: vibration strength and side.
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/loading_screen.dart';
 
+/// Second step of the belt setup (after [BeltWarningDistanceScreen]): the user
+/// enters the vibration strength in % (recommended 60–100 %) and picks a side
+/// ('L', 'M' or 'R').
+///
+/// Pops with `true` when the setup is finished.
+///
+/// TODO(improve): The entered strength and the selected side are neither
+/// validated nor saved. `_finishSetup` only waits and pops `true`. The
+/// strength should be checked (0–100) and stored with the belt entry.
+///
+/// TODO(improve): The label 'SUCHE GURT...' is static text, no search is
+/// started here. Either connect it to a real belt search or change the text.
 class BeltVibrationScreen extends StatefulWidget {
   const BeltVibrationScreen({super.key});
 
@@ -15,6 +31,7 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
   final TextEditingController _strengthController =
   TextEditingController(text: '100');
 
+  /// Selected side: one of 'L', 'M' or 'R'.
   String _selectedSide = 'M';
 
   @override
@@ -23,6 +40,11 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
     super.dispose();
   }
 
+  /// Shows a short loading screen and pops back with `true` (setup done).
+  ///
+  /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
+  /// visible for a moment and slows the UI down on purpose (see
+  /// StartScreen._continueAsGuest).
   Future<void> _finishSetup() async {
     Navigator.push(
       context,
@@ -71,6 +93,8 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
                         borderRadius: BorderRadius.circular(22),
                         boxShadow: [
                           BoxShadow(
+                            // TODO(improve): `withOpacity` is deprecated, use
+                            // `withValues(alpha: ...)` (see LoginScreen).
                             color: Colors.black.withOpacity(0.10),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
@@ -212,6 +236,11 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
   }
 }
 
+/// Blue top bar with a back arrow and a [title].
+///
+/// TODO(improve): Duplicate of the other screens' top bars, see
+/// `_LoginTopBar`. (This one already takes the title as a parameter, so it is
+/// a good base for the shared widget.)
 class _TopBar extends StatelessWidget {
   final String title;
   final VoidCallback onBackPressed;
@@ -260,6 +289,8 @@ class _TopBar extends StatelessWidget {
   }
 }
 
+/// Large toggle button for one side ('L', 'M' or 'R'); highlighted if
+/// [selected].
 class _SideButton extends StatelessWidget {
   final String label;
   final bool selected;

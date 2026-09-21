@@ -1,3 +1,7 @@
+// lib/features/device/screens/TestPage.dart
+//
+// Test exercise: plays a sound with the calibrated left/right volume.
+
 import 'dart:math' as math;
 
 import 'package:audioplayers/audioplayers.dart';
@@ -7,8 +11,18 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/loading_screen.dart';
 
+/// Test exercise after the calibration: plays `assets/audio/Marschieren.mp3` in
+/// a loop with the volume and balance derived from the calibrated values.
+///
+/// Pops with `true` when the user taps 'Abschließen'; the back arrow pops
+/// without a result.
+///
+/// TODO(improve): Rename the file to `test_page.dart` (Dart `file_names` lint).
 class TestPage extends StatefulWidget {
+  /// Calibrated volume of the left side (1–100).
   final int leftVolume;
+
+  /// Calibrated volume of the right side (1–100).
   final int rightVolume;
 
   const TestPage({
@@ -23,18 +37,27 @@ class TestPage extends StatefulWidget {
 
 class _TestPageState extends State<TestPage> {
   final AudioPlayer _audioPlayer = AudioPlayer();
+
+  /// True while the sound is playing.
   bool _isPlaying = false;
 
+  /// Limits [value] to the range 0.0–1.0.
   double _clamp01(double value) {
     return value.clamp(0.0, 1.0);
   }
 
+  /// Player volume (0.0–1.0): the louder of the two sides.
   double _calculateOverallVolume() {
     final left = _clamp01(widget.leftVolume / 100.0);
     final right = _clamp01(widget.rightVolume / 100.0);
     return math.max(left, right);
   }
 
+  /// Player balance from -1.0 (only left) to 1.0 (only right), relative to the
+  /// louder side. 0.0 if both sides are 0.
+  ///
+  /// TODO(improve): The conversion of both sides to 0.0–1.0 is repeated in
+  /// [_calculateOverallVolume]; compute it once.
   double _calculateBalance() {
     final left = _clamp01(widget.leftVolume / 100.0);
     final right = _clamp01(widget.rightVolume / 100.0);
@@ -46,6 +69,7 @@ class _TestPageState extends State<TestPage> {
     return balance.clamp(-1.0, 1.0);
   }
 
+  /// Starts the looping playback with the calculated volume and balance.
   Future<void> _startAudio() async {
     if (_isPlaying) return;
 
@@ -63,6 +87,7 @@ class _TestPageState extends State<TestPage> {
     setState(() => _isPlaying = true);
   }
 
+  /// Stops the playback (no-op if nothing is playing).
   Future<void> _stopAudio() async {
     if (!_isPlaying) return;
 
@@ -78,6 +103,12 @@ class _TestPageState extends State<TestPage> {
     super.dispose();
   }
 
+  /// Stops the audio, shows a short loading screen and pops back to the
+  /// calibration screen with `true`.
+  ///
+  /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
+  /// visible for a moment and slows the UI down on purpose (see
+  /// StartScreen._continueAsGuest).
   Future<void> _finishExercise() async {
     await _stopAudio();
 
@@ -137,6 +168,8 @@ class _TestPageState extends State<TestPage> {
                               : AppColors.primary(context),
                           foregroundColor: AppColors.onPrimary(context),
                           elevation: 4,
+                          // TODO(improve): `withOpacity` is deprecated, use
+                          // `withValues(alpha: ...)` (see LoginScreen).
                           shadowColor: Colors.black.withOpacity(0.15),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(40),
@@ -153,6 +186,9 @@ class _TestPageState extends State<TestPage> {
                             const SizedBox(width: 8),
                             Text(
                               'Start',
+                              // TODO(improve): 'Start' and 'Stop' use the
+                              // default TextStyle, all other texts use
+                              // GoogleFonts.poppins. Use the same font.
                               style: TextStyle(
                                 fontSize: 23,
                                 fontWeight: FontWeight.w800,
@@ -170,6 +206,8 @@ class _TestPageState extends State<TestPage> {
                       child: ElevatedButton(
                         onPressed: _isPlaying ? _stopAudio : null,
                         style: ElevatedButton.styleFrom(
+                          // TODO(improve): Hard-coded red; move it to
+                          // AppColors (e.g. next to `disconnectedRed`).
                           backgroundColor: _isPlaying
                               ? const Color(0xFFFF0000)
                               : AppColors.inactiveButton(context),
@@ -260,9 +298,13 @@ class _TestPageState extends State<TestPage> {
   }
 }
 
+/// Card with two bar "waveforms" (left and right) whose height follows the
+/// calibrated volumes.
 class _WaveCard extends StatelessWidget {
   final int leftVolume;
   final int rightVolume;
+
+  /// Slightly changes the bar heights while the sound is playing.
   final bool isPlaying;
 
   const _WaveCard({
@@ -271,6 +313,13 @@ class _WaveCard extends StatelessWidget {
     required this.isPlaying,
   });
 
+  /// Builds [count] bar heights (0.10–1.0) from a fixed sine pattern, scaled by
+  /// [strength] (0.0–1.0).
+  ///
+  /// NOTE: With [animated] the bars get a fixed per-bar factor; it is not a
+  /// running animation. The heights only change once when playback starts or
+  /// stops.
+  /// TODO(improve): Use an AnimationController for a real animation.
   List<double> _buildBars({
     required int count,
     required double strength,
@@ -289,6 +338,9 @@ class _WaveCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = AppColors.isDark(context);
+    // TODO(improve): The dark-mode colours below (0xFF121212 card, 0xFFF2E38A
+    // lines) are hard-coded. 0xFFF2E38A equals the dark `primary`; move both to
+    // AppColors.
     final cardColor = isDark ? const Color(0xFF121212) : AppColors.surface(context);
     final lineColor = isDark
         ? const Color(0xFFF2E38A)
@@ -343,9 +395,13 @@ class _WaveCard extends StatelessWidget {
   }
 }
 
+/// One half of the [_WaveCard]: a row of glowing bars.
 class _WaveHalf extends StatelessWidget {
+  /// Relative bar heights (0.0–1.0).
   final List<double> bars;
   final Color color;
+
+  /// True for the left half, so its bars sit against the centre line.
   final bool alignRight;
 
   const _WaveHalf({
@@ -389,6 +445,10 @@ class _WaveHalf extends StatelessWidget {
   }
 }
 
+/// Blue top bar with a back arrow and the title 'Testübung'.
+///
+/// TODO(improve): Duplicate of the other screens' top bars, see
+/// `_LoginTopBar`.
 class _TestTopBar extends StatelessWidget {
   final VoidCallback onBackPressed;
 

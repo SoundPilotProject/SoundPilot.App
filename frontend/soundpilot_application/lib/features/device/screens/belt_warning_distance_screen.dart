@@ -1,9 +1,22 @@
+// lib/features/device/screens/belt_warning_distance_screen.dart
+//
+// Belt setup, step 1: warning distance.
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
 import 'belt_vibration_screen.dart';
 
+/// First step of the belt setup: the user enters the warning distance in cm
+/// (recommended 200–500 cm, default 200), then continues to the
+/// [BeltVibrationScreen].
+///
+/// Pops with `true` once the second step was finished.
+///
+/// TODO(improve): The entered distance is neither validated nor saved or passed
+/// on to the next step. It should be checked (numeric, sensible range) and
+/// stored with the belt entry.
 class BeltWarningDistanceScreen extends StatefulWidget {
   const BeltWarningDistanceScreen({super.key});
 
@@ -22,6 +35,8 @@ class _BeltWarningDistanceScreenState extends State<BeltWarningDistanceScreen> {
     super.dispose();
   }
 
+  /// Opens the [BeltVibrationScreen]; if that step was finished (`true`), this
+  /// screen pops with `true` as well.
   Future<void> _goToNextScreen() async {
     final result = await Navigator.push<bool>(
       context,
@@ -66,6 +81,8 @@ class _BeltWarningDistanceScreenState extends State<BeltWarningDistanceScreen> {
                         borderRadius: BorderRadius.circular(22),
                         boxShadow: [
                           BoxShadow(
+                            // TODO(improve): `withOpacity` is deprecated, use
+                            // `withValues(alpha: ...)` (see LoginScreen).
                             color: Colors.black.withOpacity(0.10),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
@@ -156,6 +173,10 @@ class _BeltWarningDistanceScreenState extends State<BeltWarningDistanceScreen> {
   }
 }
 
+/// Blue top bar with a back arrow and the title 'WARNENTFERNUNG'.
+///
+/// TODO(improve): Duplicate of the other screens' top bars, see
+/// `_LoginTopBar`.
 class _TopBar extends StatelessWidget {
   final VoidCallback onBackPressed;
 

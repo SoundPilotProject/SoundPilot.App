@@ -1,7 +1,14 @@
+// lib/core/app_logger.dart
+//
+// Global logger used by all services and screens.
+
 import 'package:logger/logger.dart';
 
 /// Global logger instance for consistent logging throughout the app.
 /// We use a single instance to manage log levels and formatting in one place.
+///
+/// NOTE: Avoid logging personal data at info level. AuthService currently
+/// logs e-mail addresses (see the TODO there).
 final logger = Logger(
   printer: PrettyPrinter(
     methodCount: 2,       // Number of method calls to be displayed

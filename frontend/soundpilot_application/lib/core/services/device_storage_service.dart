@@ -11,15 +11,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app_logger.dart';
 import '../../models/user_model.dart';
 
+/// Local (SharedPreferences) storage for the device list and the calibration
+/// of headphones and belts, including the guest-to-user migration.
+///
+/// TODO(improve): Everything is stored locally only. The Firestore document
+/// (`users/{uid}.calibration`) is not used yet; see CLAUDE.md for the planned
+/// field-path updates per device.
 class DeviceStorageService {
-  // Current Firebase User ID or 'guest' for anonymous mode
+  /// Current Firebase User ID or 'guest' for anonymous mode.
   static String get _userId =>
       FirebaseAuth.instance.currentUser?.uid ?? 'guest';
 
-  // We store the entire calibration structure (Headphones + Belts) as a single JSON string
+  /// We store the entire calibration structure (Headphones + Belts) as a
+  /// single JSON string.
   static String get _calibrationKey => 'user_calibration_$_userId';
 
-  // ── Save Calibration ──────────────────────────────────────────────────────
+  // ── Save Calibration ───────────────────────────────────────────────────────
 
   /// Stores both headphone and belt calibration maps to local storage.
   /// Converts the typed objects into JSON-compatible maps.
@@ -38,10 +45,14 @@ class DeviceStorageService {
     logger.i('DeviceStorageService: Calibration for $_userId saved locally.');
   }
 
-  // ── Load Calibration ──────────────────────────────────────────────────────
+  // ── Load Calibration ───────────────────────────────────────────────────────
 
   /// Loads the stored device calibrations from local storage.
   /// Returns a Map containing 'headphones' and 'belts' maps.
+  ///
+  /// TODO(improve): Return a small typed class instead of an untyped
+  /// `Map<String, dynamic>`. Callers currently have to cast the values
+  /// (see DeviceScreen._loadDevices).
   static Future<Map<String, dynamic>> loadUserCalibration() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_calibrationKey);
@@ -73,6 +84,8 @@ class DeviceStorageService {
         'belts': belts
       };
     } catch (e) {
+      // NOTE: A parse error results in an empty device list. The corrupt data
+      // is then overwritten with the next save, so it is lost.
       logger.e('DeviceStorageService: Error parsing local calibration', error: e);
       return {
         'headphones': <String, HeadphoneCalib>{},
@@ -81,7 +94,7 @@ class DeviceStorageService {
     }
   }
 
-  // ── Guest to User Migration ──────────────────────────────────────────────
+  // ── Guest to User Migration ────────────────────────────────────────────────
 
   /// Transfers guest data to the user's account after a successful login.
   /// Ensures that calibration work done in guest mode is preserved.
@@ -100,6 +113,10 @@ class DeviceStorageService {
 
       // Optional: Clear guest data to avoid redundant migrations
       // await prefs.remove('user_calibration_guest');
+      // TODO: Decide whether to clear the guest data. While it stays, the next
+      // guest session sees the old data again, and any other new account on
+      // this device also inherits it (the migration only checks that the user
+      // has no data yet).
 
       logger.i('DeviceStorageService: Guest data successfully migrated to user $uid.');
     }

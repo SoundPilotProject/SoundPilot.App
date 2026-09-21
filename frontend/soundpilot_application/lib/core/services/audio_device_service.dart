@@ -1,9 +1,18 @@
+// lib/core/services/audio_device_service.dart
+//
+// Dart side of the native Android audio device query (MethodChannel).
+
 import 'package:flutter/services.dart';
 
 /// Represents a single audio output device reported by Android.
 class AudioDeviceInfo {
+  /// Device id as reported by the native side.
   final int id;
+
+  /// Human-readable device name as reported by the native side.
   final String productName;
+
+  /// Device type as a string (e.g. Bluetooth A2DP, wired headset, USB audio).
   final String type;
 
   const AudioDeviceInfo({
@@ -28,6 +37,14 @@ class AudioDeviceInfo {
 /// output devices (Bluetooth A2DP, wired headset, USB audio, etc.).
 ///
 /// Requires API level 23+ (Android 6.0) — covers 99 %+ of active devices.
+///
+/// NOTE: The native Android side has to handle the channel
+/// `com.soundpilot/audio_devices`. On other platforms (e.g. Windows) the call
+/// throws a [MissingPluginException].
+///
+/// TODO(improve): This service is not used by any screen yet. DeviceScreen
+/// still uses a simulated scan (`_scanForSystemHeadphones`). It should be
+/// connected there and the result should provide real BD_ADDR keys.
 class AudioDeviceService {
   static const MethodChannel _channel =
       MethodChannel('com.soundpilot/audio_devices');

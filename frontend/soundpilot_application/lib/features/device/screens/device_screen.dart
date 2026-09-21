@@ -1,3 +1,13 @@
+// lib/features/device/screens/device_screen.dart
+//
+// Main screen: list of earbuds and belts, add/remove devices, open their
+// calibration/setup, login/register (guest) or logout.
+//
+// TODO(improve): This file has about 1,170 lines. Move the add-device dialog,
+// `_DeviceCard`, `_LegendBox` and the buttons into their own files (e.g. under
+// `features/device/widgets/`). The repeated `GoogleFonts.poppins(...)` styles
+// should come from a shared TextTheme (see SoundPilotApp).
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,10 +21,16 @@ import '../../../core/services/device_storage_service.dart';
 import '../../auth/screens/login_screen.dart';
 import '../../auth/screens/register_screen.dart';
 
-// ---------------------------------------------------------------------------
-// Simulated Bluetooth device discovery
-// Replace this list / function with a real BLE/bluetooth_classic scan result.
-// ---------------------------------------------------------------------------
+// ── Simulated Bluetooth device discovery ─────────────────────────────────────
+
+/// Simulated Bluetooth device discovery.
+///
+/// Replace this list / function with a real BLE/bluetooth_classic scan result.
+///
+/// TODO(improve): Use `AudioDeviceService` (Android MethodChannel) or a
+/// Bluetooth package to get real devices. The result should contain the
+/// `BD_ADDR` as well as the name, so devices can be stored under real map keys
+/// instead of `dummy_mac_<timestamp>`.
 Future<List<String>> _scanForSystemHeadphones() async {
   // Simulate a ~1.5 s scan delay.
   await Future.delayed(const Duration(milliseconds: 1500));
@@ -29,8 +45,14 @@ Future<List<String>> _scanForSystemHeadphones() async {
   ];
 }
 
-// ---------------------------------------------------------------------------
+// ── Device screen ────────────────────────────────────────────────────────────
 
+/// Main screen after start-up (signed in or guest).
+///
+/// Shows the earbuds and belts stored locally (see [DeviceStorageService]).
+/// Guests see 'Login' and 'Registrieren', signed-in users see 'Abmelden'.
+/// Tapping a device opens its calibration ([CalibrationScreen]) or belt setup
+/// ([BeltWarningDistanceScreen]).
 class DeviceScreen extends StatefulWidget {
   const DeviceScreen({super.key});
 
@@ -39,10 +61,14 @@ class DeviceScreen extends StatefulWidget {
 }
 
 class _DeviceScreenState extends State<DeviceScreen> {
-  // We now use Maps, matching the UserModel and Storage Service.
-  // Key is the Bluetooth Address (MAC), Value is the Calibration object.
+  /// We now use Maps, matching the UserModel and Storage Service.
+  /// Key is the Bluetooth Address (MAC), Value is the Calibration object.
   Map<String, HeadphoneCalib> _earbuds = {};
+
+  /// Belts, same structure as [_earbuds].
   Map<String, BeltCalib> _belts = {};
+
+  /// True until the devices have been loaded from local storage.
   bool _isLoadingDevices = true;
 
   @override
@@ -51,6 +77,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
     _loadDevices();
   }
 
+  /// Loads the devices of the current user (or guest) from local storage.
   Future<void> _loadDevices() async {
     // Call the new method from the storage service
     final stored = await DeviceStorageService.loadUserCalibration();
@@ -65,6 +92,13 @@ class _DeviceScreenState extends State<DeviceScreen> {
     });
   }
 
+  /// Saves both device maps to local storage.
+  ///
+  /// NOTE: The callers do not `await` this method, so a failed save is not
+  /// noticed by the UI.
+  ///
+  /// NOTE: `isConnected` is not part of `toMap()`, so it is lost on the next
+  /// load and every device shows as not connected again after a restart.
   Future<void> _persistDevices() async {
     // Call the new save method and pass the maps
     await DeviceStorageService.saveUserCalibration(
@@ -73,10 +107,20 @@ class _DeviceScreenState extends State<DeviceScreen> {
     );
   }
 
+  /// True if a Firebase user is signed in (otherwise: guest).
   bool get _isLoggedIn => FirebaseAuth.instance.currentUser != null;
 
-  // ── Logout ──────────────────────────────────────────────────────────────
+  // ── Logout ─────────────────────────────────────────────────────────────────
 
+  /// Signs out and reloads the (now guest) devices.
+  ///
+  /// TODO(improve): This calls `FirebaseAuth.signOut()` directly and skips
+  /// `AuthService.logout()`, so there is no Google sign-out and the guest flag
+  /// is not reset. Use `AuthService.logout()`.
+  ///
+  /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
+  /// visible for a moment and slows the UI down on purpose (see
+  /// StartScreen._continueAsGuest).
   Future<void> _logout() async {
     Navigator.push(
       context,
@@ -100,8 +144,15 @@ class _DeviceScreenState extends State<DeviceScreen> {
     await _loadDevices();
   }
 
-  // ── Remove ───────────────────────────────────────────────────────────────
+  // ── Remove ─────────────────────────────────────────────────────────────────
 
+  /// Removes the device at position [index] of the given [category]
+  /// ('Earbuds', otherwise belts) and saves the list.
+  ///
+  /// TODO(improve): The device is found by its position in the map
+  /// (`keys.elementAt(index)`). This only works as long as the iteration order
+  /// stays stable. Pass the map key (BD_ADDR) instead of the index, and use an
+  /// enum instead of the category strings 'Earbuds' / 'Gürtel'.
   void _removeDevice(String category, int index) {
     setState(() {
       if (category == 'Earbuds') {
@@ -115,8 +166,15 @@ class _DeviceScreenState extends State<DeviceScreen> {
     _persistDevices();
   }
 
-  // ── Calibration / Setup ──────────────────────────────────────────────────
+  // ── Calibration / Setup ────────────────────────────────────────────────────
 
+  /// Opens the [CalibrationScreen] for the earbud at position [index]; if it
+  /// returns `true`, the earbud is marked as connected and saved.
+  ///
+  /// TODO(improve): Look the device up by its map key (BD_ADDR) instead of the
+  /// index (see [_removeDevice]), and pass the key to the calibration screen.
+  /// Today the calibration values are not tied to this earbud at all (see
+  /// CalibrationScreen).
   Future<void> _openCalibrationForEarbud(int index) async {
     final result = await Navigator.push<bool>(
       context,
@@ -134,6 +192,13 @@ class _DeviceScreenState extends State<DeviceScreen> {
     }
   }
 
+  /// Opens the belt setup ([BeltWarningDistanceScreen]) for the belt at
+  /// position [index]; if it returns `true`, the belt is marked as connected
+  /// and saved.
+  ///
+  /// TODO(improve): Same as [_openCalibrationForEarbud]: use the map key
+  /// instead of the index. The setup screens do not return the entered values
+  /// yet.
   Future<void> _openBeltSetup(int index) async {
     final result = await Navigator.push<bool>(
       context,
@@ -151,8 +216,15 @@ class _DeviceScreenState extends State<DeviceScreen> {
     }
   }
 
-  // ── Add device dialog ────────────────────────────────────────────────────
+  // ── Add device dialog ──────────────────────────────────────────────────────
 
+  /// Shows the add-device dialog and stores the chosen device. The calibration
+  /// is opened right away if the dialog asks for it (`openCalibration`, which
+  /// the dialog currently sets only for earbuds).
+  ///
+  /// TODO(improve): `newIndex` is computed from the map length before the
+  /// device is added. This relies on the new entry being last; use the new
+  /// map key instead.
   Future<void> _openAddDeviceDialog() async {
     final result = await showDialog<_AddDeviceResult>(
       context: context,
@@ -163,6 +235,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
     if (!mounted || result == null) return;
 
     // Generate a temporary unique ID since we don't have real MAC addresses yet
+    // (TODO: real BD_ADDR from the Bluetooth scan, see _scanForSystemHeadphones)
     final tempMacAddress = 'dummy_mac_${DateTime.now().millisecondsSinceEpoch}';
 
     if (result.type == 'Earbuds') {
@@ -197,7 +270,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
     }
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +304,9 @@ class _DeviceScreenState extends State<DeviceScreen> {
     );
   }
 
+  /// Title, device lists and legend. With more than 4 devices the content is
+  /// scrollable ([scrollable]) and uses slightly larger text; otherwise the
+  /// legend is pushed to the bottom with a Spacer.
   Widget _buildContent({required bool scrollable}) {
     final double titleSize = scrollable ? 38 : 34;
     final double subtitleSize = scrollable ? 24 : 22;
@@ -325,6 +401,8 @@ class _DeviceScreenState extends State<DeviceScreen> {
     );
   }
 
+  /// Top button row: 'Abmelden' + add button if signed in, otherwise 'Login',
+  /// 'Registrieren' + add button.
   Widget _buildTopButtons() {
     if (_isLoggedIn) {
       return Row(
@@ -393,13 +471,17 @@ class _DeviceScreenState extends State<DeviceScreen> {
   }
 }
 
-// ============================================================================
-// Add-Device Dialog  (two tabs: system scan | manual)
-// ============================================================================
+// ── Add-Device Dialog (two tabs: system scan | manual) ───────────────────────
 
+/// Result of the add-device dialog.
 class _AddDeviceResult {
+  /// Device type: 'Earbuds' or 'Gürtel'.
   final String type;
+
+  /// Device name (typed in or chosen from the scan).
   final String name;
+
+  /// Whether the calibration/setup should start right after adding.
   final bool openCalibration;
 
   const _AddDeviceResult({
@@ -409,6 +491,10 @@ class _AddDeviceResult {
   });
 }
 
+/// Dialog to add a device: choose the type, then either pick a device from the
+/// (currently simulated) system scan or type a name manually.
+///
+/// Pops with an [_AddDeviceResult], or `null` if cancelled.
 class _AddDeviceDialog extends StatefulWidget {
   const _AddDeviceDialog();
 
@@ -445,8 +531,9 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
     super.dispose();
   }
 
-  // ── Actions ───────────────────────────────────────────────────────────────
+  // ── Actions ────────────────────────────────────────────────────────────────
 
+  /// Runs the (simulated) scan and shows the found devices.
   Future<void> _startScan() async {
     setState(() {
       _isScanning = true;
@@ -465,6 +552,7 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
     });
   }
 
+  /// Confirms the manually typed name (ignored if empty).
   void _confirmManual() {
     final name = _nameController.text.trim();
     if (name.isEmpty) return;
@@ -476,6 +564,7 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
     ));
   }
 
+  /// Confirms the device selected in the scan list (ignored if none).
   void _confirmScanned() {
     if (_selectedScannedDevice == null) return;
 
@@ -486,7 +575,7 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
     ));
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -573,7 +662,7 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
     );
   }
 
-  // ── System-Scan Tab ───────────────────────────────────────────────────────
+  // ── System-Scan Tab ────────────────────────────────────────────────────────
 
   Widget _buildScanTab() {
     return Column(
@@ -757,7 +846,7 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
     );
   }
 
-  // ── Manual Tab ────────────────────────────────────────────────────────────
+  // ── Manual Tab ─────────────────────────────────────────────────────────────
 
   Widget _buildManualTab() {
     return Column(
@@ -884,10 +973,9 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
   }
 }
 
-// ============================================================================
-// Device-type toggle (Earbuds / Gürtel)
-// ============================================================================
+// ── Device-type toggle (Earbuds / Gürtel) ────────────────────────────────────
 
+/// Two-button toggle to choose the device type ('Earbuds' or 'Gürtel').
 class _TypeSelector extends StatelessWidget {
   final String selectedType;
   final ValueChanged<String> onChanged;
@@ -945,10 +1033,9 @@ class _TypeSelector extends StatelessWidget {
   }
 }
 
-// ============================================================================
-// Shared reusable widgets
-// ============================================================================
+// ── Shared reusable widgets ──────────────────────────────────────────────────
 
+/// Large rounded text button for the top row ('Abmelden', 'Login', ...).
 class _TopActionButton extends StatelessWidget {
   final String text;
   final VoidCallback onPressed;
@@ -965,6 +1052,9 @@ class _TopActionButton extends StatelessWidget {
           backgroundColor: AppColors.primary(context),
           foregroundColor: AppColors.onPrimary(context),
           elevation: 4,
+          // TODO(improve): `withOpacity` is deprecated, use
+          // `withValues(alpha: ...)` (applies to all withOpacity calls in
+          // this file).
           shadowColor: Colors.black.withOpacity(0.16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
@@ -988,6 +1078,7 @@ class _TopActionButton extends StatelessWidget {
   }
 }
 
+/// Square button with an icon (the '+' button next to the top actions).
 class _IconSquareButton extends StatelessWidget {
   final Color backgroundColor;
   final IconData icon;
@@ -1022,8 +1113,12 @@ class _IconSquareButton extends StatelessWidget {
   }
 }
 
+/// Card for one device: name, connection dot (green/red) and a delete icon.
+/// Tapping the card calls [onTap] (calibration/setup).
 class _DeviceCard extends StatelessWidget {
   final String name;
+
+  /// Green dot if `true`, red dot otherwise (see [_LegendBox]).
   final bool isConnected;
   final VoidCallback onDelete;
   final VoidCallback? onTap;
@@ -1101,6 +1196,7 @@ class _DeviceCard extends StatelessWidget {
   }
 }
 
+/// Legend that explains the green/red connection dots of the [_DeviceCard]s.
 class _LegendBox extends StatelessWidget {
   const _LegendBox();
 

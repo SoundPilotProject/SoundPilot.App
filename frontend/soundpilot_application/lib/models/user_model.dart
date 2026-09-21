@@ -17,16 +17,39 @@
 /// NOTE:
 /// - Devices are stored in Maps using their Bluetooth MAC Address as the Key.
 /// - 'isConnected' is a RUNTIME property and is NOT persisted in the database.
+///
+/// CURRENT STATE:
+/// - The app does not read or write Firestore yet. These models are persisted
+///   locally as JSON by DeviceStorageService (SharedPreferences), using the
+///   same toMap()/fromMap() format that is planned for Firestore.
+/// - Firestore field names: `volLeft`/`volRight` (Dart: volumeLeft/volumeRight).
 library;
 
 /// Calibration data for headphones
+///
+/// TODO(improve): The calibration flow never sets [volumeLeft]/[volumeRight]
+/// (see CalibrationService), so they always keep their default of 0.5.
 class HeadphoneCalib {
+  /// Model name of the device (Firestore: `modelId`).
   final String modelId;
+
+  /// Volume of the left side (Firestore: `volLeft`), default 0.5.
   final double volumeLeft;
+
+  /// Volume of the right side (Firestore: `volRight`), default 0.5.
   final double volumeRight;
 
   // UI & Runtime helpers (Not stored in Firestore)
+
+  /// Whether the device counts as connected. Runtime only, not persisted.
   bool isConnected;
+
+  /// Category label, also used as a string in the UI (compare 'Earbuds' in
+  /// DeviceScreen).
+  ///
+  /// TODO(improve): Replace the string categories ('Earbuds' / 'Belt' here,
+  /// 'Earbuds' / 'Gürtel' in DeviceScreen) with an enum, and make this a
+  /// `static const` since it is the same for every instance.
   final String category = 'Earbuds';
 
   HeadphoneCalib({
@@ -58,10 +81,15 @@ class HeadphoneCalib {
 
 /// Calibration data for the hardware belt
 class BeltCalib {
+  /// Model name of the device (Firestore: `modelId`).
   final String modelId;
 
   // UI & Runtime helpers (Not stored in Firestore)
+
+  /// Whether the device counts as connected. Runtime only, not persisted.
   bool isConnected;
+
+  /// Category label (see the TODO at [HeadphoneCalib.category]).
   final String category = 'Belt';
 
   BeltCalib({
@@ -82,10 +110,21 @@ class BeltCalib {
   };
 }
 
+/// The user profile: basic info plus all calibrated devices.
+///
+/// Corresponds to the Firestore document `users/{uid}` (the cloud function
+/// `createUserDoc` creates it with `displayName`, `email` and empty maps).
 class UserModel {
+  /// Firebase Auth UID (= Firestore document id).
   final String id;
+
+  /// Display name. Not `username`: the cloud function, this model and
+  /// AuthService all use `displayName`.
   final String displayName;
+
+  /// E-mail address of the account.
   final String email;
+
   final Map<String, HeadphoneCalib> headphones; // Key: BD_ADDR (MAC Address)
   final Map<String, BeltCalib> belts;           // Key: BD_ADDR (MAC Address)
 
@@ -97,6 +136,13 @@ class UserModel {
     this.belts = const {},
   });
 
+  /// Builds a [UserModel] from a Firestore document map.
+  ///
+  /// Missing fields fall back to defaults. Note that the cloud function uses
+  /// 'New User' as the default display name, this factory uses 'User'.
+  ///
+  /// TODO(improve): The fallbacks only cover missing keys. A device entry of
+  /// the wrong type (`value as Map<String, dynamic>`) still throws.
   factory UserModel.fromFirestore(Map<String, dynamic> data, String id) {
     final calib = data['calibration'] as Map<String, dynamic>? ?? {};
 

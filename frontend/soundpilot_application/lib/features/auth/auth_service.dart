@@ -9,16 +9,33 @@ import '../../core/app_logger.dart';
 import '../../core/services/device_storage_service.dart';
 
 /// Service to handle Email/Password and Google Authentication.
+///
+/// Every sign-in/registration method returns `null` on failure, so the UI
+/// cannot tell the reason apart (wrong password, no network, ...).
+///
+/// TODO(improve): Return the FirebaseAuthException code (e.g. a small result
+/// type) so the screens can show specific messages instead of one generic
+/// text like 'Login fehlgeschlagen.'.
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  // ── Register ──────────────────────────────────────────────────────────────
+  // ── Register ───────────────────────────────────────────────────────────────
 
+  /// Creates an account with e-mail and password.
+  ///
+  /// The cloud function `createUserDoc` creates the Firestore document
+  /// asynchronously. Returns the new user, or `null` if the registration failed.
   Future<UserModel?> registerWithEmail(String email, String password) async {
     try {
+      // TODO(improve): The e-mail address is personal data and is written to
+      // the log at info level (same in loginWithEmail and sendPasswordReset).
+      // Log it only in debug builds or not at all.
       logger.i("AuthService: Attempting Email registration for $email");
 
+      // TODO(improve): Do not trim the password. Leading/trailing spaces are
+      // valid password characters, so trimming changes the password. Trim only
+      // the e-mail address (same in loginWithEmail).
       final UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password.trim(),
@@ -26,7 +43,7 @@ class AuthService {
 
       logger.d("AuthService: Email registration successful for ${result.user?.email}");
 
-      // Gastdaten (Geräte + Kalibrierung) in das Benutzerkonto übernehmen
+      // Take over the guest data (devices + calibration) into the user account.
       await DeviceStorageService.migrateGuestDataAfterLogin();
 
       return _mapFirebaseUser(result.user);
@@ -39,8 +56,11 @@ class AuthService {
     }
   }
 
-  // ── Login ─────────────────────────────────────────────────────────────────
+  // ── Login ──────────────────────────────────────────────────────────────────
 
+  /// Signs in with e-mail and password.
+  ///
+  /// Returns the signed-in user, or `null` if the login failed.
   Future<UserModel?> loginWithEmail(String email, String password) async {
     try {
       logger.i("AuthService: Attempting Email login for $email");
@@ -52,8 +72,12 @@ class AuthService {
 
       logger.d("AuthService: Email login successful for ${result.user?.email}");
 
-      // Upload any locally saved calibration data to Firestore (only if
-      // the user has no cloud data yet — e.g. first login on a new device)
+      // Copies locally saved guest calibration data to the user's own local
+      // key (only if the user has no data yet — e.g. first login on a new
+      // device). NOTE: This is a purely local copy in SharedPreferences.
+      // Original intent of this comment: upload the locally saved calibration
+      // data to Firestore, only if the user has no cloud data yet. That upload
+      // does not exist yet.
       await DeviceStorageService.migrateGuestDataAfterLogin();
 
       return _mapFirebaseUser(result.user);
@@ -66,8 +90,9 @@ class AuthService {
     }
   }
 
-  // ── Password reset ────────────────────────────────────────────────────────
+  // ── Password reset ─────────────────────────────────────────────────────────
 
+  /// Sends a password reset e-mail. Returns `true` if it was sent.
   Future<bool> sendPasswordReset(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
@@ -82,8 +107,14 @@ class AuthService {
     }
   }
 
-  // ── Google Sign-In ────────────────────────────────────────────────────────
+  // ── Google Sign-In ─────────────────────────────────────────────────────────
 
+  /// Signs in with a Google account and links it to Firebase Auth.
+  ///
+  /// Returns `null` if the user aborted the dialog or the sign-in failed.
+  ///
+  /// NOTE: Unlike the e-mail methods this only has a generic catch, no
+  /// separate handling of FirebaseAuthException.
   Future<UserModel?> signInWithGoogle() async {
     try {
       logger.i("AuthService: Starting Google Sign-In flow");
@@ -115,8 +146,13 @@ class AuthService {
     }
   }
 
-  // ── Logout ────────────────────────────────────────────────────────────────
+  // ── Logout ─────────────────────────────────────────────────────────────────
 
+  /// Signs out of Firebase and Google and clears the guest flag.
+  ///
+  /// TODO(improve): DeviceScreen._logout() calls `FirebaseAuth.signOut()`
+  /// directly instead of this method, so the Google sign-out and the flag reset
+  /// do not happen there. Use this method in both places.
   Future<void> logout() async {
     // Clear the guest-session flag
     final prefs = await SharedPreferences.getInstance();
@@ -128,8 +164,10 @@ class AuthService {
     logger.i("AuthService: User logged out");
   }
 
-  // ── Helper ────────────────────────────────────────────────────────────────
+  // ── Helper ─────────────────────────────────────────────────────────────────
 
+  /// Maps a Firebase [User] to a [UserModel] (without devices).
+  /// Returns `null` if [user] is `null`.
   UserModel? _mapFirebaseUser(User? user) {
     if (user == null) return null;
     return UserModel(

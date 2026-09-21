@@ -1,3 +1,7 @@
+// lib/features/auth/screens/start_screen.dart
+//
+// Welcome screen with the options: register, login or continue as guest.
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,9 +14,22 @@ import '../../device/screens/device_screen.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
 
+/// First screen for users who are not signed in (see AppEntryPoint).
+///
+/// Leads to the [RegisterScreen], the [LoginScreen] or, as a guest, directly to
+/// the [DeviceScreen].
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
 
+  /// Starts guest mode: sets the guest flag `continueAsGuestThisSession` and
+  /// replaces this screen with the [DeviceScreen].
+  ///
+  /// The flag is consumed by AppEntryPoint on the next app start.
+  ///
+  /// TODO(improve): The `Future.delayed(2 s)` below only keeps the loading
+  /// screen visible for a moment. It slows the UI down on purpose and can be
+  /// removed (same in DeviceScreen._logout, TestPage._finishExercise and
+  /// BeltVibrationScreen._finishSetup).
   Future<void> _continueAsGuest(BuildContext context) async {
     Navigator.push(
       context,
@@ -119,6 +136,7 @@ class StartScreen extends StatelessWidget {
   }
 }
 
+/// Large rounded primary button used on the [StartScreen].
 class _StartButton extends StatelessWidget {
   final String text;
   final VoidCallback onPressed;
