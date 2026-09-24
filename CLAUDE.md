@@ -325,6 +325,19 @@ Not backed by evidence — check in the code instead of assuming:
   Cloud Function (defaults), Dart model (`fromMap`/`toMap`) and
   Security Rules.
 
+### Git workflow
+
+- **One short-lived branch per task**, created from an up-to-date `main`. No
+  long-lived `develop` branch.
+- **Naming:** kebab-case with a type prefix, e.g. `fix/accessibility-semantics`,
+  `feature/firestore-sync`, `docs/branching-convention`.
+- **Never commit or push code changes to `main`** unless explicitly told to.
+  Work on a branch and merge through a pull request.
+- Keep branches small and merge them quickly; delete a branch after it is
+  merged.
+- Small documentation-only edits may go to `main` only if the team agreed to
+  that for the change.
+
 ### Comment convention
 
 - **Language:** Code comments in English. UI texts are German; the log messages
