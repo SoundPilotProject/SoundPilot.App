@@ -186,7 +186,7 @@ class UserModel {
   /// NOTE: With the current security rules a client may only update
   /// `calibration` and `settings`. Writing this whole map (it contains
   /// `displayName` and `email`) would be rejected. Update single field paths
-  /// instead, see CLAUDE.md §4.
+  /// instead, see docs/PROJECT_CONTEXT.md §4.
   Map<String, dynamic> toMap() {
     return {
       'displayName': displayName,

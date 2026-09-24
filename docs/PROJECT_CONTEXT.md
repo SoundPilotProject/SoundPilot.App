@@ -1,4 +1,4 @@
-# CLAUDE.md — SoundPilot
+# SoundPilot — Project Context
 
 Project context for Claude Code. Diploma project (HTL).
 

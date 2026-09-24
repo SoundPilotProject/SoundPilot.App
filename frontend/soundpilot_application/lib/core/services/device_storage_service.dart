@@ -15,8 +15,8 @@ import '../../models/user_model.dart';
 /// of headphones and belts, including the guest-to-user migration.
 ///
 /// TODO(improve): Everything is stored locally only. The Firestore document
-/// (`users/{uid}.calibration`) is not used yet; see CLAUDE.md for the planned
-/// field-path updates per device.
+/// (`users/{uid}.calibration`) is not used yet; see docs/PROJECT_CONTEXT.md for
+/// the planned field-path updates per device.
 class DeviceStorageService {
   /// Current Firebase User ID or 'guest' for anonymous mode.
   static String get _userId =>

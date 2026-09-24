@@ -76,7 +76,7 @@ class CalibrationService {
   /// Currently a stub – Firestore is not used on Windows.
   ///
   /// TODO(improve): Implement the Firestore sync with field-path updates
-  /// (`calibration.headphones.<BD_ADDR>.volLeft`, see CLAUDE.md).
+  /// (`calibration.headphones.<BD_ADDR>.volLeft`, see docs/PROJECT_CONTEXT.md).
   static Future<void> migrateLocalToFirestoreIfNeeded() async {
     // Stub – Firestore is not used on Windows.
   }

@@ -23,7 +23,7 @@ const SCHEMA_VERSION = 1;
  * NOTE: Deliberately 1st Gen (`firebase-functions/v1`). 2nd Gen has no
  * asynchronous auth `onCreate` trigger (only blocking functions, which need
  * Identity Platform). Do not migrate to 2nd Gen without discussion, see
- * CLAUDE.md.
+ * docs/PROJECT_CONTEXT.md.
  *
  * NOTE: `settings.language` is "system" here, while the app UI is German.
  * `displayName` falls back to "New User"; the Dart model (`UserModel`) falls
