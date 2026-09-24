@@ -1,65 +1,93 @@
 # CLAUDE.md — SoundPilot
 
-Projektkontext für Claude Code. Diplomprojekt (HTL).
+Project context for Claude Code. Diploma project (HTL).
 
-> Regel für dieses Dokument: Hier steht nur, was aus dem Code bzw. der
-> Architekturdoku belegt ist. Unklares steht unter „Offene Punkte" und ist als
-> offen markiert — nicht als Fakt behandeln, sondern im Code nachsehen oder
-> nachfragen.
+> Rule for this document: it contains only what is backed by the code or the
+> architecture docs. Unclear points are listed under "Open Points" and are
+> marked as open — do not treat them as fact; check the code or ask.
 >
-> Stand: abgeglichen mit `firebase/firestore.rules`,
-> `firebase/functions/src/index.ts` und `frontend/soundpilot_application/lib/`.
+> Status: reconciled with `firebase/firestore.rules`,
+> `firebase/functions/src/index.ts` and `frontend/soundpilot_application/lib/`.
 
-## 1. Überblick
+## 1. Overview
 
 - **App:** SoundPilot
 - **Client:** Flutter / Dart
 - **Backend:** Firebase — Authentication, Cloud Firestore, Cloud Functions
-- **Zweck:** Benutzerauthentifizierung und Verwaltung von Kalibrierungsdaten für
-  zwei Hardwaretypen: Kopfhörer (`HeadphoneCalib`) und Gürtel (`BeltCalib`)
+- **Purpose:** User authentication and management of calibration data for
+  two hardware types: headphones (`HeadphoneCalib`) and belt (`BeltCalib`)
 
-### Pakete (`pubspec.yaml`)
+### Core requirement: accessibility
 
-| Paket | Zweck |
+The UI must be very friendly for people with disabilities. This is the core of
+the project, not an add-on. Every UI change must be evaluated against it.
+
+Guidelines for new and changed UI code (a requirement from the team, not a
+statement about the current state of the code):
+
+- **Screen readers:** all interactive and informative elements need meaningful
+  labels (`Semantics`, `semanticLabel`, `tooltip`); decorative elements are
+  excluded from the semantics tree. Must work with TalkBack (Android) and
+  VoiceOver (iOS).
+- **Touch targets:** at least 48×48 dp, with enough spacing between them.
+- **Contrast:** at least WCAG AA (4.5:1 for text, 3:1 for large text and
+  controls) in both light and dark theme (`core/theme/app_colors.dart`).
+- **Text scaling:** layouts must not break or clip with large system font
+  sizes; no fixed heights for text containers.
+- **Not color alone:** never convey state (e.g. connected, error) by color only;
+  add text or an icon.
+- **Multiple channels:** important feedback (e.g. belt warning distance,
+  calibration) should be available via more than one sense — visual, audio and
+  haptic/vibration — where the hardware allows it.
+- **Simple flows:** short, clear German texts, one main action per screen,
+  clear error messages (see the `AuthService` open point in §7), no
+  time-limited interactions.
+- **Motion:** respect the system setting for reduced animations.
+
+When in doubt, choose the more accessible option and mention the trade-off.
+
+### Packages (`pubspec.yaml`)
+
+| Package | Purpose |
 |---|---|
-| `firebase_core` | Initialisierung |
-| `firebase_auth` | Authentifizierung (E-Mail/Passwort, Google Sign-In) |
-| `google_sign_in` | Google-Login |
-| `cloud_firestore` | eingebunden, im Dart-Code aber **noch nicht verwendet** (siehe §4) |
-| `shared_preferences` | aktuelle lokale Persistenz (Geräte, Kalibrierung, Gast-Flag) |
-| `google_fonts` | Schriftart Poppins |
-| `audioplayers` | Audiowiedergabe (Kalibrierung) |
-| `logger` | globaler `logger` in `core/app_logger.dart` |
+| `firebase_core` | Initialization |
+| `firebase_auth` | Authentication (email/password, Google Sign-In) |
+| `google_sign_in` | Google login |
+| `cloud_firestore` | included, but **not yet used** in the Dart code (see §4) |
+| `shared_preferences` | current local persistence (devices, calibration, guest flag) |
+| `google_fonts` | Poppins font |
+| `audioplayers` | Audio playback (calibration) |
+| `logger` | global `logger` in `core/app_logger.dart` |
 
-`firebase_database` ist **nicht** eingebunden.
+`firebase_database` is **not** included.
 
-Cloud Functions sind in **TypeScript (Node.js 22)** geschrieben.
+Cloud Functions are written in **TypeScript (Node.js 22)**.
 
-## 2. Verzeichnisse
+## 2. Directories
 
 ```
-frontend/soundpilot_application/   Flutter-App
-firebase/                          Firestore Rules, Cloud Functions
+frontend/soundpilot_application/   Flutter app
+firebase/                          Firestore rules, Cloud Functions
   firestore.rules
   functions/src/index.ts
 ```
 
-Alle Flutter-Befehle werden aus `frontend/soundpilot_application/` ausgeführt,
-alle Functions-Befehle aus `firebase/functions/`.
+All Flutter commands are run from `frontend/soundpilot_application/`,
+all Functions commands from `firebase/functions/`.
 
-### Aufbau von `lib/`
+### Structure of `lib/`
 
 ```
-main.dart                        Einstieg, Theme, Startrouting (AppEntryPoint)
-firebase_options.dart            generiert
+main.dart                        Entry point, theme, start routing (AppEntryPoint)
+firebase_options.dart            generated
 models/user_model.dart           HeadphoneCalib, BeltCalib, UserModel
 core/
   app_logger.dart
-  theme/app_colors.dart          Farben kontextabhängig (Light/Dark)
+  theme/app_colors.dart          Colors depending on context (light/dark)
   widgets/                       LoadingScreen, SoundPilotLogo
   services/
-    device_storage_service.dart  lokale Persistenz Geräte + Kalibrierung
-    calibration_service.dart     Lautstärke L/R als int (0–100)
+    device_storage_service.dart  local persistence of devices + calibration
+    calibration_service.dart     Volume L/R as int (0–100)
     audio_device_service.dart    MethodChannel com.soundpilot/audio_devices
 features/
   auth/auth_service.dart
@@ -69,13 +97,13 @@ features/
                                  belt_warning_distance_screen, TestPage
 ```
 
-- **State-Management:** kein Paket, nur `StatefulWidget` + `setState`.
-- **Routing:** `Navigator.push` mit `MaterialPageRoute`, kein Router-Paket.
-- **Start:** `AppEntryPoint` öffnet `DeviceScreen`, wenn ein Firebase-User
-  angemeldet ist oder das einmalige Flag `continueAsGuestThisSession` gesetzt
-  ist (wird beim Start sofort zurückgesetzt). Sonst `StartScreen`.
+- **State management:** no package, only `StatefulWidget` + `setState`.
+- **Routing:** `Navigator.push` with `MaterialPageRoute`, no router package.
+- **Start:** `AppEntryPoint` opens `DeviceScreen` if a Firebase user is signed
+  in or the one-time flag `continueAsGuestThisSession` is set (it is reset
+  immediately at startup). Otherwise `StartScreen`.
 
-## 3. Befehle
+## 3. Commands
 
 ```cmd
 cd frontend/soundpilot_application
@@ -83,7 +111,7 @@ flutter pub get
 flutter run
 ```
 
-Debug-SHA-1 für Android/Google Sign-In (Windows):
+Debug SHA-1 for Android/Google Sign-In (Windows):
 
 ```cmd
 cd frontend/soundpilot_application/android
@@ -95,31 +123,32 @@ Cloud Functions:
 ```cmd
 cd firebase/functions
 npm run build      :: tsc
-npm run serve      :: Build + Emulator (nur functions)
+npm run serve      :: Build + emulator (functions only)
 npm run deploy     :: firebase deploy --only functions
 ```
 
-## 4. Datenmodell
+## 4. Data Model
 
-### Aktueller Stand der Persistenz
+### Current state of persistence
 
-Die App speichert Geräte und Kalibrierung **derzeit nur lokal** in
+The app currently stores devices and calibration **only locally** in
 SharedPreferences (`DeviceStorageService`):
 
-- Schlüssel `user_calibration_<uid>`, für Gäste `user_calibration_guest`
-- Wert: ein JSON-String `{ "headphones": {...}, "belts": {...} }`
-- Nach Login/Registrierung kopiert `migrateGuestDataAfterLogin()` die
-  Gastdaten in den User-Schlüssel — nur, wenn der User dort noch keine Daten hat.
-  Die Gastdaten werden nicht gelöscht.
-- Es gibt **keine Synchronisation mit Firestore**.
-  `CalibrationService.migrateLocalToFirestoreIfNeeded()` ist ein leerer Stub.
+- Key `user_calibration_<uid>`, for guests `user_calibration_guest`
+- Value: a JSON string `{ "headphones": {...}, "belts": {...} }`
+- After login/registration, `migrateGuestDataAfterLogin()` copies the guest
+  data to the user key — only if the user has no data there yet.
+  The guest data is not deleted.
+- There is **no synchronization with Firestore**.
+  `CalibrationService.migrateLocalToFirestoreIfNeeded()` is an empty stub.
 
-Das Firestore-Schema unten ist das Zielschema, das die Cloud Function bereits
-anlegt und das die Dart-Modelle abbilden.
+The Firestore schema below is the target schema that the Cloud Function already
+creates and that the Dart models map.
 
-### Firestore: Collection `users`
+### Firestore: collection `users`
 
-Dokument-ID = Firebase-Auth-UID (`user.uid`). So legt es `createUserDoc` an:
+Document ID = Firebase Auth UID (`user.uid`). This is how `createUserDoc`
+creates it:
 
 ```json
 {
@@ -136,17 +165,17 @@ Dokument-ID = Firebase-Auth-UID (`user.uid`). So legt es `createUserDoc` an:
 }
 ```
 
-`displayName` ist `"New User"`, wenn der Auth-Account keinen Namen hat.
-Ein Feld `username` gibt es nirgends im Code.
+`displayName` is `"New User"` if the auth account has no name.
+There is no `username` field anywhere in the code.
 
-### Zentrale Entwurfsentscheidung: Maps statt Arrays
+### Key design decision: maps instead of arrays
 
-Geräte werden als **Map** abgelegt, Schlüssel ist die Bluetooth-Hardware-Adresse
-(`BD_ADDR`) — **nicht** als Array. Begründung: O(1)-Zugriff, atomare Updates
-einzelner Geräte, keine Duplikate.
+Devices are stored as a **map**, keyed by the Bluetooth hardware address
+(`BD_ADDR`) — **not** as an array. Rationale: O(1) access, atomic updates of
+individual devices, no duplicates.
 
-**Konsequenz für neuen Code:** Ein einzelnes Gerät wird über einen Feldpfad
-aktualisiert, nie durch Neuschreiben der gesamten Map:
+**Consequence for new code:** A single device is updated via a field path,
+never by rewriting the whole map:
 
 ```dart
 await FirebaseFirestore.instance.collection('users').doc(uid).update({
@@ -154,60 +183,59 @@ await FirebaseFirestore.instance.collection('users').doc(uid).update({
 });
 ```
 
-Kein Read-Modify-Write der kompletten `calibration`-Map — das erzeugt Race
-Conditions zwischen mehreren Geräten.
+No read-modify-write of the entire `calibration` map — that creates race
+conditions between multiple devices.
 
-Die Geräteschlüssel sind derzeit Platzhalter (`dummy_mac_<timestamp>`), weil
-der Bluetooth-Scan in `device_screen.dart` simuliert ist (feste Liste,
-1,5 s Verzögerung).
+The device keys are currently placeholders (`dummy_mac_<timestamp>`) because
+the Bluetooth scan in `device_screen.dart` is simulated (fixed list,
+1.5 s delay).
 
-### Dart-Modelle (`models/user_model.dart`)
+### Dart models (`models/user_model.dart`)
 
-- `HeadphoneCalib` — `modelId`, `volumeLeft`, `volumeRight` (Defaults `0.5`)
+- `HeadphoneCalib` — `modelId`, `volumeLeft`, `volumeRight` (defaults `0.5`)
 - `BeltCalib` — `modelId`
 - `UserModel` — `id`, `displayName`, `email`,
   `Map<String, HeadphoneCalib> headphones`, `Map<String, BeltCalib> belts`
 
-`isConnected` (beide Calib-Klassen) und `category` sind reine Laufzeitfelder und
-werden von `toMap()` nicht geschrieben. `isConnected` ist nach jedem Laden
-`false`.
+`isConnected` (both Calib classes) and `category` are runtime-only fields and
+are not written by `toMap()`. `isConnected` is `false` after every load.
 
-Namenskonvention beachten: in Dart `volumeLeft`/`volumeRight`, in Firestore
-`volLeft`/`volRight`. Die Umsetzung passiert ausschließlich in `fromMap()` /
-`toMap()`. Diese Trennung beim Erweitern der Modelle beibehalten.
+Mind the naming convention: in Dart `volumeLeft`/`volumeRight`, in Firestore
+`volLeft`/`volRight`. The mapping happens exclusively in `fromMap()` /
+`toMap()`. Keep this separation when extending the models.
 
-Alle `fromMap`-Factories arbeiten defensiv mit Fallbacks (`?? 'unknown'`,
-`?? 0.5`), weil Firestore-Dokumente Felder fehlen können. Neue Felder in diesem
-Stil ergänzen.
+All `fromMap` factories work defensively with fallbacks (`?? 'unknown'`,
+`?? 0.5`), because Firestore documents can be missing fields. Add new fields in
+the same style.
 
 ## 5. Cloud Functions
 
-Datei: `firebase/functions/src/index.ts`. Beide Functions laufen in der Region
-`europe-central2` und sind Auth-Trigger in 1st Gen:
+File: `firebase/functions/src/index.ts`. Both functions run in the region
+`europe-central2` and are auth triggers in 1st Gen:
 
-- **`createUserDoc`** (`onCreate`) legt das Standard-Benutzerdokument an (Schema
-  siehe §4). Geschrieben wird mit `set(..., { merge: true })`.
-- **`deleteUserDoc`** (`onDelete`) löscht `users/{uid}`, wenn der Auth-Account
-  gelöscht wird.
+- **`createUserDoc`** (`onCreate`) creates the default user document (schema
+  see §4). It writes with `set(..., { merge: true })`.
+- **`deleteUserDoc`** (`onDelete`) deletes `users/{uid}` when the auth account
+  is deleted.
 
-Fehler werden in beiden Functions nur geloggt, nicht erneut geworfen.
+Errors in both functions are only logged, not rethrown.
 
-### Cloud Functions 1st Gen — bewusste Entscheidung
+### Cloud Functions 1st Gen — deliberate decision
 
-Der Trigger nutzt 1st Gen. Grund: Firebase bietet in 2nd Gen **keinen
-asynchronen** `onCreate`-Trigger für Auth-Ereignisse. Das dortige Äquivalent
-sind **Blocking Functions** (`beforeUserCreated`), die ein projektweites Upgrade
-auf *Firebase Authentication with Identity Platform* voraussetzen und synchron
-in den Registrierungsvorgang eingreifen — ein Fehler würde die Registrierung
-abbrechen. 1st Gen wird von Firebase weiterhin unterstützt.
+The trigger uses 1st Gen. Reason: in 2nd Gen, Firebase offers **no
+asynchronous** `onCreate` trigger for auth events. The equivalent there is
+**Blocking Functions** (`beforeUserCreated`), which require a project-wide
+upgrade to *Firebase Authentication with Identity Platform* and intervene
+synchronously in the registration process — an error would abort the
+registration. 1st Gen is still supported by Firebase.
 
-**Nicht ohne Rücksprache auf 2nd Gen migrieren.**
+**Do not migrate to 2nd Gen without consultation.**
 
-### Import-Regel
+### Import rule
 
-Ab firebase-functions SDK **v6** ist v2 der Default-Export. v1-APIs müssen
-explizit importiert werden. Installiert ist `firebase-functions` `^6.0.1`, im
-Code steht:
+Since firebase-functions SDK **v6**, v2 is the default export. v1 APIs must be
+imported explicitly. Installed is `firebase-functions` `^6.0.1`, and the code
+contains:
 
 ```typescript
 import * as functions from "firebase-functions/v1";
@@ -218,8 +246,8 @@ export const createUserDoc = functions
   .onCreate(async (user) => { ... });
 ```
 
-Vor dem Bearbeiten der Functions die SDK-Version in `package.json` prüfen und den
-Import entsprechend wählen.
+Before editing the functions, check the SDK version in `package.json` and
+choose the import accordingly.
 
 ## 6. Security Rules (`firebase/firestore.rules`)
 
@@ -232,77 +260,88 @@ match /{document=**} {
 }
 ```
 
-Daraus folgt für Client-Code:
+For client code this means:
 
-- Ein angemeldeter User darf sein eigenes Dokument und alle Subcollections
-  **lesen, anlegen, ändern und löschen** (`write` umfasst `create`, `update`,
-  `delete`).
-- Fremde Benutzerdokumente und alle anderen Pfade sind gesperrt. Keine Queries
-  über die gesamte `users`-Collection bauen.
-- Das Anlegen des Dokuments ist zwar erlaubt, gehört aber nach dem Entwurf der
-  Cloud Function. Der Client soll `update()` verwenden, nicht `set()`.
+- A signed-in user may **read, create, update and delete** their own document
+  and all subcollections (`write` covers `create`, `update`, `delete`).
+- Other users' documents and all other paths are blocked. Do not build queries
+  over the whole `users` collection.
+- Creating the document is allowed, but by design belongs to the Cloud
+  Function. The client should use `update()`, not `set()`.
 
-### Eventual Consistency beim Registrieren
+### Eventual consistency on registration
 
-Der Auth-Trigger läuft **asynchron**. Direkt nach der Registrierung kann der
-Client `users/{uid}` lesen, bevor die Function geschrieben hat. Registrierungs-
-Flows deshalb nie mit einem einmaligen `get()` bauen, sondern mit einem
-Snapshot-Listener auf das Dokument oder einem Retry mit Backoff. Ein
-clientseitiges `update()` auf ein noch nicht existierendes Dokument schlägt
-ebenfalls fehl.
+The auth trigger runs **asynchronously**. Right after registration, the client
+may read `users/{uid}` before the function has written it. Registration flows
+must therefore never be built with a one-time `get()`, but with a snapshot
+listener on the document or a retry with backoff. A client-side `update()` on a
+document that does not exist yet also fails.
 
-## 7. Offene Punkte
+## 7. Open Points
 
-Nicht belegt — bitte im Code prüfen, statt anzunehmen:
+Not backed by evidence — check in the code instead of assuming:
 
-- **Rules validieren keine Felder.** Ein Client kann `email`, `createdAt`,
-  `providers` oder `uid` im eigenen Dokument überschreiben und das Dokument
-  auch löschen. Ob das beabsichtigt ist, ist nicht dokumentiert.
-- **Firestore-Anbindung fehlt im Client.** Geräte und Kalibrierung liegen nur
-  lokal (siehe §4). Ob und wann auf Firestore umgestellt wird, ist offen.
-- **Zwei parallele Kalibrierungsspeicher:** `CalibrationService` (int 0–100,
-  eigene SharedPreferences-Schlüssel) und `HeadphoneCalib` (double 0.0–1.0 über
-  `DeviceStorageService`). Welcher wo tatsächlich genutzt wird, ist nicht
-  geklärt (`calibration.dart` wurde nicht geprüft).
-- **Echte Bluetooth-Anbindung fehlt.** Der Scan ist simuliert.
-  `AudioDeviceService` (Android-MethodChannel) existiert in Dart, wird aber von
-  `DeviceScreen` nicht aufgerufen. Ob die native Android-Seite implementiert
-  ist, wurde nicht geprüft.
-- **`DeviceScreen._logout()`** ruft `FirebaseAuth.signOut()` direkt auf und
-  umgeht damit `AuthService.logout()` (kein Google-Sign-Out, kein Zurücksetzen
-  des Gast-Flags).
-- **`AuthService`** gibt bei jedem Fehler `null` zurück; die UI kann den Grund
-  nicht unterscheiden.
-- **Teststrategie** ist nicht festgehalten.
-- **Firestore-Sprachdefault:** Die Function setzt `settings.language: "system"`,
-  die App-UI ist aber deutsch. Ob das so gewollt ist, ist offen.
+- **Rules do not validate fields.** A client can overwrite `email`,
+  `createdAt`, `providers` or `uid` in their own document and can also delete
+  the document. Whether this is intended is not documented.
+- **Firestore integration is missing in the client.** Devices and calibration
+  are stored only locally (see §4). Whether and when to switch to Firestore is
+  open.
+- **Two parallel calibration stores:** `CalibrationService` (int 0–100, own
+  SharedPreferences keys) and `HeadphoneCalib` (double 0.0–1.0 via
+  `DeviceStorageService`). Which one is actually used where has not been
+  clarified (`calibration.dart` was not checked).
+- **Real Bluetooth integration is missing.** The scan is simulated.
+  `AudioDeviceService` (Android MethodChannel) exists in Dart but is not called
+  by `DeviceScreen`. Whether the native Android side is implemented was not
+  checked.
+- **`DeviceScreen._logout()`** calls `FirebaseAuth.signOut()` directly and thus
+  bypasses `AuthService.logout()` (no Google sign-out, no reset of the guest
+  flag).
+- **`AuthService`** returns `null` on any error; the UI cannot distinguish the
+  reason.
+- **Accessibility gaps** (full list: `docs/ACCESSIBILITY_AUDIT.md`;
+  static code review, not tested on a device, nothing fixed yet): the
+  screens do not yet meet the guidelines in §1. There is no `Semantics`,
+  `semanticLabel` or `tooltip` anywhere in `lib/`, no `MediaQuery`/text-scale
+  handling, no haptics, no app locale. Login, register, start, calibration and
+  test screens are not scrollable and overflow with large text or the keyboard.
+  Connection state (red/green dot), selected state (type selector, L/M/R) is
+  color only. `AppColors.mutedText` in light mode has about 3.6:1 contrast on
+  the background. Small tap targets: the delete "X" on device cards and the
+  plain-text links (`GestureDetector` + `Text`). The system back button is
+  disabled on login/register (`PopScope(canPop: false)`).
+- **Test strategy** is not documented.
+- **Firestore language default:** The function sets `settings.language:
+  "system"`, but the app UI is German. Whether this is intended is open.
 
-## 8. Arbeitsweise in diesem Repo
+## 8. Working Conventions in This Repo
 
-- Deutsch ist die Standardsprache im Projekt; UI-Texte entsprechend.
-- Keine Firebase-Konfigurationsdateien, API-Keys oder `google-services.json` in
-  Antworten oder Commits ausgeben.
-- Bei Änderungen am Firestore-Schema immer alle drei Stellen mitziehen:
-  Cloud Function (Defaults), Dart-Modell (`fromMap`/`toMap`) und
+- English is the default language in the project (docs, code, comments,
+  commits). Only user-facing UI texts are German.
+- Do not output Firebase configuration files, API keys or `google-services.json`
+  in responses or commits.
+- When changing the Firestore schema, always update all three places:
+  Cloud Function (defaults), Dart model (`fromMap`/`toMap`) and
   Security Rules.
 
-### Kommentar-Konvention
+### Comment convention
 
-- **Sprache:** Code-Kommentare auf Englisch. UI-Texte sind deutsch; die
-  Logmeldungen in `CalibrationService` sind noch deutsch.
-- **Dateikopf:** erste Zeile `// lib/<pfad>`, danach ein bis zwei Zeilen zum
-  Zweck der Datei.
-- **Doc-Kommentare (`///`)** für Klassen, Felder mit nicht offensichtlicher
-  Bedeutung und Methoden mit Logik. Einfaches `//` nur innerhalb von Methoden.
-  Triviale Overrides (`build`, `dispose`, `createState`) brauchen keinen.
-- **Abschnitte:** `// ── Titel ───…` auf 80 Zeichen Breite.
-- **Markierungen:**
-  - `NOTE:` erklärt Verhalten, das nicht offensichtlich ist.
-  - `TODO(improve):` Verbesserungsvorschlag aus dem Code-Review (Bugs,
-    Duplikate, veraltete APIs, fehlende Anbindungen).
-  - `TODO:` ursprüngliche offene Aufgaben des Teams.
-- **Nichts löschen:** Vorhandene Kommentare bleiben erhalten. Ist einer
-  veraltet oder falsch, korrigieren und die ursprüngliche Aussage im Kommentar
-  festhalten (Beispiel: `AuthService.loginWithEmail`).
-- Alle Verbesserungsvorschläge finden:
+- **Language:** Code comments in English. UI texts are German; the log messages
+  in `CalibrationService` are still German.
+- **File header:** first line `// lib/<path>`, followed by one or two lines on
+  the file's purpose.
+- **Doc comments (`///`)** for classes, fields with non-obvious meaning and
+  methods with logic. Plain `//` only inside methods. Trivial overrides
+  (`build`, `dispose`, `createState`) need none.
+- **Sections:** `// ── Title ───…` at 80 characters width.
+- **Markers:**
+  - `NOTE:` explains behavior that is not obvious.
+  - `TODO(improve):` improvement suggestion from the code review (bugs,
+    duplicates, deprecated APIs, missing integrations).
+  - `TODO:` original open tasks of the team.
+- **Delete nothing:** Existing comments stay. If one is outdated or wrong,
+  correct it and preserve the original statement in the comment (example:
+  `AuthService.loginWithEmail`).
+- Find all improvement suggestions:
   `grep -rn "TODO(improve)" frontend firebase/firestore.rules firebase/functions/src`
