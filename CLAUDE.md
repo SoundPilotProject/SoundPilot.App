@@ -127,6 +127,12 @@ npm run serve      :: Build + emulator (functions only)
 npm run deploy     :: firebase deploy --only functions
 ```
 
+`firebase.json` also configures the Auth (9099) and Firestore (8080) emulators.
+To test the auth triggers together with the rules, run
+`firebase emulators:start --only functions,auth,firestore` from `firebase/`.
+Rules and functions are deployed separately (`firebase deploy --only
+firestore:rules` / `--only functions`).
+
 ## 4. Data Model
 
 ### Current state of persistence
@@ -156,6 +162,7 @@ creates it:
   "email": "string | null",
   "displayName": "string",
   "createdAt": "Timestamp",
+  "schemaVersion": 1,
   "providers": ["password"],
   "settings": { "language": "system", "theme": "system" },
   "calibration": {
@@ -167,6 +174,14 @@ creates it:
 
 `displayName` is `"New User"` if the auth account has no name.
 There is no `username` field anywhere in the code.
+
+`schemaVersion` identifies the schema of the document (`SCHEMA_VERSION` in
+`index.ts`, `UserModel.currentSchemaVersion` in Dart). **Increase it whenever
+the default document changes**, in both places. Outdated documents can then be
+found with a query on `schemaVersion` (documents created before versioning have
+no field, `UserModel` reads them as `0`) and migrated with a one-off admin
+script, not with a deployed function. Only the cloud function writes it; the
+security rules block client writes.
 
 ### Key design decision: maps instead of arrays
 
@@ -218,7 +233,10 @@ File: `firebase/functions/src/index.ts`. Both functions run in the region
 - **`deleteUserDoc`** (`onDelete`) deletes `users/{uid}` when the auth account
   is deleted.
 
-Errors in both functions are only logged, not rethrown.
+Both functions log errors and then **rethrow** them, and use
+`runWith({ failurePolicy: true })`, so a failed run is retried (for up to
+7 days). Keep them idempotent. A retry of `createUserDoc` keeps existing devices
+(`merge: true`) but rewrites `createdAt`.
 
 ### Cloud Functions 1st Gen — deliberate decision
 
@@ -242,6 +260,7 @@ import * as functions from "firebase-functions/v1";
 
 export const createUserDoc = functions
   .region("europe-central2")
+  .runWith({failurePolicy: true})
   .auth.user()
   .onCreate(async (user) => { ... });
 ```
@@ -252,8 +271,12 @@ choose the import accordingly.
 ## 6. Security Rules (`firebase/firestore.rules`)
 
 ```javascript
-match /users/{uid}/{document=**} {
-  allow read, write: if request.auth != null && request.auth.uid == uid;
+match /users/{uid} {
+  allow read: if request.auth != null && request.auth.uid == uid;
+  allow create, delete: if false;
+  allow update: if request.auth != null && request.auth.uid == uid
+    && request.resource.data.diff(resource.data).affectedKeys()
+         .hasOnly(['calibration', 'settings']);
 }
 match /{document=**} {
   allow read, write: if false;
@@ -262,12 +285,18 @@ match /{document=**} {
 
 For client code this means:
 
-- A signed-in user may **read, create, update and delete** their own document
-  and all subcollections (`write` covers `create`, `update`, `delete`).
-- Other users' documents and all other paths are blocked. Do not build queries
-  over the whole `users` collection.
-- Creating the document is allowed, but by design belongs to the Cloud
-  Function. The client should use `update()`, not `set()`.
+- A signed-in user may **read** their own document and **update** only the
+  top-level fields `calibration` and `settings` (field paths such as
+  `calibration.headphones.<BD_ADDR>.volLeft` are fine).
+- The client can **not** create or delete the document, and can not change
+  `uid`, `email`, `displayName`, `createdAt`, `providers` or `schemaVersion`.
+  The cloud functions do that (the Admin SDK ignores the rules). This also
+  means `UserModel.toMap()` can not be written as a whole.
+- Other users' documents and all other paths, including any subcollection,
+  are blocked. Do not build queries over the whole `users` collection. A rule
+  for a new subcollection has to be added on purpose.
+- The rules were tested against the Firestore emulator (13 allow/deny cases,
+  2026-09-24). Re-test after changing them.
 
 ### Eventual consistency on registration
 
@@ -281,9 +310,6 @@ document that does not exist yet also fails.
 
 Not backed by evidence — check in the code instead of assuming:
 
-- **Rules do not validate fields.** A client can overwrite `email`,
-  `createdAt`, `providers` or `uid` in their own document and can also delete
-  the document. Whether this is intended is not documented.
 - **Firestore integration is missing in the client.** Devices and calibration
   are stored only locally (see §4). Whether and when to switch to Firestore is
   open.

@@ -115,8 +115,20 @@ class BeltCalib {
 /// Corresponds to the Firestore document `users/{uid}` (the cloud function
 /// `createUserDoc` creates it with `displayName`, `email` and empty maps).
 class UserModel {
+  /// Schema version this app version expects in `users/{uid}`
+  /// (Firestore: `schemaVersion`). Keep it in sync with `SCHEMA_VERSION` in
+  /// the cloud function `createUserDoc`.
+  static const int currentSchemaVersion = 1;
+
   /// Firebase Auth UID (= Firestore document id).
   final String id;
+
+  /// Schema version of the loaded document (Firestore: `schemaVersion`).
+  /// 0 means the field is missing, i.e. a document created before versioning.
+  ///
+  /// NOTE: Read-only. It is not written by [toMap]; only the cloud function
+  /// sets it, and the security rules block client writes to it.
+  final int schemaVersion;
 
   /// Display name. Not `username`: the cloud function, this model and
   /// AuthService all use `displayName`.
@@ -132,6 +144,7 @@ class UserModel {
     required this.id,
     required this.displayName,
     required this.email,
+    this.schemaVersion = 0,
     this.headphones = const {},
     this.belts = const {},
   });
@@ -162,12 +175,18 @@ class UserModel {
       id: id,
       displayName: data['displayName'] ?? 'User',
       email: data['email'] ?? '',
+      schemaVersion: (data['schemaVersion'] ?? 0) as int,
       headphones: parsedHeadphones,
       belts: parsedBelts,
     );
   }
 
   /// Helper to convert the whole user back to a Firestore-compatible map
+  ///
+  /// NOTE: With the current security rules a client may only update
+  /// `calibration` and `settings`. Writing this whole map (it contains
+  /// `displayName` and `email`) would be rejected. Update single field paths
+  /// instead, see CLAUDE.md §4.
   Map<String, dynamic> toMap() {
     return {
       'displayName': displayName,

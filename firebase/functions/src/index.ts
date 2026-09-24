@@ -8,6 +8,15 @@ initializeApp();
 const db = getFirestore();
 
 /**
+ * Version of the `users/{uid}` document schema written by `createUserDoc`.
+ * Increase it whenever the default document changes, so outdated documents can
+ * be found with a query on `schemaVersion` and migrated.
+ * Keep it in sync with `UserModel.currentSchemaVersion` (Dart) and
+ * firestore.rules.
+ */
+const SCHEMA_VERSION = 1;
+
+/**
  * Automatically creates a Firestore document when a new user is registered.
  * Region: europe-central2 (Germany/Poland)
  *
@@ -20,12 +29,15 @@ const db = getFirestore();
  * `displayName` falls back to "New User"; the Dart model (`UserModel`) falls
  * back to "User".
  *
- * TODO(improve): Errors are only logged and not rethrown, so a failed write
- * leaves the user without a document and nothing retries it. Consider
- * rethrowing so the trigger can be retried.
+ * NOTE: Errors are rethrown and `failurePolicy: true` enables retries, so a
+ * failed write no longer leaves the user without a document. (Before, errors
+ * were only logged and nothing retried them.) Retries are repeated for up to
+ * 7 days, so the function must stay idempotent. Because of `merge: true`, a
+ * retry keeps existing devices, but it rewrites `createdAt`.
  */
 export const createUserDoc = functions
   .region("europe-central2")
+  .runWith({failurePolicy: true})
   .auth.user()
   .onCreate(async (user) => {
     const {uid, email, displayName, providerData} = user;
@@ -40,6 +52,7 @@ export const createUserDoc = functions
         displayName: displayName || "New User",
         providers: (providerData || []).map((p) => p.providerId),
         createdAt: FieldValue.serverTimestamp(),
+        schemaVersion: SCHEMA_VERSION,
         settings: {
           language: "system",
           theme: "system",
@@ -57,6 +70,7 @@ export const createUserDoc = functions
       logger.info(`Successfully created Firestore document for UID: ${uid}`);
     } catch (error) {
       logger.error(`Error creating document for UID: ${uid}`, error);
+      throw error;
     }
   });
 
@@ -67,10 +81,12 @@ export const createUserDoc = functions
  * NOTE: Only `users/{uid}` is deleted. Subcollections of the document (if any
  * are added later) are not removed by `delete()`.
  *
- * TODO(improve): Errors are only logged and not rethrown (see createUserDoc).
+ * NOTE: Errors are rethrown and retried, see createUserDoc. Deleting a
+ * document that does not exist is not an error, so retries are safe.
  */
 export const deleteUserDoc = functions
   .region("europe-central2")
+  .runWith({failurePolicy: true})
   .auth.user()
   .onDelete(async (user) => {
     const userRef = db.doc(`users/${user.uid}`);
@@ -81,5 +97,6 @@ export const deleteUserDoc = functions
       logger.info(`Successfully deleted Firestore document for UID: ${user.uid}`);
     } catch (error) {
       logger.error(`Error deleting document for UID: ${user.uid}`, error);
+      throw error;
     }
   });
