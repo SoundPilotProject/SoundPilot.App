@@ -1,4 +1,8 @@
-# CLAUDE.md — SoundPilot
+# SoundPilot — Project Context
+
+> Full copy of `CLAUDE.md` (the context file Claude Code reads), kept here so the
+> project knowledge survives if `CLAUDE.md` is deleted. **Update this file in
+> the same commit whenever `CLAUDE.md` changes.**
 
 Project context for Claude Code. Diploma project (HTL).
 

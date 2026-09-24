@@ -5,7 +5,7 @@ Method: static code review of every screen and shared widget in
 `frontend/soundpilot_application/lib/`. **Not tested on a device** with
 TalkBack/VoiceOver, large fonts or a color-blindness simulator. Contrast ratios
 are hand-calculated and approximate.
-Reference: the accessibility guidelines in `CLAUDE.md` §1.
+Reference: the accessibility guidelines in `docs/PROJECT_CONTEXT.md` §1.
 
 Status: **findings only, nothing has been fixed yet.**
 
