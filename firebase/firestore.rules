@@ -2,16 +2,22 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // every user can only read/write his own /users/{uid}/...
-    // NOTE: `write` includes create, update and delete, so the client may also
-    // create and delete its own document (creation is meant for the cloud
-    // function `createUserDoc`).
-    // TODO(improve): No field validation. A client can overwrite `email`,
-    // `createdAt`, `providers` or `uid` in its own document. Restrict
-    // `update` to `calibration` and `settings` if that is not intended, and
-    // consider `allow create, delete: if false;` (see CLAUDE.md).
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid; // only logged in users
+    // every user can only read/write his own /users/{uid}
+    // NOTE: Before, one rule `allow read, write` covered the document and all
+    // subcollections, so the client could also create and delete its own
+    // document and overwrite any field. Now the document is created and
+    // deleted only by the cloud functions `createUserDoc` / `deleteUserDoc`
+    // (they use the Admin SDK, which ignores these rules), and the client may
+    // only update `calibration` and `settings`. `uid`, `email`, `displayName`,
+    // `createdAt`, `providers` and `schemaVersion` are read-only for clients.
+    // NOTE: There are no subcollections yet. They stay blocked by the default
+    // rule below until a rule for them is added on purpose.
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid; // only logged in users
+      allow create, delete: if false;
+      allow update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['calibration', 'settings']);
     }
 
     // lock everything else
