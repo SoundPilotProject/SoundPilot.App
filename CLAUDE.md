@@ -370,8 +370,7 @@ Not backed by evidence — check in the code instead of assuming:
   (`CLAUDE.md`), so the project knowledge is preserved if `CLAUDE.md` is ever
   deleted or replaced.
 - **Whenever `CLAUDE.md` changes, update `docs/PROJECT_CONTEXT.md` in the same
-  commit.** It is a full copy; only its title and the short note below the
-  title differ.
+  commit.** It is a full copy; only its title (first line) differs.
 - Code comments and other docs refer to `docs/PROJECT_CONTEXT.md`, not to
   `CLAUDE.md`, so those references keep working.
 
