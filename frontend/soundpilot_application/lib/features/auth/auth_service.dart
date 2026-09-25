@@ -28,20 +28,22 @@ class AuthService {
   /// asynchronously. Returns the new user, or `null` if the registration failed.
   Future<UserModel?> registerWithEmail(String email, String password) async {
     try {
-      // TODO(improve): The e-mail address is personal data and is written to
-      // the log at info level (same in loginWithEmail and sendPasswordReset).
-      // Log it only in debug builds or not at all.
-      logger.i("AuthService: Attempting Email registration for $email");
+      // NOTE: Originally a TODO(improve): "The e-mail address is personal data
+      // and is written to the log at info level (same in loginWithEmail and
+      // sendPasswordReset). Log it only in debug builds or not at all."
+      // Fixed: no log message in this class contains the e-mail address.
+      logger.i("AuthService: Attempting Email registration");
 
-      // TODO(improve): Do not trim the password. Leading/trailing spaces are
-      // valid password characters, so trimming changes the password. Trim only
-      // the e-mail address (same in loginWithEmail).
+      // NOTE: Originally a TODO(improve): "Do not trim the password.
+      // Leading/trailing spaces are valid password characters, so trimming
+      // changes the password." Fixed: only the e-mail address is trimmed
+      // (same in loginWithEmail and in the login/register screens).
       final UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
-        password: password.trim(),
+        password: password,
       );
 
-      logger.d("AuthService: Email registration successful for ${result.user?.email}");
+      logger.d("AuthService: Email registration successful");
 
       // Take over the guest data (devices + calibration) into the user account.
       await DeviceStorageService.migrateGuestDataAfterLogin();
@@ -63,14 +65,14 @@ class AuthService {
   /// Returns the signed-in user, or `null` if the login failed.
   Future<UserModel?> loginWithEmail(String email, String password) async {
     try {
-      logger.i("AuthService: Attempting Email login for $email");
+      logger.i("AuthService: Attempting Email login");
 
       final UserCredential result = await _auth.signInWithEmailAndPassword(
         email: email.trim(),
-        password: password.trim(),
+        password: password,
       );
 
-      logger.d("AuthService: Email login successful for ${result.user?.email}");
+      logger.d("AuthService: Email login successful");
 
       // Copies locally saved guest calibration data to the user's own local
       // key (only if the user has no data yet — e.g. first login on a new
@@ -96,7 +98,7 @@ class AuthService {
   Future<bool> sendPasswordReset(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
-      logger.i("AuthService: Password reset email sent to $email");
+      logger.i("AuthService: Password reset email sent");
       return true;
     } on FirebaseAuthException catch (e) {
       logger.w("AuthService: Password reset failed [${e.code}]");
@@ -135,7 +137,7 @@ class AuthService {
 
       final UserCredential result =
       await _auth.signInWithCredential(credential);
-      logger.d("AuthService: Google login successful for ${result.user?.email}");
+      logger.d("AuthService: Google login successful");
 
       await DeviceStorageService.migrateGuestDataAfterLogin();
 
@@ -150,9 +152,10 @@ class AuthService {
 
   /// Signs out of Firebase and Google and clears the guest flag.
   ///
-  /// TODO(improve): DeviceScreen._logout() calls `FirebaseAuth.signOut()`
-  /// directly instead of this method, so the Google sign-out and the flag reset
-  /// do not happen there. Use this method in both places.
+  /// NOTE: Originally a TODO(improve): "DeviceScreen._logout() calls
+  /// `FirebaseAuth.signOut()` directly instead of this method, so the Google
+  /// sign-out and the flag reset do not happen there." Fixed: DeviceScreen
+  /// uses this method now.
   Future<void> logout() async {
     // Clear the guest-session flag
     final prefs = await SharedPreferences.getInstance();
@@ -168,11 +171,14 @@ class AuthService {
 
   /// Maps a Firebase [User] to a [UserModel] (without devices).
   /// Returns `null` if [user] is `null`.
+  ///
+  /// NOTE: The fallback name used to be 'No Name'. It is now
+  /// [UserModel.defaultDisplayName], the same as the cloud function.
   UserModel? _mapFirebaseUser(User? user) {
     if (user == null) return null;
     return UserModel(
       id: user.uid,
-      displayName: user.displayName ?? 'No Name',
+      displayName: user.displayName ?? UserModel.defaultDisplayName,
       email: user.email ?? '',
     );
   }

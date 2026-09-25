@@ -360,9 +360,6 @@ Not backed by evidence — check in the code instead of assuming:
   `AudioDeviceService` (Android MethodChannel) exists in Dart but is not called
   by `DeviceScreen`. Whether the native Android side is implemented was not
   checked.
-- **`DeviceScreen._logout()`** calls `FirebaseAuth.signOut()` directly and thus
-  bypasses `AuthService.logout()` (no Google sign-out, no reset of the guest
-  flag).
 - **`AuthService`** returns `null` on any error; the UI cannot distinguish the
   reason.
 - **Accessibility gaps** (full list: `docs/ACCESSIBILITY_AUDIT.md`;

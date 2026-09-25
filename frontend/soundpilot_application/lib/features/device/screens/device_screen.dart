@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../models/user_model.dart';
+import '../../auth/auth_service.dart';
 import 'calibration.dart';
 import 'belt_warning_distance_screen.dart';
 import '../../../core/theme/app_colors.dart';
@@ -114,9 +115,9 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   /// Signs out and reloads the (now guest) devices.
   ///
-  /// TODO(improve): This calls `FirebaseAuth.signOut()` directly and skips
-  /// `AuthService.logout()`, so there is no Google sign-out and the guest flag
-  /// is not reset. Use `AuthService.logout()`.
+  /// NOTE: Originally a TODO(improve): "This calls `FirebaseAuth.signOut()`
+  /// directly and skips `AuthService.logout()`, so there is no Google sign-out
+  /// and the guest flag is not reset." Fixed: uses `AuthService.logout()`.
   ///
   /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
   /// visible for a moment and slows the UI down on purpose (same in
@@ -130,7 +131,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
       ),
     );
 
-    await FirebaseAuth.instance.signOut();
+    await AuthService().logout();
     await Future.delayed(const Duration(seconds: 2));
 
     if (!mounted) return;
