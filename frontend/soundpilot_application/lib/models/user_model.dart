@@ -120,6 +120,10 @@ class UserModel {
   /// the cloud function `createUserDoc`.
   static const int currentSchemaVersion = 1;
 
+  /// Display name used when the account has none. Keep it in sync with the
+  /// default in the cloud function `createUserDoc` ('New User').
+  static const String defaultDisplayName = 'New User';
+
   /// Firebase Auth UID (= Firestore document id).
   final String id;
 
@@ -152,7 +156,8 @@ class UserModel {
   /// Builds a [UserModel] from a Firestore document map.
   ///
   /// Missing fields fall back to defaults. Note that the cloud function uses
-  /// 'New User' as the default display name, this factory uses 'User'.
+  /// 'New User' as the default display name, this factory used 'User'. Both
+  /// now use [defaultDisplayName].
   ///
   /// TODO(improve): The fallbacks only cover missing keys. A device entry of
   /// the wrong type (`value as Map<String, dynamic>`) still throws.
@@ -173,7 +178,7 @@ class UserModel {
 
     return UserModel(
       id: id,
-      displayName: data['displayName'] ?? 'User',
+      displayName: data['displayName'] ?? defaultDisplayName,
       email: data['email'] ?? '',
       schemaVersion: (data['schemaVersion'] ?? 0) as int,
       headphones: parsedHeadphones,

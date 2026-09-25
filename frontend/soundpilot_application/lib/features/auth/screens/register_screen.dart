@@ -71,9 +71,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// and one generic error message for every failure.
   Future<void> _finishRegister() async {
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    // NOTE: The password is not trimmed; spaces are valid password characters.
+    final password = _passwordController.text;
 
-    if (email.isEmpty || password.isEmpty) {
+    if (email.isEmpty || password.trim().isEmpty) {
       _showMessage('Bitte E-Mail und Passwort eingeben.');
       return;
     }
