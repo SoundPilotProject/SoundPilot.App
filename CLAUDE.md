@@ -7,7 +7,8 @@ Project context for Claude Code. Diploma project (HTL).
 > marked as open — do not treat them as fact; check the code or ask.
 >
 > Status: reconciled with `firebase/firestore.rules`,
-> `firebase/functions/src/index.ts` and `frontend/soundpilot_application/lib/`.
+> `firebase/functions/src/index.ts`, `frontend/soundpilot_application/lib/`
+> and `.github/workflows/ci-cd.yml`.
 
 ## 1. Overview
 
@@ -70,6 +71,8 @@ frontend/soundpilot_application/   Flutter app
 firebase/                          Firestore rules, Cloud Functions
   firestore.rules
   functions/src/index.ts
+  functions/lib/                   tsc output, git-ignored (see §3)
+.github/workflows/ci-cd.yml        CI/CD pipeline (see §3)
 ```
 
 All Flutter commands are run from `frontend/soundpilot_application/`,
@@ -122,16 +125,48 @@ Cloud Functions:
 
 ```cmd
 cd firebase/functions
+npm run lint       :: eslint (also run in CI)
 npm run build      :: tsc
 npm run serve      :: Build + emulator (functions only)
-npm run deploy     :: firebase deploy --only functions
+npm run deploy     :: firebase deploy --only functions (does NOT build first)
 ```
 
 `firebase.json` also configures the Auth (9099) and Firestore (8080) emulators.
 To test the auth triggers together with the rules, run
 `firebase emulators:start --only functions,auth,firestore` from `firebase/`.
-Rules and functions are deployed separately (`firebase deploy --only
-firestore:rules` / `--only functions`).
+
+`firebase/functions/lib/` (the compiled JavaScript) is git-ignored. Run
+`npm run build` after cloning or pulling before using the emulator or
+deploying by hand; `firebase.json` has no predeploy build step.
+
+On Windows, `npm run lint` locally reports `linebreak-style` (CRLF) errors when
+git's `core.autocrlf` is on. The repo stores LF, so CI is not affected.
+
+### CI/CD (`.github/workflows/ci-cd.yml`)
+
+Runs on every pull request to `main` and every push to `main`:
+
+| Job | Steps | Fails on |
+|---|---|---|
+| `build_and_test` | `flutter pub get`, `flutter analyze --no-fatal-infos`, `flutter test` (Flutter 3.35.4) | analyzer warnings/errors, failing tests |
+| `functions` | `npm ci`, `npm run lint`, `npm run build` (Node.js 22) | lint errors, TypeScript errors |
+| `deploy` | build functions, `firebase deploy --only firestore:rules,functions` | any deploy error |
+
+- **Deploying is automatic.** `deploy` runs only on pushes to `main` (i.e.
+  merged PRs) and only after both other jobs pass. Rules and functions do not
+  need to be deployed by hand.
+- A manual deploy is overwritten by the next deploy from `main`. Deploy by
+  hand only for things CI does not deploy (e.g. Firestore indexes), and test
+  unmerged changes with the emulators instead.
+- The app itself is not built or released by CI.
+- `firebase-tools` is pinned to `15.5.1` in the workflow (deploys with the unpinned
+  latest version failed with "An unexpected error has occurred"; with 15.5.1
+  they succeed). Change the version
+  on purpose and check the first deploy after it.
+- The deploy authenticates with the repository secret `FIREBASE_TOKEN`
+  (created with `firebase login:ci`). Deploys run one after another
+  (`concurrency: deploy-main`) and with `--debug`, so a failed run shows the
+  cause in the Actions log.
 
 ## 4. Data Model
 
@@ -337,7 +372,13 @@ Not backed by evidence — check in the code instead of assuming:
   the background. Small tap targets: the delete "X" on device cards and the
   plain-text links (`GestureDetector` + `Text`). The system back button is
   disabled on login/register (`PopScope(canPop: false)`).
-- **Test strategy** is not documented.
+- **Test strategy** is not documented. CI runs `flutter test`, but
+  `test/widget_test.dart` only contains a placeholder test. The security rules
+  are not tested in CI.
+- **CI deploy authentication:** `--token` / `FIREBASE_TOKEN` is deprecated in
+  `firebase-tools` and will be removed in a future major version. Switching to
+  a service account (`google-github-actions/auth`) is open; see the
+  `TODO(improve)` in `ci-cd.yml`.
 - **Firestore language default:** The function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
 
