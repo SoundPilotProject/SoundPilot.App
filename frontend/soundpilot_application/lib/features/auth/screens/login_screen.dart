@@ -54,9 +54,6 @@ class _LoginScreenState extends State<LoginScreen> {
   ///
   /// TODO(improve): `_isLoading` (spinner in the button) is redundant because
   /// a full-screen [LoadingScreen] is pushed as well; use only one of them.
-  ///
-  /// TODO(improve): A failed login always shows the same generic message,
-  /// because AuthService returns `null` without a reason.
   Future<void> _finishLogin() async {
     final email = _emailController.text.trim();
     // NOTE: The password is not trimmed; spaces are valid password characters.
@@ -83,7 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
 
-    final user = await _authService.loginWithEmail(email, password);
+    final result = await _authService.loginWithEmail(email, password);
 
     if (!mounted) return;
 
@@ -93,8 +90,8 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = false;
     });
 
-    if (user == null) {
-      _showMessage('Login fehlgeschlagen.');
+    if (!result.isSuccess) {
+      _showMessage(result.errorMessage ?? 'Login fehlgeschlagen.');
       return;
     }
 
@@ -223,16 +220,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             return;
                           }
 
-                          final success =
+                          final error =
                           await _authService.sendPasswordReset(email);
 
                           if (!mounted) return;
 
-                          _showMessage(
-                            success
-                                ? 'Passwort-Reset wurde gesendet.'
-                                : 'Reset fehlgeschlagen.',
-                          );
+                          _showMessage(error ?? 'Passwort-Reset wurde gesendet.');
                         },
                         child: Text(
                           'Passwort vergessen?',

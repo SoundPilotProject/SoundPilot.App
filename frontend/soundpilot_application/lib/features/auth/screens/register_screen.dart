@@ -67,8 +67,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// The minimum password length of 6 matches the Firebase Auth minimum.
   ///
   /// TODO(improve): Same points as LoginScreen._finishLogin: `setState` before
-  /// the `mounted` check, redundant `_isLoading` next to the [LoadingScreen],
-  /// and one generic error message for every failure.
+  /// the `mounted` check and redundant `_isLoading` next to the
+  /// [LoadingScreen].
   Future<void> _finishRegister() async {
     final email = _emailController.text.trim();
     // NOTE: The password is not trimmed; spaces are valid password characters.
@@ -100,7 +100,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
     );
 
-    final user = await _authService.registerWithEmail(email, password);
+    final result = await _authService.registerWithEmail(email, password);
 
     if (!mounted) return;
 
@@ -110,8 +110,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _isLoading = false;
     });
 
-    if (user == null) {
-      _showMessage('Registrierung fehlgeschlagen.');
+    if (!result.isSuccess) {
+      _showMessage(result.errorMessage ?? 'Registrierung fehlgeschlagen.');
       return;
     }
 

@@ -41,7 +41,8 @@ statement about the current state of the code):
   calibration) should be available via more than one sense — visual, audio and
   haptic/vibration — where the hardware allows it.
 - **Simple flows:** short, clear German texts, one main action per screen,
-  clear error messages (see the `AuthService` open point in §7), no
+  clear error messages (auth errors: `AuthService` returns an `AuthResult`
+  with a German message from `AuthService.messageForCode`), no
   time-limited interactions.
 - **Motion:** respect the system setting for reduced animations.
 
@@ -367,8 +368,6 @@ Not backed by evidence — check in the code instead of assuming:
   `AudioDeviceService` (Android MethodChannel) exists in Dart but is not called
   by `DeviceScreen`. Whether the native Android side is implemented was not
   checked.
-- **`AuthService`** returns `null` on any error; the UI cannot distinguish the
-  reason.
 - **Accessibility gaps** (full list: `docs/ACCESSIBILITY_AUDIT.md`;
   static code review, not tested on a device, nothing fixed yet): the
   screens do not yet meet the guidelines in §1. There is no `Semantics`,
