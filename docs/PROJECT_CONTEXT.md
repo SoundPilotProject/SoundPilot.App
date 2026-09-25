@@ -56,7 +56,7 @@ When in doubt, choose the more accessible option and mention the trade-off.
 | `firebase_auth` | Authentication (email/password, Google Sign-In) |
 | `google_sign_in` | Google login |
 | `cloud_firestore` | included, but **not yet used** in the Dart code (see §4) |
-| `shared_preferences` | current local persistence (devices, calibration, guest flag) |
+| `shared_preferences` | current local persistence (devices, calibration, guest mode) |
 | `google_fonts` | Poppins font |
 | `audioplayers` | Audio playback (calibration) |
 | `logger` | global `logger` in `core/app_logger.dart` |
@@ -91,6 +91,7 @@ core/
   widgets/                       LoadingScreen, SoundPilotLogo
   services/
     device_storage_service.dart  local persistence of devices + calibration
+    guest_mode_service.dart      guest mode flag (ValueNotifier + stored)
     calibration_service.dart     Volume L/R as int (0–100)
     audio_device_service.dart    MethodChannel com.soundpilot/audio_devices
 features/
@@ -103,9 +104,15 @@ features/
 
 - **State management:** no package, only `StatefulWidget` + `setState`.
 - **Routing:** `Navigator.push` with `MaterialPageRoute`, no router package.
-- **Start:** `AppEntryPoint` opens `DeviceScreen` if a Firebase user is signed
-  in or the one-time flag `continueAsGuestThisSession` is set (it is reset
-  immediately at startup). Otherwise `StartScreen`.
+- **Start and auth state:** `AppEntryPoint` listens to
+  `FirebaseAuth.authStateChanges()` and `GuestModeService.active`. It shows
+  `DeviceScreen` if a user is signed in or guest mode is active, otherwise
+  `StartScreen`, and switches by itself on sign-in, logout and "Als Gast
+  fortfahren". Do not navigate to `DeviceScreen`/`StartScreen` manually:
+  login/register are pushed on top and only close themselves on success
+  (`popUntil(isFirst)`).
+- **Guest mode** (`guestMode` in SharedPreferences) stays active across app
+  starts until the user signs in or logs out. Logout leads to `StartScreen`.
 
 ## 3. Commands
 
@@ -377,12 +384,14 @@ Not backed by evidence — check in the code instead of assuming:
   Connection state (red/green dot), selected state (type selector, L/M/R) is
   color only. `AppColors.mutedText` in light mode has about 3.6:1 contrast on
   the background. Small tap targets: the delete "X" on device cards and the
-  plain-text links (`GestureDetector` + `Text`). The system back button is
-  disabled on login/register (`PopScope(canPop: false)`).
-- **Test strategy** is not documented. CI runs `flutter test`; so far only the
-  models are tested (`test/models/user_model_test.dart`), and
-  `test/widget_test.dart` is a placeholder. Services, screens and the security
-  rules are not tested in CI.
+  plain-text links (`GestureDetector` + `Text`).
+- **Leaving guest mode:** a guest can only leave guest mode by signing in;
+  there is no button to go back to the `StartScreen`.
+- **Test strategy** is not documented. CI runs `flutter test`; tested so far
+  are the models (`test/models/`), the auth error messages
+  (`test/features/auth/`) and `GuestModeService` (`test/core/services/`);
+  `test/widget_test.dart` is a placeholder. Screens, the other services and
+  the security rules are not tested in CI.
 - **Firestore language default:** The function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
 

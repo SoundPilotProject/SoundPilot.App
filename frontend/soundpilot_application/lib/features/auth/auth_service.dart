@@ -2,11 +2,10 @@
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../../models/user_model.dart';
 import '../../core/app_logger.dart';
 import '../../core/services/device_storage_service.dart';
+import '../../core/services/guest_mode_service.dart';
 
 /// Result of a sign-in or registration.
 ///
@@ -158,11 +157,10 @@ class AuthService {
 
   // ── Logout ─────────────────────────────────────────────────────────────────
 
-  /// Signs out of Firebase and Google and clears the guest flag.
+  /// Signs out of Firebase and Google and ends guest mode, so AppEntryPoint
+  /// shows the StartScreen.
   Future<void> logout() async {
-    // Clear the guest-session flag
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('continueAsGuestThisSession', false);
+    await GuestModeService.set(false);
 
     await _auth.signOut();
     await _googleSignIn.signOut();
@@ -207,13 +205,15 @@ class AuthService {
     }
   }
 
-  /// Success result for [user], or a general failure if Firebase returned no
-  /// user.
-  AuthResult _resultFor(User? user) {
+  /// Success result for [user] (and the end of guest mode), or a general
+  /// failure if Firebase returned no user.
+  Future<AuthResult> _resultFor(User? user) async {
     final model = _mapFirebaseUser(user);
-    return model != null
-        ? AuthResult.success(model)
-        : AuthResult.failure(messageForCode(null));
+    if (model == null) return AuthResult.failure(messageForCode(null));
+
+    // A signed-in user is no guest, also not on the next app start.
+    await GuestModeService.set(false);
+    return AuthResult.success(model);
   }
 
   /// Maps a Firebase [User] to a [UserModel] (without devices).
