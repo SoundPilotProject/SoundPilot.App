@@ -203,3 +203,6 @@ Thumbs.db
 # Claude Code
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Compiled Cloud Functions (built by `npm run build` in firebase/functions)
+firebase/functions/lib/
