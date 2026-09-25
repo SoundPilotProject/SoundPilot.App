@@ -6,9 +6,16 @@ on:
   pull_request:
     branches: [ main ]
 
+# Least privilege for the GITHUB_TOKEN; no job needs to write to the repo.
+permissions:
+  contents: read
+
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend/soundpilot_application
 
     steps:
       - name: Checkout Code
@@ -18,29 +25,26 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.4'
+          cache: true
 
-      - name: Create google-services.json
-        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
-        working-directory: ./frontend/soundpilot_application
-
+      # NOTE: google-services.json is not created here. analyze and test do
+      # not need it; add it back (via env, not inline) once a step runs
+      # `flutter build`.
       - name: Install dependencies
         run: flutter pub get
-        working-directory: ./frontend/soundpilot_application
 
+      # Infos are still allowed (deprecations etc.); warnings and errors fail.
       - name: Analyze code
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-        working-directory: ./frontend/soundpilot_application
-        continue-on-error: true
+        run: flutter analyze --no-fatal-infos
 
       - name: Run tests
         run: flutter test
-        working-directory: ./frontend/soundpilot_application
-        continue-on-error: true
 
-  deploy:
-    needs: build_and_test
+  functions:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: firebase/functions
 
     steps:
       - name: Checkout code
@@ -51,6 +55,38 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: firebase/functions/package-lock.json
+
+      - name: Install Functions Dependencies
+        run: npm ci
+
+      - name: Lint Functions
+        run: npm run lint
+
+      - name: Build Functions (TypeScript to JS)
+        run: npm run build
+
+  deploy:
+    needs: [ build_and_test, functions ]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Run deploys one after another; never cancel one that is in progress.
+    concurrency:
+      group: deploy-main
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Functions run on Node.js 22 (see firebase/functions/package.json).
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: firebase/functions/package-lock.json
 
       # Pinned to the version that deploys successfully locally. The
       # firebase.tools install script always pulls the latest release.
@@ -59,12 +95,14 @@ jobs:
 
       - name: Install Functions Dependencies
         working-directory: firebase/functions
-        run: npm install
+        run: npm ci
 
       - name: Build Functions (TypeScript to JS)
         working-directory: firebase/functions
         run: npm run build
 
+      # TODO(improve): --token is deprecated in firebase-tools; switch to a
+      # service account (google-github-actions/auth).
       - name: Deploy to Firebase
         working-directory: firebase
         run: firebase deploy --only firestore:rules,functions --non-interactive --debug
