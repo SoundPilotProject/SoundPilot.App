@@ -119,8 +119,9 @@ class _DeviceScreenState extends State<DeviceScreen> {
   /// is not reset. Use `AuthService.logout()`.
   ///
   /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
-  /// visible for a moment and slows the UI down on purpose (see
-  /// StartScreen._continueAsGuest).
+  /// visible for a moment and slows the UI down on purpose (same in
+  /// TestPage._finishExercise and BeltVibrationScreen._finishSetup;
+  /// StartScreen._continueAsGuest no longer has it, see there).
   Future<void> _logout() async {
     Navigator.push(
       context,
