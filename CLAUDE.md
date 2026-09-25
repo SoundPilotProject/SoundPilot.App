@@ -424,7 +424,9 @@ Not backed by evidence — check in the code instead of assuming:
   (`CLAUDE.md`), so the project knowledge is preserved if `CLAUDE.md` is ever
   deleted or replaced.
 - **Whenever `CLAUDE.md` changes, update `docs/PROJECT_CONTEXT.md` in the same
-  commit.** It is a full copy; only its title (first line) differs.
+  commit.** It is a full copy; only its title (first line) differs, and the
+  Claude-only last section of `CLAUDE.md` ("Claude Code: session start") is
+  not copied.
 - Code comments and other docs refer to `docs/PROJECT_CONTEXT.md`, not to
   `CLAUDE.md`, so those references keep working.
 
@@ -452,3 +454,19 @@ Not backed by evidence — check in the code instead of assuming:
   Fixed"). Add a short `NOTE:` only if the new code needs an explanation.
 - Find all improvement suggestions:
   `grep -rn "TODO(improve)" frontend firebase/firestore.rules firebase/functions/src`
+
+## 9. Claude Code: session start
+
+Only in `CLAUDE.md`, not copied to `docs/PROJECT_CONTEXT.md`.
+
+Before starting any task, check the state of the repo and report it:
+
+- **Pull:** `git fetch --prune`, then check whether `main` (or the current
+  branch) is behind `origin`; if so, pull before working.
+- **Clean up:**
+  - uncommitted changes (`git status`)
+  - local branches that are merged or whose remote branch is gone
+  - leftover remote branches of merged PRs
+  - open PRs that still wait for a merge
+
+Ask before deleting anything or discarding changes.
