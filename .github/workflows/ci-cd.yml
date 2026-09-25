@@ -101,10 +101,15 @@ jobs:
         working-directory: firebase/functions
         run: npm run build
 
-      # TODO(improve): --token is deprecated in firebase-tools; switch to a
-      # service account (google-github-actions/auth).
+      # NOTE: Originally a TODO(improve): --token is deprecated in
+      # firebase-tools; switch to a service account. Done: the service account
+      # key (secret FIREBASE_SERVICE_ACCOUNT) is written to a temp file and
+      # exported as GOOGLE_APPLICATION_CREDENTIALS, which firebase-tools uses.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
       - name: Deploy to Firebase
         working-directory: firebase
         run: firebase deploy --only firestore:rules,functions --non-interactive --debug
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

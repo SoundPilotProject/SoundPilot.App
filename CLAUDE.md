@@ -163,8 +163,12 @@ Runs on every pull request to `main` and every push to `main`:
   latest version failed with "An unexpected error has occurred"; with 15.5.1
   they succeed). Change the version
   on purpose and check the first deploy after it.
-- The deploy authenticates with the repository secret `FIREBASE_TOKEN`
-  (created with `firebase login:ci`). Deploys run one after another
+- The deploy authenticates with a Google Cloud service account: its JSON key
+  is the repository secret `FIREBASE_SERVICE_ACCOUNT`, and
+  `google-github-actions/auth` exports it as `GOOGLE_APPLICATION_CREDENTIALS`.
+  If a deploy fails with a 403 / permission error, the service account is
+  missing an IAM role. (Previously: the deprecated `FIREBASE_TOKEN` from
+  `firebase login:ci`.) Deploys run one after another
   (`concurrency: deploy-main`) and with `--debug`, so a failed run shows the
   cause in the Actions log.
 
@@ -375,10 +379,6 @@ Not backed by evidence — check in the code instead of assuming:
 - **Test strategy** is not documented. CI runs `flutter test`, but
   `test/widget_test.dart` only contains a placeholder test. The security rules
   are not tested in CI.
-- **CI deploy authentication:** `--token` / `FIREBASE_TOKEN` is deprecated in
-  `firebase-tools` and will be removed in a future major version. Switching to
-  a service account (`google-github-actions/auth`) is open; see the
-  `TODO(improve)` in `ci-cd.yml`.
 - **Firestore language default:** The function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
 
