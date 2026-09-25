@@ -4,10 +4,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/services/guest_mode_service.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/widgets/loading_screen.dart';
 import '../../../core/widgets/soundpilot_logo.dart';
 
 import '../../device/screens/device_screen.dart';
@@ -21,37 +20,18 @@ import 'register_screen.dart';
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
 
-  /// Starts guest mode: sets the guest flag `continueAsGuestThisSession` and
-  /// replaces this screen with the [DeviceScreen].
-  ///
-  /// The flag is consumed by AppEntryPoint on the next app start.
+  /// Starts guest mode. AppEntryPoint then replaces this screen with the
+  /// [DeviceScreen]; guest mode stays active on later app starts until the
+  /// user signs in or logs out.
   ///
   /// NOTE: This used to keep the loading screen visible for a moment with a
   /// `Future.delayed(2 s)`. Original comment: "It slows the UI down on
   /// purpose and can be removed (same in DeviceScreen._logout,
   /// TestPage._finishExercise and BeltVibrationScreen._finishSetup)." Removed
-  /// here; the other three call sites still have it.
-  Future<void> _continueAsGuest(BuildContext context) async {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const LoadingScreen(
-          text: "Gastmodus wird gestartet...",
-        ),
-      ),
-    );
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('continueAsGuestThisSession', true);
-
-    if (!context.mounted) return;
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const DeviceScreen(),
-      ),
-    );
+  /// here; the other three call sites still have it. The loading screen is
+  /// gone as well, because switching to guest mode is instant.
+  Future<void> _continueAsGuest() async {
+    await GuestModeService.set(true);
   }
 
   @override
@@ -88,9 +68,7 @@ class StartScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const RegisterScreen(
-                        returnToDeviceOnBack: false,
-                      ),
+                      builder: (_) => const RegisterScreen(),
                     ),
                   );
                 },
@@ -104,9 +82,7 @@ class StartScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const LoginScreen(
-                        returnToDeviceOnBack: false,
-                      ),
+                      builder: (_) => const LoginScreen(),
                     ),
                   );
                 },
@@ -115,7 +91,7 @@ class StartScreen extends StatelessWidget {
               const SizedBox(height: 35),
 
               GestureDetector(
-                onTap: () => _continueAsGuest(context),
+                onTap: _continueAsGuest,
                 child: Text(
                   "Als Gast Fortfahren",
                   style: GoogleFonts.poppins(

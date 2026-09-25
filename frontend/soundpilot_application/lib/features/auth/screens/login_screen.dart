@@ -4,27 +4,17 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/loading_screen.dart';
-import '../../device/screens/device_screen.dart';
 import '../auth_service.dart';
 import 'register_screen.dart';
-import 'start_screen.dart';
 
 /// Login screen with e-mail and password.
 ///
 /// Also offers the password reset and a link to the [RegisterScreen].
 class LoginScreen extends StatefulWidget {
-  /// Where the back arrow leads: `true` returns to the [DeviceScreen] (used
-  /// when opened from there as a guest), `false` to the [StartScreen].
-  final bool returnToDeviceOnBack;
-
-  const LoginScreen({
-    super.key,
-    this.returnToDeviceOnBack = false,
-  });
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -46,8 +36,9 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// Validates the input, signs in and replaces the whole navigation stack with
-  /// the [DeviceScreen]. A [LoadingScreen] is shown while the login runs.
+  /// Validates the input and signs in. On success this screen closes and
+  /// AppEntryPoint shows the DeviceScreen. A [LoadingScreen] is shown while
+  /// the login runs.
   ///
   /// TODO(improve): `setState` is called before the `mounted` check. The check
   /// belongs before the `setState`. (Same in RegisterScreen._finishRegister.)
@@ -95,18 +86,9 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // A signed-in user must not be treated as a guest on the next start.
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('continueAsGuestThisSession', false);
-
-    if (!mounted) return;
-
-    // Remove all previous routes so back cannot return to the auth screens.
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const DeviceScreen()),
-          (route) => false,
-    );
+    // AppEntryPoint already shows the DeviceScreen for the signed-in user;
+    // close this screen (and anything else on top) to get back to it.
+    Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   /// Shows [message] in a SnackBar.
@@ -116,27 +98,17 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// Back arrow: replaces this screen with the [DeviceScreen] or the
-  /// [StartScreen], depending on [LoginScreen.returnToDeviceOnBack].
+  /// Back arrow: closes this screen and returns to the screen below
+  /// (StartScreen or, for a guest, the DeviceScreen).
   void _handleBack() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => widget.returnToDeviceOnBack
-            ? const DeviceScreen()
-            : const StartScreen(),
-      ),
-    );
+    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
-    // TODO(improve): `canPop: false` without a callback disables the system
-    // back button/gesture completely; only the arrow in the top bar works. Add
-    // `onPopInvokedWithResult` that calls `_handleBack()` (same in
-    // RegisterScreen).
+    // NOTE: The system back button/gesture does the same as the back arrow.
     return PopScope(
-      canPop: false,
+      canPop: true,
       child: Scaffold(
         backgroundColor: AppColors.background(context),
         body: SafeArea(
@@ -293,10 +265,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => RegisterScreen(
-                                  returnToDeviceOnBack:
-                                  widget.returnToDeviceOnBack,
-                                ),
+                                builder: (_) => const RegisterScreen(),
                               ),
                             );
                           },
