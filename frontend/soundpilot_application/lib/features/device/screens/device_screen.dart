@@ -144,16 +144,15 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   // ── Remove ─────────────────────────────────────────────────────────────────
 
-  /// Removes the device at position [index] of the given [category]
-  /// ('Earbuds', otherwise belts) and saves the list.
+  /// Removes the device at position [index] of the given [category] and saves
+  /// the list.
   ///
   /// TODO(improve): The device is found by its position in the map
   /// (`keys.elementAt(index)`). This only works as long as the iteration order
-  /// stays stable. Pass the map key (BD_ADDR) instead of the index, and use an
-  /// enum instead of the category strings 'Earbuds' / 'Gürtel'.
-  void _removeDevice(String category, int index) {
+  /// stays stable. Pass the map key (BD_ADDR) instead of the index.
+  void _removeDevice(DeviceCategory category, int index) {
     setState(() {
-      if (category == 'Earbuds') {
+      if (category == DeviceCategory.earbuds) {
         final keyToRemove = _earbuds.keys.elementAt(index);
         _earbuds.remove(keyToRemove);
       } else {
@@ -236,7 +235,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
     // (TODO: real BD_ADDR from the Bluetooth scan, see _scanForSystemHeadphones)
     final tempMacAddress = 'dummy_mac_${DateTime.now().millisecondsSinceEpoch}';
 
-    if (result.type == 'Earbuds') {
+    if (result.type == DeviceCategory.earbuds) {
       final newIndex = _earbuds.length;
       setState(() {
         // Add to map using the new MAC address key
@@ -324,7 +323,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
       ),
       SizedBox(height: scrollable ? 16 : 12),
       Text(
-        'Earbuds',
+        DeviceCategory.earbuds.label,
         style: GoogleFonts.poppins(
           fontSize: subtitleSize,
           fontWeight: FontWeight.w900,
@@ -343,7 +342,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
             child: _DeviceCard(
               name: device.modelId, // Updated from .name to .modelId
               isConnected: device.isConnected,
-              onDelete: () => _removeDevice('Earbuds', index),
+              onDelete: () => _removeDevice(DeviceCategory.earbuds, index),
               onTap: () => _openCalibrationForEarbud(index),
             ),
           );
@@ -351,7 +350,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
       ),
       SizedBox(height: spacing),
       Text(
-        'Gürtel',
+        DeviceCategory.belt.label,
         style: GoogleFonts.poppins(
           fontSize: subtitleSize,
           fontWeight: FontWeight.w900,
@@ -370,7 +369,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
             child: _DeviceCard(
               name: device.modelId, // Updated from .name to .modelId
               isConnected: device.isConnected,
-              onDelete: () => _removeDevice('Gürtel', index),
+              onDelete: () => _removeDevice(DeviceCategory.belt, index),
               onTap: () => _openBeltSetup(index),
             ),
           );
@@ -473,8 +472,8 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
 /// Result of the add-device dialog.
 class _AddDeviceResult {
-  /// Device type: 'Earbuds' or 'Gürtel'.
-  final String type;
+  /// Device type.
+  final DeviceCategory type;
 
   /// Device name (typed in or chosen from the scan).
   final String name;
@@ -505,7 +504,7 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
   late TabController _tabController;
 
   // Shared state
-  String _selectedType = 'Earbuds';
+  DeviceCategory _selectedType = DeviceCategory.earbuds;
 
   // Manual-entry tab state
   final TextEditingController _nameController = TextEditingController();
@@ -558,7 +557,7 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
     Navigator.of(context).pop(_AddDeviceResult(
       type: _selectedType,
       name: name,
-      openCalibration: _selectedType == 'Earbuds',
+      openCalibration: _selectedType == DeviceCategory.earbuds,
     ));
   }
 
@@ -569,7 +568,7 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
     Navigator.of(context).pop(_AddDeviceResult(
       type: _selectedType,
       name: _selectedScannedDevice!,
-      openCalibration: _selectedType == 'Earbuds',
+      openCalibration: _selectedType == DeviceCategory.earbuds,
     ));
   }
 
@@ -896,7 +895,7 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
             ),
           ),
         ),
-        if (_selectedType == 'Earbuds') ...[
+        if (_selectedType == DeviceCategory.earbuds) ...[
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -975,8 +974,8 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog>
 
 /// Two-button toggle to choose the device type ('Earbuds' or 'Gürtel').
 class _TypeSelector extends StatelessWidget {
-  final String selectedType;
-  final ValueChanged<String> onChanged;
+  final DeviceCategory selectedType;
+  final ValueChanged<DeviceCategory> onChanged;
 
   const _TypeSelector({
     required this.selectedType,
@@ -986,13 +985,13 @@ class _TypeSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: ['Earbuds', 'Gürtel'].map((type) {
+      children: DeviceCategory.values.map((type) {
         final selected = selectedType == type;
         return Expanded(
           child: Padding(
             padding: EdgeInsets.only(
-              right: type == 'Earbuds' ? 6 : 0,
-              left: type == 'Gürtel' ? 6 : 0,
+              right: type == DeviceCategory.earbuds ? 6 : 0,
+              left: type == DeviceCategory.belt ? 6 : 0,
             ),
             child: GestureDetector(
               onTap: () => onChanged(type),
@@ -1013,7 +1012,7 @@ class _TypeSelector extends StatelessWidget {
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  type,
+                  type.label,
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,

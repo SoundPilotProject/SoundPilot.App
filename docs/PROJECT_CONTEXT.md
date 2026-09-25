@@ -253,14 +253,21 @@ the Bluetooth scan in `device_screen.dart` is simulated (fixed list,
 
 `isConnected` (both Calib classes) and `category` are runtime-only fields and
 are not written by `toMap()`. `isConnected` is `false` after every load.
+`category` is a `static const` of the enum `DeviceCategory` (`earbuds`,
+`belt`); its `label` is the German UI text ('Earbuds', 'Gürtel'). Use the enum,
+not category strings.
 
 Mind the naming convention: in Dart `volumeLeft`/`volumeRight`, in Firestore
 `volLeft`/`volRight`. The mapping happens exclusively in `fromMap()` /
 `toMap()`. Keep this separation when extending the models.
 
-All `fromMap` factories work defensively with fallbacks (`?? 'unknown'`,
-`?? 0.5`), because Firestore documents can be missing fields. Add new fields in
-the same style.
+All `fromMap` factories work defensively with fallbacks (`'unknown'`, `0.5`),
+because Firestore documents can be missing fields. They check the type
+(`value is String ? value : 'unknown'`), so fields of the wrong type fall back
+too. Device maps are parsed with `parseDeviceMap()`, which skips invalid
+entries instead of throwing (used by `UserModel.fromFirestore` and
+`DeviceStorageService`). Add new fields in the same style; tests are in
+`test/models/user_model_test.dart`.
 
 ## 5. Cloud Functions
 
@@ -373,9 +380,10 @@ Not backed by evidence — check in the code instead of assuming:
   the background. Small tap targets: the delete "X" on device cards and the
   plain-text links (`GestureDetector` + `Text`). The system back button is
   disabled on login/register (`PopScope(canPop: false)`).
-- **Test strategy** is not documented. CI runs `flutter test`, but
-  `test/widget_test.dart` only contains a placeholder test. The security rules
-  are not tested in CI.
+- **Test strategy** is not documented. CI runs `flutter test`; so far only the
+  models are tested (`test/models/user_model_test.dart`), and
+  `test/widget_test.dart` is a placeholder. Services, screens and the security
+  rules are not tested in CI.
 - **Firestore language default:** The function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
 

@@ -69,14 +69,12 @@ class DeviceStorageService {
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
 
       // Reconstruct HeadphoneCalib objects from stored maps
-      final headphones = (decoded['headphones'] as Map<String, dynamic>).map(
-            (key, val) => MapEntry(key, HeadphoneCalib.fromMap(val as Map<String, dynamic>)),
-      );
+      // (invalid entries are skipped, see parseDeviceMap)
+      final headphones =
+          parseDeviceMap(decoded['headphones'], HeadphoneCalib.fromMap);
 
       // Reconstruct BeltCalib objects from stored maps
-      final belts = (decoded['belts'] as Map<String, dynamic>).map(
-            (key, val) => MapEntry(key, BeltCalib.fromMap(val as Map<String, dynamic>)),
-      );
+      final belts = parseDeviceMap(decoded['belts'], BeltCalib.fromMap);
 
       logger.i('DeviceStorageService: Calibration for $_userId loaded successfully.');
       return {
