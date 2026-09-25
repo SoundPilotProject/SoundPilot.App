@@ -7,8 +7,7 @@ import 'package:logger/logger.dart';
 /// Global logger instance for consistent logging throughout the app.
 /// We use a single instance to manage log levels and formatting in one place.
 ///
-/// NOTE: Avoid logging personal data at info level. AuthService used to log
-/// e-mail addresses (see the NOTE there); it no longer does.
+/// NOTE: Avoid logging personal data at info level.
 final logger = Logger(
   printer: PrettyPrinter(
     methodCount: 2,       // Number of method calls to be displayed

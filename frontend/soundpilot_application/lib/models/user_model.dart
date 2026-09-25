@@ -156,8 +156,8 @@ class UserModel {
   /// Builds a [UserModel] from a Firestore document map.
   ///
   /// Missing fields fall back to defaults. Note that the cloud function uses
-  /// 'New User' as the default display name, this factory used 'User'. Both
-  /// now use [defaultDisplayName].
+  /// 'New User' as the default display name, this factory uses
+  /// [defaultDisplayName] (the same value).
   ///
   /// TODO(improve): The fallbacks only cover missing keys. A device entry of
   /// the wrong type (`value as Map<String, dynamic>`) still throws.

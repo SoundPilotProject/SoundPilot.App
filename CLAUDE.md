@@ -427,8 +427,12 @@ Not backed by evidence — check in the code instead of assuming:
   - `TODO(improve):` improvement suggestion from the code review (bugs,
     duplicates, deprecated APIs, missing integrations).
   - `TODO:` original open tasks of the team.
-- **Delete nothing:** Existing comments stay. If one is outdated or wrong,
-  correct it and preserve the original statement in the comment (example:
+- **Keep existing comments:** The team's comments stay and are not rewritten
+  more than needed. If one is outdated or wrong, correct it with a minimal
+  change and preserve the original statement (example:
   `AuthService.loginWithEmail`).
+- **Resolved TODOs are deleted.** When a `TODO` / `TODO(improve)` is fixed,
+  remove it; do not turn it into a history note ("Originally a TODO …
+  Fixed"). Add a short `NOTE:` only if the new code needs an explanation.
 - Find all improvement suggestions:
   `grep -rn "TODO(improve)" frontend firebase/firestore.rules firebase/functions/src`
