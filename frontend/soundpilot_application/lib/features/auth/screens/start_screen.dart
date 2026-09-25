@@ -26,10 +26,11 @@ class StartScreen extends StatelessWidget {
   ///
   /// The flag is consumed by AppEntryPoint on the next app start.
   ///
-  /// TODO(improve): The `Future.delayed(2 s)` below only keeps the loading
-  /// screen visible for a moment. It slows the UI down on purpose and can be
-  /// removed (same in DeviceScreen._logout, TestPage._finishExercise and
-  /// BeltVibrationScreen._finishSetup).
+  /// NOTE: This used to keep the loading screen visible for a moment with a
+  /// `Future.delayed(2 s)`. Original comment: "It slows the UI down on
+  /// purpose and can be removed (same in DeviceScreen._logout,
+  /// TestPage._finishExercise and BeltVibrationScreen._finishSetup)." Removed
+  /// here; the other three call sites still have it.
   Future<void> _continueAsGuest(BuildContext context) async {
     Navigator.push(
       context,
@@ -42,8 +43,6 @@ class StartScreen extends StatelessWidget {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('continueAsGuestThisSession', true);
-
-    await Future.delayed(const Duration(seconds: 2));
 
     if (!context.mounted) return;
 
