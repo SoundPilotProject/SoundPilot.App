@@ -115,10 +115,6 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   /// Signs out and reloads the (now guest) devices.
   ///
-  /// NOTE: Originally a TODO(improve): "This calls `FirebaseAuth.signOut()`
-  /// directly and skips `AuthService.logout()`, so there is no Google sign-out
-  /// and the guest flag is not reset." Fixed: uses `AuthService.logout()`.
-  ///
   /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
   /// visible for a moment and slows the UI down on purpose (same in
   /// TestPage._finishExercise and BeltVibrationScreen._finishSetup;

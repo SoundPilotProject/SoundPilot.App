@@ -28,16 +28,10 @@ class AuthService {
   /// asynchronously. Returns the new user, or `null` if the registration failed.
   Future<UserModel?> registerWithEmail(String email, String password) async {
     try {
-      // NOTE: Originally a TODO(improve): "The e-mail address is personal data
-      // and is written to the log at info level (same in loginWithEmail and
-      // sendPasswordReset). Log it only in debug builds or not at all."
-      // Fixed: no log message in this class contains the e-mail address.
       logger.i("AuthService: Attempting Email registration");
 
-      // NOTE: Originally a TODO(improve): "Do not trim the password.
-      // Leading/trailing spaces are valid password characters, so trimming
-      // changes the password." Fixed: only the e-mail address is trimmed
-      // (same in loginWithEmail and in the login/register screens).
+      // NOTE: Only the e-mail address is trimmed; spaces are valid password
+      // characters (same in loginWithEmail).
       final UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
@@ -151,11 +145,6 @@ class AuthService {
   // ── Logout ─────────────────────────────────────────────────────────────────
 
   /// Signs out of Firebase and Google and clears the guest flag.
-  ///
-  /// NOTE: Originally a TODO(improve): "DeviceScreen._logout() calls
-  /// `FirebaseAuth.signOut()` directly instead of this method, so the Google
-  /// sign-out and the flag reset do not happen there." Fixed: DeviceScreen
-  /// uses this method now.
   Future<void> logout() async {
     // Clear the guest-session flag
     final prefs = await SharedPreferences.getInstance();
@@ -171,9 +160,6 @@ class AuthService {
 
   /// Maps a Firebase [User] to a [UserModel] (without devices).
   /// Returns `null` if [user] is `null`.
-  ///
-  /// NOTE: The fallback name used to be 'No Name'. It is now
-  /// [UserModel.defaultDisplayName], the same as the cloud function.
   UserModel? _mapFirebaseUser(User? user) {
     if (user == null) return null;
     return UserModel(
