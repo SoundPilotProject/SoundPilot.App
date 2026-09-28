@@ -159,11 +159,28 @@ class AuthService {
 
   /// Signs out of Firebase and Google and ends guest mode, so AppEntryPoint
   /// shows the StartScreen.
+  ///
+  /// NOTE: Google Sign-In is only signed out if the user signed in with
+  /// Google; it throws on platforms where it is not configured (web without
+  /// client ID, Windows). A failed Google sign-out is only logged, because the
+  /// Firebase sign-out has already succeeded at that point.
   Future<void> logout() async {
     await GuestModeService.set(false);
 
+    // Read before the sign-out, currentUser is null afterwards.
+    final usedGoogle = _auth.currentUser?.providerData
+            .any((info) => info.providerId == 'google.com') ??
+        false;
+
     await _auth.signOut();
-    await _googleSignIn.signOut();
+
+    if (usedGoogle) {
+      try {
+        await _googleSignIn.signOut();
+      } catch (e) {
+        logger.w("AuthService: Google sign-out failed", error: e);
+      }
+    }
 
     logger.i("AuthService: User logged out");
   }
