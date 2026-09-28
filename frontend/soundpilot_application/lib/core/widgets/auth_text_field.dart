@@ -87,7 +87,7 @@ class AuthTextField extends StatelessWidget {
       keyboardType: keyboardType,
       textInputAction: textInputAction,
       onSubmitted: onSubmitted,
-      style: GoogleFonts.poppins(
+      style: GoogleFonts.plusJakartaSans(
         fontSize: fontSize,
         fontWeight: FontWeight.w700,
         color: AppColors.text(context),
@@ -105,17 +105,17 @@ class AuthTextField extends StatelessWidget {
         // purpose, while the typed text above is bold. That is what separates
         // "not filled in yet" from "this is your input" at a glance. Everything
         // else in the app is bold; do not make these two bold as well.
-        hintStyle: GoogleFonts.poppins(
+        hintStyle: GoogleFonts.plusJakartaSans(
           fontSize: fontSize,
           fontWeight: FontWeight.w600,
           color: mutedText,
         ),
-        labelStyle: GoogleFonts.poppins(
+        labelStyle: GoogleFonts.plusJakartaSans(
           fontSize: fontSize,
           fontWeight: FontWeight.w600,
           color: mutedText,
         ),
-        floatingLabelStyle: GoogleFonts.poppins(
+        floatingLabelStyle: GoogleFonts.plusJakartaSans(
           fontSize: fontSize,
           fontWeight: FontWeight.w600,
           color: AppColors.primary(context),

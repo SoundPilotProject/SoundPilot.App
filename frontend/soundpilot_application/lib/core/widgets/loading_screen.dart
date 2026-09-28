@@ -67,7 +67,7 @@ class LoadingScreen extends StatelessWidget {
                   child: Text(
                     text,
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.plusJakartaSans(
                       fontSize: 29,
                       fontWeight: FontWeight.w800,
                       color: AppColors.text(context),

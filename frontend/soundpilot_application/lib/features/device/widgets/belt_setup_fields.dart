@@ -34,7 +34,7 @@ class RecommendationCard extends StatelessWidget {
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: GoogleFonts.poppins(
+        style: GoogleFonts.plusJakartaSans(
           fontSize: 28,
           fontWeight: FontWeight.w900,
           color: AppColors.text(context),
@@ -68,7 +68,7 @@ class BeltNumberField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = GoogleFonts.poppins(
+    final textStyle = GoogleFonts.plusJakartaSans(
       fontSize: 28,
       fontWeight: FontWeight.w800,
       color: AppColors.text(context),

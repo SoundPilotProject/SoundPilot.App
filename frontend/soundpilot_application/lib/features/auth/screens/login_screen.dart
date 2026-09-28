@@ -193,7 +193,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 child: Text(
                                   'E-Mail und\nPasswort eingeben:',
                                   textAlign: TextAlign.center,
-                                  style: GoogleFonts.poppins(
+                                  style: GoogleFonts.plusJakartaSans(
                                     fontSize: 26,
                                     fontWeight: FontWeight.w900,
                                     color: textColor,
@@ -255,7 +255,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   child: Text(
                                     'Passwort vergessen?',
-                                    style: GoogleFonts.poppins(
+                                    style: GoogleFonts.plusJakartaSans(
                                       fontSize: 19,
                                       fontWeight: FontWeight.w800,
                                       color: AppColors.primary(context),
@@ -298,7 +298,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         textAlign: TextAlign.center,
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
-                                        style: GoogleFonts.poppins(
+                                        style: GoogleFonts.plusJakartaSans(
                                           fontSize: 29,
                                           fontWeight: FontWeight.w800,
                                           color: AppColors.onPrimary(context),
@@ -309,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               Text(
                                 'Noch kein Konto?',
                                 textAlign: TextAlign.center,
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.plusJakartaSans(
                                   fontSize: 17,
                                   fontWeight: FontWeight.w700,
                                   color: textColor,
@@ -333,7 +333,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 child: Text(
                                   'Registrieren',
                                   textAlign: TextAlign.center,
-                                  style: GoogleFonts.poppins(
+                                  style: GoogleFonts.plusJakartaSans(
                                     fontSize: 23,
                                     fontWeight: FontWeight.w800,
                                     color: AppColors.primary(context),
@@ -371,7 +371,7 @@ class _FieldLabel extends StatelessWidget {
     return ExcludeSemantics(
       child: Text(
         text,
-        style: GoogleFonts.poppins(
+        style: GoogleFonts.plusJakartaSans(
           fontSize: 22,
           fontWeight: FontWeight.w900,
           color: AppColors.text(context),

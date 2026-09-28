@@ -92,7 +92,7 @@ class StartScreen extends StatelessWidget {
                             child: Text(
                               "Willkommen bei\nSoundPilot",
                               textAlign: TextAlign.center,
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.plusJakartaSans(
                                 fontSize: 38,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.text(context),
@@ -153,7 +153,7 @@ class StartScreen extends StatelessWidget {
                             child: Text(
                               "Als Gast fortfahren",
                               textAlign: TextAlign.center,
-                              style: GoogleFonts.poppins(
+                              style: GoogleFonts.plusJakartaSans(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w800,
                                 color: AppColors.text(context),
@@ -303,7 +303,7 @@ class _StartButton extends StatelessWidget {
         textAlign: TextAlign.center,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.poppins(
+        style: GoogleFonts.plusJakartaSans(
           fontSize: 30,
           fontWeight: FontWeight.w700,
         ),

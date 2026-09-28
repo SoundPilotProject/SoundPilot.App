@@ -285,7 +285,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
           child: Text(
             'Geräte',
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.plusJakartaSans(
               fontSize: 34,
               fontWeight: FontWeight.w900,
               color: AppColors.text(context),
@@ -330,7 +330,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
         header: true,
         child: Text(
           type.label,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.plusJakartaSans(
             fontSize: 23,
             fontWeight: FontWeight.w900,
             color: AppColors.text(context),
@@ -342,7 +342,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
       if (count == 0)
         Text(
           type.emptyList,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.plusJakartaSans(
             fontSize: 17,
             fontWeight: FontWeight.w700,
             color: AppColors.mutedText(context),
@@ -485,7 +485,7 @@ class _TopActionButton extends StatelessWidget {
       textAlign: TextAlign.center,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
-      style: GoogleFonts.poppins(
+      style: GoogleFonts.plusJakartaSans(
         fontSize: 17,
         fontWeight: FontWeight.w800,
         color: onPrimary,

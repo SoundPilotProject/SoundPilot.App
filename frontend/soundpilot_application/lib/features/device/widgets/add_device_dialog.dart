@@ -159,7 +159,7 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
                 child: Text(
                   'Gerät hinzufügen',
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.plusJakartaSans(
                     fontSize: 23,
                     fontWeight: FontWeight.w800,
                     color: AppColors.text(context),
@@ -210,11 +210,11 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
         indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
         labelPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-        labelStyle: GoogleFonts.poppins(
+        labelStyle: GoogleFonts.plusJakartaSans(
           fontSize: 16,
           fontWeight: FontWeight.w800,
         ),
-        unselectedLabelStyle: GoogleFonts.poppins(
+        unselectedLabelStyle: GoogleFonts.plusJakartaSans(
           fontSize: 16,
           fontWeight: FontWeight.w700,
         ),
@@ -273,7 +273,7 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.plusJakartaSans(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
                     color: _isScanning
@@ -368,7 +368,7 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
                   Expanded(
                     child: Text(
                       name,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.plusJakartaSans(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: selected
@@ -408,7 +408,7 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
               children: [
                 Text(
                   '${type.manualLabel}:',
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.plusJakartaSans(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                     color: AppColors.text(context),
@@ -420,7 +420,7 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
                   controller: _nameController,
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _confirmManual(),
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.plusJakartaSans(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     color: AppColors.text(context),
@@ -434,7 +434,7 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
                     hintText: type.manualHint,
                     // NOTE: The placeholder stays at w600 while the typed text
                     // is bold — see the same note in AuthTextField.
-                    hintStyle: GoogleFonts.poppins(
+                    hintStyle: GoogleFonts.plusJakartaSans(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                       color: AppColors.mutedText(context),
@@ -481,7 +481,7 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
                       Expanded(
                         child: Text(
                           type.nextStep,
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.plusJakartaSans(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: AppColors.mutedText(context),
@@ -517,7 +517,7 @@ class _HintText extends StatelessWidget {
     return Text(
       text,
       textAlign: TextAlign.center,
-      style: GoogleFonts.poppins(
+      style: GoogleFonts.plusJakartaSans(
         fontSize: 15,
         fontWeight: FontWeight.w700,
         color: AppColors.mutedText(context),
@@ -565,7 +565,7 @@ class _DialogActions extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.plusJakartaSans(
               fontSize: 17,
               fontWeight: FontWeight.w800,
               color: Colors.white,
@@ -583,7 +583,7 @@ class _DialogActions extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.plusJakartaSans(
               fontSize: 17,
               fontWeight: FontWeight.w800,
               color: AppColors.primary(context),
@@ -692,7 +692,7 @@ class _TypeSelectorButton extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.plusJakartaSans(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
                 color: foreground,

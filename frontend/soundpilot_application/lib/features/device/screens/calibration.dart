@@ -180,7 +180,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                         textAlign: TextAlign.center,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.plusJakartaSans(
                           fontSize: 26,
                           fontWeight: FontWeight.w800,
                           color: AppColors.onPrimary(context),
@@ -257,7 +257,7 @@ class _VolumeSection extends StatelessWidget {
           child: Text(
             title,
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.plusJakartaSans(
               fontSize: 26,
               fontWeight: FontWeight.w900,
               color: AppColors.text(context),
@@ -269,7 +269,7 @@ class _VolumeSection extends StatelessWidget {
         Text(
           'Lautstärke',
           textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.plusJakartaSans(
             fontSize: 20,
             fontWeight: FontWeight.w700,
             color: AppColors.mutedText(context),
@@ -305,7 +305,7 @@ class _VolumeSection extends StatelessWidget {
                         return Center(
                           child: Text(
                             value.toString(),
-                            style: GoogleFonts.poppins(
+                            style: GoogleFonts.plusJakartaSans(
                               fontSize: 26,
                               fontWeight: FontWeight.w800,
                               color: isSelected
@@ -338,7 +338,7 @@ class _VolumeSection extends StatelessWidget {
                     ),
                     child: Text(
                       selectedValue.toString(),
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.plusJakartaSans(
                         fontSize: 32,
                         fontWeight: FontWeight.w900,
                         color: AppColors.onPrimary(context),

@@ -175,7 +175,7 @@ class _TestPageState extends State<TestPage> {
                                 '${widget.leftVolume}, rechts '
                                 '${widget.rightVolume}',
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.plusJakartaSans(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
                           color: AppColors.text(context),
@@ -207,7 +207,7 @@ class _TestPageState extends State<TestPage> {
                       child: Text(
                         'Beschreibung',
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.plusJakartaSans(
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
                           color: AppColors.text(context),
@@ -221,7 +221,7 @@ class _TestPageState extends State<TestPage> {
                       'Die Wiedergabe wird an deine Links-Rechts-Kalibrierung '
                       'angepasst.',
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.plusJakartaSans(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                         color: AppColors.text(context),
@@ -261,7 +261,7 @@ class _TestPageState extends State<TestPage> {
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
+                      style: GoogleFonts.plusJakartaSans(
                         fontSize: 24,
                         fontWeight: FontWeight.w800,
                         color: AppColors.onPrimary(context),
@@ -334,7 +334,7 @@ class _PlaybackButton extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.plusJakartaSans(
                 fontSize: 23,
                 fontWeight: FontWeight.w800,
                 color: foreground,

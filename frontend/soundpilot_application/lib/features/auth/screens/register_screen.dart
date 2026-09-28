@@ -308,7 +308,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.plusJakartaSans(
                     fontSize: 28,
                     fontWeight: FontWeight.w800,
                     color: AppColors.onPrimary(context),
@@ -321,7 +321,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         Text(
           'Bereits ein Konto?',
           textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.plusJakartaSans(
             fontSize: _labelFontSize,
             fontWeight: FontWeight.w800,
             color: AppColors.text(context),
@@ -349,7 +349,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.plusJakartaSans(
               fontSize: 25,
               fontWeight: FontWeight.w800,
               color: AppColors.primary(context),
@@ -375,7 +375,7 @@ class _FieldLabel extends StatelessWidget {
     return ExcludeSemantics(
       child: Text(
         text,
-        style: GoogleFonts.poppins(
+        style: GoogleFonts.plusJakartaSans(
           fontSize: _captionFontSize,
           fontWeight: FontWeight.w800,
           color: AppColors.text(context),
@@ -421,7 +421,7 @@ class _BeltDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = GoogleFonts.poppins(
+    final textStyle = GoogleFonts.plusJakartaSans(
       fontSize: 21,
       fontWeight: FontWeight.w800,
       color: AppColors.text(context),

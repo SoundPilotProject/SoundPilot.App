@@ -64,7 +64,7 @@ class DeviceCard extends StatelessWidget {
               name,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.plusJakartaSans(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
                 color: onPrimary,
@@ -203,7 +203,7 @@ class _LegendRow extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: GoogleFonts.poppins(
+            style: GoogleFonts.plusJakartaSans(
               fontSize: 16,
               fontWeight: FontWeight.w800,
               color: AppColors.text(context),

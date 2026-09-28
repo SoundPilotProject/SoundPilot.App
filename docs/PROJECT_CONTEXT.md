@@ -63,7 +63,7 @@ When in doubt, choose the more accessible option and mention the trade-off.
 | `google_sign_in` | Google login |
 | `cloud_firestore` | included, but **not yet used** in the Dart code (see §4) |
 | `shared_preferences` | current local persistence (devices, calibration, guest flag) |
-| `google_fonts` | Poppins font |
+| `google_fonts` | Plus Jakarta Sans font |
 | `audioplayers` | Audio playback (calibration) |
 | `logger` | global `logger` in `core/app_logger.dart` |
 
@@ -111,10 +111,10 @@ features/
                                  belt_setup_fields
 ```
 
-- **Fonts:** Poppins is set once as the `textTheme` of both themes in
-  `main.dart` (`GoogleFonts.poppinsTextTheme`). Screens still name
-  `GoogleFonts.poppins(...)` for their own sizes/weights; no other family is
-  used anywhere.
+- **Fonts:** Plus Jakarta Sans is set once as the `textTheme` of both themes
+  in `main.dart` (`GoogleFonts.plusJakartaSansTextTheme`). Screens still name
+  `GoogleFonts.plusJakartaSans(...)` for their own sizes/weights; no other
+  family is used anywhere.
 - **Weight:** every visible text is bold (`w700` or heavier) — a request from
   the team for legibility. The only exception is the placeholder and the label
   *inside* an input box (`hintStyle` / `labelStyle` / `floatingLabelStyle`),

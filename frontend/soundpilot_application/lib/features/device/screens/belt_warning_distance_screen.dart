@@ -89,7 +89,7 @@ class _BeltWarningDistanceScreenState extends State<BeltWarningDistanceScreen> {
                               child: Text(
                                 'Distanz in cm',
                                 textAlign: TextAlign.center,
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.plusJakartaSans(
                                   fontSize: 28,
                                   fontWeight: FontWeight.w900,
                                   color: AppColors.text(context),
@@ -125,7 +125,7 @@ class _BeltWarningDistanceScreenState extends State<BeltWarningDistanceScreen> {
                                 textAlign: TextAlign.center,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.poppins(
+                                style: GoogleFonts.plusJakartaSans(
                                   fontSize: 27,
                                   fontWeight: FontWeight.w800,
                                   color: AppColors.onPrimary(context),

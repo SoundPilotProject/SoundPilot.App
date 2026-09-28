@@ -99,7 +99,7 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
                       child: Text(
                         'Stärke in %',
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.plusJakartaSans(
                           fontSize: 27,
                           fontWeight: FontWeight.w900,
                           color: AppColors.text(context),
@@ -119,7 +119,7 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
                       child: Text(
                         'Seite der Vibration',
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.plusJakartaSans(
                           fontSize: 27,
                           fontWeight: FontWeight.w900,
                           color: AppColors.text(context),
@@ -167,7 +167,7 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
                         textAlign: TextAlign.center,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.poppins(
+                        style: GoogleFonts.plusJakartaSans(
                           fontSize: 26,
                           fontWeight: FontWeight.w800,
                           color: AppColors.onPrimary(context),
@@ -245,7 +245,7 @@ class _SideButton extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.plusJakartaSans(
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
                 color: textColor,

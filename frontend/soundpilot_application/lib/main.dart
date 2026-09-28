@@ -38,8 +38,8 @@ class SoundPilotApp extends StatelessWidget {
 
   /// Builds the theme for the given [brightness] from the [AppColors] palette.
   ///
-  /// Poppins is applied here as the app-wide font, so every screen inherits it
-  /// and no widget has to name a font family itself.
+  /// Plus Jakarta Sans is applied here as the app-wide font, so every screen
+  /// inherits it and no widget has to name a font family itself.
   static ThemeData _buildTheme(Brightness brightness) {
     final base = ThemeData(brightness: brightness, useMaterial3: true);
 
@@ -59,11 +59,11 @@ class SoundPilotApp extends StatelessWidget {
         surface: background,
         onSurface: text,
       ),
-      textTheme: GoogleFonts.poppinsTextTheme(base.textTheme)
+      textTheme: GoogleFonts.plusJakartaSansTextTheme(base.textTheme)
           .apply(bodyColor: text, displayColor: text),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.surfaceOf(brightness),
-        contentTextStyle: GoogleFonts.poppins(
+        contentTextStyle: GoogleFonts.plusJakartaSans(
           fontSize: 17,
           fontWeight: FontWeight.w700,
           color: text,
