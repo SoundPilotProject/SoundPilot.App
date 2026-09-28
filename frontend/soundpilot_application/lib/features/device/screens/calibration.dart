@@ -3,9 +3,11 @@
 // Left/right volume calibration for an earbud (two scroll wheels).
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/loading_screen.dart';
 import '../../../core/services/calibration_service.dart';
 import 'TestPage.dart';
@@ -119,86 +121,69 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _CalibrationTopBar(
+            AppTopBar(
+              title: 'Kalibrierung',
               onBackPressed: () => Navigator.pop(context),
             ),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(28, 20, 28, 18),
+              // Scrollable: the two wheels plus the button need more room than
+              // a small phone offers at large system font sizes.
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      'Linke Seite:',
-                      style: GoogleFonts.poppins(
-                        fontSize: 27,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.text(context),
-                        height: 1.0,
-                      ),
+                    _VolumeSection(
+                      title: 'Linke Seite',
+                      semanticSide: 'Linke Seite',
+                      selectedValue: _leftVolume,
+                      values: _values,
+                      controller: _leftController,
+                      onSelectedItemChanged: (index) {
+                        setState(() {
+                          _leftVolume = _values[index];
+                        });
+                      },
                     ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: _VolumeSection(
-                        label: 'Lautstärke:',
-                        selectedValue: _leftVolume,
-                        values: _values,
-                        controller: _leftController,
-                        onSelectedItemChanged: (index) {
-                          setState(() {
-                            _leftVolume = _values[index];
-                          });
-                        },
-                      ),
+                    const SizedBox(height: 24),
+                    _VolumeSection(
+                      title: 'Rechte Seite',
+                      semanticSide: 'Rechte Seite',
+                      selectedValue: _rightVolume,
+                      values: _values,
+                      controller: _rightController,
+                      onSelectedItemChanged: (index) {
+                        setState(() {
+                          _rightVolume = _values[index];
+                        });
+                      },
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Rechte Seite:',
-                      style: GoogleFonts.poppins(
-                        fontSize: 27,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.text(context),
-                        height: 1.0,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: _VolumeSection(
-                        label: 'Lautstärke:',
-                        selectedValue: _rightVolume,
-                        values: _values,
-                        controller: _rightController,
-                        onSelectedItemChanged: (index) {
-                          setState(() {
-                            _rightVolume = _values[index];
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 82,
-                      child: ElevatedButton(
-                        onPressed: _openTestPage,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary(context),
-                          foregroundColor: AppColors.onPrimary(context),
-                          elevation: 4,
-                          // TODO(improve): `withOpacity` is deprecated, use
-                          // `withValues(alpha: ...)` (see LoginScreen).
-                          shadowColor: Colors.black.withOpacity(0.18),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(40),
-                          ),
+                    const SizedBox(height: 28),
+                    ElevatedButton(
+                      onPressed: _openTestPage,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary(context),
+                        foregroundColor: AppColors.onPrimary(context),
+                        elevation: 4,
+                        shadowColor: Colors.black.withValues(alpha: 0.18),
+                        minimumSize: const Size(double.infinity, 76),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 14,
                         ),
-                        child: Text(
-                          'Test-Übung',
-                          style: GoogleFonts.poppins(
-                            fontSize: 27,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.onPrimary(context),
-                          ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                      ),
+                      child: Text(
+                        'Test-Übung',
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.onPrimary(context),
                         ),
                       ),
                     ),
@@ -213,104 +198,101 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   }
 }
 
-// ── Top Bar ──────────────────────────────────────────────────────────────────
-
-/// Blue top bar with a back arrow and the title 'Kalibrierung'.
-///
-/// TODO(improve): Duplicate of the other screens' top bars, see
-/// `_LoginTopBar`.
-class _CalibrationTopBar extends StatelessWidget {
-  final VoidCallback onBackPressed;
-
-  const _CalibrationTopBar({required this.onBackPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 94,
-      width: double.infinity,
-      color: AppColors.primary(context),
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onBackPressed,
-            splashRadius: 24,
-            icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: AppColors.onPrimary(context),
-              size: 36,
-            ),
-          ),
-          Expanded(
-            child: Center(
-              child: Transform.translate(
-                offset: const Offset(-18, 0),
-                child: Text(
-                  'Kalibrierung',
-                  style: GoogleFonts.poppins(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.onPrimary(context),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ── Volume Picker ────────────────────────────────────────────────────────────
 
-/// One row of the screen: a [label] and a scroll wheel for the volume.
+/// One side of the calibration: a heading and a scroll wheel for the volume.
 ///
 /// The selected value is drawn transparent inside the wheel and shown in the
 /// highlighted box that is stacked on top of it instead.
+///
+/// Accessibility note: the wheel is the only visible control, but it is wrapped
+/// in a semantics node that exposes the current value plus an increase and a
+/// decrease action. Screen readers therefore offer the standard
+/// "swipe up / swipe down to adjust" gesture, which a bare
+/// [ListWheelScrollView] does not provide.
 class _VolumeSection extends StatelessWidget {
-  final String label;
+  /// Visible heading, e.g. 'Linke Seite'.
+  final String title;
+
+  /// Side name used in the screen-reader label.
+  final String semanticSide;
+
   final int selectedValue;
   final List<int> values;
   final FixedExtentScrollController controller;
   final ValueChanged<int> onSelectedItemChanged;
 
   const _VolumeSection({
-    required this.label,
+    required this.title,
+    required this.semanticSide,
     required this.selectedValue,
     required this.values,
     required this.controller,
     required this.onSelectedItemChanged,
   });
 
+  /// Moves the wheel by [step] items; the wheel then reports the new value
+  /// through [onSelectedItemChanged].
+  ///
+  /// Only reachable through the screen-reader actions, see the class docs.
+  void _step(int step) {
+    final target = (selectedValue - 1 + step).clamp(0, values.length - 1);
+    if (target == selectedValue - 1) return;
+
+    HapticFeedback.selectionClick();
+    controller.animateToItem(
+      target,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
+        Semantics(
+          header: true,
           child: Text(
-            label,
+            title,
+            textAlign: TextAlign.center,
             style: GoogleFonts.poppins(
-              fontSize: 24,
+              fontSize: 26,
               fontWeight: FontWeight.w900,
               color: AppColors.text(context),
-              height: 1.0,
+              height: 1.2,
             ),
           ),
         ),
-        SizedBox(
-          width: 190,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Center(
-                child: SizedBox(
-                  width: 176,
-                  height: 190,
+        const SizedBox(height: 6),
+        Text(
+          'Lautstärke',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: AppColors.mutedText(context),
+            height: 1.2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Semantics(
+          label: '$semanticSide, Lautstärke',
+          value: '$selectedValue von 100',
+          increasedValue: '${(selectedValue + 1).clamp(1, 100)} von 100',
+          decreasedValue: '${(selectedValue - 1).clamp(1, 100)} von 100',
+          onIncrease: () => _step(1),
+          onDecrease: () => _step(-1),
+          child: SizedBox(
+            height: 180,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                ExcludeSemantics(
                   child: ListWheelScrollView.useDelegate(
                     controller: controller,
-                    itemExtent: 38,
+                    itemExtent: 44,
                     diameterRatio: 10,
                     perspective: 0.003,
                     physics: const FixedExtentScrollPhysics(),
@@ -324,7 +306,7 @@ class _VolumeSection extends StatelessWidget {
                           child: Text(
                             value.toString(),
                             style: GoogleFonts.poppins(
-                              fontSize: 24,
+                              fontSize: 26,
                               fontWeight: FontWeight.w800,
                               color: isSelected
                                   ? Colors.transparent
@@ -336,35 +318,36 @@ class _VolumeSection extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
-              Positioned(
-                left: 7,
-                child: Container(
-                  width: 176,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary(context),
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.14),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+                // Highlight box over the centre item. IgnorePointer keeps the
+                // wheel draggable through it.
+                IgnorePointer(
+                  child: Container(
+                    height: 72,
+                    width: 190,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary(context),
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.14),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      selectedValue.toString(),
+                      style: GoogleFonts.poppins(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.onPrimary(context),
                       ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    selectedValue.toString(),
-                    style: GoogleFonts.poppins(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.onPrimary(context),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],

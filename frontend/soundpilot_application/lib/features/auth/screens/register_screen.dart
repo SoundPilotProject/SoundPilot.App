@@ -7,6 +7,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_top_bar.dart';
+import '../../../core/widgets/auth_text_field.dart';
 import '../../../core/widgets/loading_screen.dart';
 import '../../device/screens/device_screen.dart';
 import '../auth_service.dart';
@@ -41,10 +43,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  final AuthService _authService = AuthService();
+  /// NOTE: `late` on purpose. AuthService reaches for `FirebaseAuth.instance`
+  /// in its own field initialisers, so building it eagerly would tie merely
+  /// showing this screen to an initialised Firebase.
+  late final AuthService _authService = AuthService();
 
   bool _obscurePassword = true;
   bool _isLoading = false;
+
   /// Answer to the 'Gürtel' (belt) question of the form: 'NEIN' or 'JA'.
   /// Not used yet, see the note at the name controllers.
   String _selectedBelt = 'NEIN';
@@ -125,7 +131,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const DeviceScreen()),
-          (route) => false,
+      (route) => false,
     );
   }
 
@@ -149,207 +155,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
-    // TODO(improve): `canPop: false` without a callback disables the system
-    // back button/gesture completely (see LoginScreen).
+    // `canPop: false` keeps the route, `onPopInvokedWithResult` routes the
+    // system back button/gesture through the same handler as the arrow.
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleBack();
+      },
       child: Scaffold(
         backgroundColor: AppColors.background(context),
         body: SafeArea(
           child: Column(
             children: [
-              _RegisterTopBar(onBackPressed: _handleBack),
+              AppTopBar(title: 'Registrieren', onBackPressed: _handleBack),
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(30, 12, 30, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Konto erstellen',
-                        style: GoogleFonts.poppins(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.text(context),
-                          height: 1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Vorname',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.text(context),
-                          height: 1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      _RegisterTextField(
-                        controller: _firstNameController,
-                        hintText: 'Vorname',
-                        icon: Icons.person_outline,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Nachname',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.text(context),
-                          height: 1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      _RegisterTextField(
-                        controller: _lastNameController,
-                        hintText: 'Nachname',
-                        icon: Icons.person_outline,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'E-Mail',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.text(context),
-                          height: 1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      _RegisterTextField(
-                        controller: _emailController,
-                        hintText: 'E-Mail',
-                        icon: Icons.mail_outline,
-                        keyboardType: TextInputType.emailAddress,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Passwort',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.text(context),
-                          height: 1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      _RegisterTextField(
-                        controller: _passwordController,
-                        hintText: 'Passwort',
-                        icon: Icons.lock_outline,
-                        obscureText: _obscurePassword,
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            color: AppColors.mutedText(context),
-                            size: 26,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Gürtel',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.text(context),
-                          height: 1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      _BeltDropdown(
-                        value: _selectedBelt,
-                        items: _beltOptions,
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setState(() {
-                            _selectedBelt = value;
-                          });
-                        },
-                      ),
-                      const Spacer(),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 60,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _finishRegister,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary(context),
-                            foregroundColor: AppColors.onPrimary(context),
-                            elevation: 3,
-                            // TODO(improve): `withOpacity` is deprecated, use
-                            // `withValues(alpha: ...)` (see LoginScreen).
-                            shadowColor: Colors.black.withOpacity(0.22),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(50),
-                            ),
-                          ),
-                          child: _isLoading
-                              ? SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: AppColors.onPrimary(context),
-                              strokeWidth: 3,
-                            ),
-                          )
-                              : Text(
-                            'Registrieren',
-                            style: GoogleFonts.poppins(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.onPrimary(context),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Center(
-                        child: Text(
-                          'Bereits ein Konto?',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.text(context),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Center(
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => LoginScreen(
-                                  returnToDeviceOnBack:
-                                  widget.returnToDeviceOnBack,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Text(
-                            'Hier anmelden',
-                            style: GoogleFonts.poppins(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primary(context),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                // The form scrolls. It used to be squeezed onto one screen
+                // instead, which forced small captions and short fields — the
+                // opposite of what this app is for. Large, readable controls
+                // win over a form that needs no scrolling; see §7 of
+                // docs/PROJECT_CONTEXT.md.
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+                  child: _buildForm(context),
                 ),
               ),
             ],
@@ -358,130 +189,223 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
     );
   }
-}
 
-/// Blue top bar with a back arrow and the title 'Registrieren'.
-///
-/// TODO(improve): Duplicate of the other screens' top bars, see
-/// `_LoginTopBar`.
-class _RegisterTopBar extends StatelessWidget {
-  final VoidCallback onBackPressed;
+  /// The form: five labelled controls, the submit button and the link to the
+  /// login.
+  ///
+  /// Nothing here has a fixed height and nothing caps the system font size.
+  /// Every control grows with the text, and the scroll view takes care of the
+  /// rest, so the form stays usable at any accessibility font setting.
+  Widget _buildForm(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _FieldLabel('Vorname'),
+        const SizedBox(height: _captionGap),
+        AuthTextField(
+          controller: _firstNameController,
+          label: 'Vorname',
+          hintText: 'Vorname',
+          icon: Icons.person_outline,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: _gapBetweenFields),
 
-  const _RegisterTopBar({
-    required this.onBackPressed,
-  });
+        const _FieldLabel('Nachname'),
+        const SizedBox(height: _captionGap),
+        AuthTextField(
+          controller: _lastNameController,
+          label: 'Nachname',
+          hintText: 'Nachname',
+          icon: Icons.person_outline,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: _gapBetweenFields),
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 86,
-      width: double.infinity,
-      color: AppColors.primary(context),
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onBackPressed,
-            splashRadius: 24,
+        const _FieldLabel('E-Mail'),
+        const SizedBox(height: _captionGap),
+        AuthTextField(
+          controller: _emailController,
+          label: 'E-Mail',
+          hintText: 'E-Mail',
+          icon: Icons.mail_outline,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: _gapBetweenFields),
+
+        const _FieldLabel('Passwort'),
+        const SizedBox(height: _captionGap),
+        AuthTextField(
+          controller: _passwordController,
+          // The caption only says 'Passwort'; the rule lives in the placeholder,
+          // and in the screen-reader label so it survives once the field has
+          // content.
+          label: 'Passwort, muss 6 Zeichen enthalten',
+          hintText: 'Passwort muss 6 Zeichen enthalten',
+          icon: Icons.lock_outline,
+          obscureText: _obscurePassword,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _finishRegister(),
+          suffixIcon: IconButton(
+            tooltip:
+                _obscurePassword ? 'Passwort anzeigen' : 'Passwort verbergen',
+            onPressed: () {
+              setState(() {
+                _obscurePassword = !_obscurePassword;
+              });
+            },
             icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: AppColors.onPrimary(context),
-              size: 34,
+              _obscurePassword
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
+              color: AppColors.mutedText(context),
+              size: 30,
             ),
           ),
-          Expanded(
-            child: Center(
-              child: Transform.translate(
-                offset: const Offset(-18, 0),
-                child: Text(
+        ),
+        const SizedBox(height: _gapBetweenFields),
+
+        const _FieldLabel('Gürtel'),
+        const SizedBox(height: _captionGap),
+        _BeltDropdown(
+          value: _selectedBelt,
+          items: _beltOptions,
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() {
+              _selectedBelt = value;
+            });
+          },
+        ),
+
+        const SizedBox(height: _gapBeforeSubmit),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _finishRegister,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary(context),
+            foregroundColor: AppColors.onPrimary(context),
+            disabledBackgroundColor: AppColors.inactiveButton(context),
+            elevation: 3,
+            shadowColor: Colors.black.withValues(alpha: 0.22),
+            minimumSize: const Size(double.infinity, _submitHeight),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(50),
+            ),
+          ),
+          child: _isLoading
+              ? SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    color: AppColors.onPrimary(context),
+                    strokeWidth: 3,
+                  ),
+                )
+              : Text(
                   'Registrieren',
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.poppins(
-                    fontSize: 25,
+                    fontSize: 28,
                     fontWeight: FontWeight.w800,
                     color: AppColors.onPrimary(context),
                   ),
                 ),
+        ),
+        const SizedBox(height: _gapBeforeLabel),
+        // Plain label: not a control, so it stays in the normal text colour and
+        // does not react to taps.
+        Text(
+          'Bereits ein Konto?',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            fontSize: _labelFontSize,
+            fontWeight: FontWeight.w800,
+            color: AppColors.text(context),
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Only this part is the control, so it carries the accent colour.
+        TextButton(
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LoginScreen(
+                  returnToDeviceOnBack: widget.returnToDeviceOnBack,
+                ),
               ),
+            );
+          },
+          style: TextButton.styleFrom(
+            minimumSize: const Size(double.infinity, _linkHeight),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          ),
+          child: Text(
+            'Hier anmelden',
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.poppins(
+              fontSize: 25,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primary(context),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// Rounded text field with a leading icon and an optional trailing icon (used
-/// for the password visibility toggle).
+/// Bold caption above a form control.
 ///
-/// TODO(improve): Almost the same field exists as `_LoginTextField`; share one
-/// widget.
-class _RegisterTextField extends StatelessWidget {
-  final TextEditingController controller;
-  final String hintText;
-  final IconData icon;
-  final Widget? suffixIcon;
-  final bool obscureText;
-  final TextInputType? keyboardType;
+/// Hidden from the semantics tree: the control below carries the same text as
+/// its own (invisible) screen-reader label, and announcing it twice is noise.
+class _FieldLabel extends StatelessWidget {
+  final String text;
 
-  const _RegisterTextField({
-    required this.controller,
-    required this.hintText,
-    required this.icon,
-    this.suffixIcon,
-    this.obscureText = false,
-    this.keyboardType,
-  });
+  const _FieldLabel(this.text);
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 56,
-      child: TextField(
-        controller: controller,
-        obscureText: obscureText,
-        keyboardType: keyboardType,
+    return ExcludeSemantics(
+      child: Text(
+        text,
         style: GoogleFonts.poppins(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
+          fontSize: _captionFontSize,
+          fontWeight: FontWeight.w800,
           color: AppColors.text(context),
-        ),
-        decoration: InputDecoration(
-          hintText: hintText,
-          hintStyle: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppColors.mutedText(context),
-          ),
-          prefixIcon: Icon(
-            icon,
-            color: AppColors.mutedText(context),
-            size: 27,
-          ),
-          suffixIcon: suffixIcon,
-          filled: true,
-          fillColor: AppColors.background(context),
-          contentPadding: const EdgeInsets.symmetric(vertical: 14),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide(
-              color: AppColors.inputBorder(context),
-              width: 2,
-            ),
-          ),
-          // TODO(improve): Same as `enabledBorder`, so there is no focus
-          // feedback (see _LoginTextField).
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide(
-              color: AppColors.inputBorder(context),
-              width: 2,
-            ),
-          ),
+          height: 1.25,
         ),
       ),
     );
   }
 }
+
+// ── Layout constants of the registration form ────────────────────────────────
+//
+// Sizes are generous on purpose: this app is built for people with impaired
+// vision, so the controls have to be large and the captions easy to read. The
+// form scrolls, so nothing has to be traded away for that.
+
+/// Gap between one control and the caption of the next.
+const double _gapBetweenFields = 22;
+
+/// Gap between a caption and the control it labels.
+const double _captionGap = 8;
+
+/// Font size of the black caption above a control.
+const double _captionFontSize = 23;
+
+const double _gapBeforeSubmit = 32;
+const double _gapBeforeLabel = 18;
+const double _submitHeight = 78;
+const double _linkHeight = 56;
+const double _labelFontSize = 20;
 
 /// Dropdown with the answers ('NEIN' / 'JA') to the belt question of the form.
 class _BeltDropdown extends StatelessWidget {
@@ -497,46 +421,44 @@ class _BeltDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppColors.inputBorder(context),
-          width: 2,
+    final textStyle = GoogleFonts.poppins(
+      fontSize: 21,
+      fontWeight: FontWeight.w800,
+      color: AppColors.text(context),
+    );
+
+    return Semantics(
+      label: 'Gürtel vorhanden',
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 72),
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: AppColors.inputBorder(context),
+            width: 2.2,
+          ),
         ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          isExpanded: true,
-          icon: Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: AppColors.text(context),
-            size: 26,
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: value,
+            isExpanded: true,
+            icon: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: AppColors.text(context),
+              size: 34,
+            ),
+            dropdownColor: AppColors.background(context),
+            borderRadius: BorderRadius.circular(16),
+            style: textStyle,
+            items: items.map((item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(item, style: textStyle),
+              );
+            }).toList(),
+            onChanged: onChanged,
           ),
-          dropdownColor: AppColors.background(context),
-          borderRadius: BorderRadius.circular(16),
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: AppColors.text(context),
-          ),
-          items: items.map((item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(
-                item,
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.text(context),
-                ),
-              ),
-            );
-          }).toList(),
-          onChanged: onChanged,
         ),
       ),
     );

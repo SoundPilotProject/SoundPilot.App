@@ -28,6 +28,7 @@ class SoundPilotLogo extends StatelessWidget {
           : "assets/images/SoundPilotLogoLight.png",
       width: width,
       fit: BoxFit.contain,
+      semanticLabel: "SoundPilot",
     );
   }
 }

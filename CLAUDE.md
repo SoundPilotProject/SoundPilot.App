@@ -33,8 +33,15 @@ statement about the current state of the code):
 - **Touch targets:** at least 48×48 dp, with enough spacing between them.
 - **Contrast:** at least WCAG AA (4.5:1 for text, 3:1 for large text and
   controls) in both light and dark theme (`core/theme/app_colors.dart`).
+  `test/color_contrast_test.dart` measures this on the palette and fails CI if
+  it is broken. If a colour change makes it fail, change the colour — do not
+  lower the threshold. Note that `mutedText` has to hold 4.5:1 on the *darker*
+  `surface`, not only on `background`.
 - **Text scaling:** layouts must not break or clip with large system font
   sizes; no fixed heights for text containers.
+  `test/accessibility_layout_test.dart` renders the screens at text scale 1.0,
+  1.6 and 2.0 on a 360x720 phone. No screen caps the system font size any more
+  (the registration form used to, see §7).
 - **Not color alone:** never convey state (e.g. connected, error) by color only;
   add text or an icon.
 - **Multiple channels:** important feedback (e.g. belt warning distance,
@@ -81,13 +88,14 @@ all Functions commands from `firebase/functions/`.
 ### Structure of `lib/`
 
 ```
-main.dart                        Entry point, theme, start routing (AppEntryPoint)
+main.dart                        Entry point, themes, start routing (AppEntryPoint)
 firebase_options.dart            generated
 models/user_model.dart           HeadphoneCalib, BeltCalib, UserModel
 core/
   app_logger.dart
   theme/app_colors.dart          Colors depending on context (light/dark)
-  widgets/                       LoadingScreen, SoundPilotLogo
+  widgets/                       LoadingScreen, SoundPilotLogo,
+                                 AppTopBar, AuthTextField
   services/
     device_storage_service.dart  local persistence of devices + calibration
     calibration_service.dart     Volume L/R as int (0–100)
@@ -98,8 +106,27 @@ features/
   device/screens/                device_screen, calibration,
                                  belt_vibration_screen,
                                  belt_warning_distance_screen, TestPage
+  device/widgets/                device_type (DeviceType + device scan),
+                                 add_device_dialog, device_card,
+                                 belt_setup_fields
 ```
 
+- **Fonts:** Poppins is set once as the `textTheme` of both themes in
+  `main.dart` (`GoogleFonts.poppinsTextTheme`). Screens still name
+  `GoogleFonts.poppins(...)` for their own sizes/weights; no other family is
+  used anywhere.
+- **Weight:** every visible text is bold (`w700` or heavier) — a request from
+  the team for legibility. The only exception is the placeholder and the label
+  *inside* an input box (`hintStyle` / `labelStyle` / `floatingLabelStyle`),
+  which stay at `w600`, so an empty field is distinguishable from the bold text
+  the user types into it. `grep -rn "FontWeight.w[1-6]00" lib` should only ever
+  find those.
+- **Shared widgets:** `AppTopBar` replaced the five nearly identical private top
+  bars, `AuthTextField` the two login/register field duplicates.
+- **Device types:** the `DeviceType` enum
+  (`features/device/widgets/device_type.dart`) carries every user-visible word
+  of a type (labels, scan button, hints). Do not compare bare strings like
+  `'Earbuds'` / `'Gürtel'` again.
 - **State management:** no package, only `StatefulWidget` + `setState`.
 - **Routing:** `Navigator.push` with `MaterialPageRoute`, no router package.
 - **Start:** `AppEntryPoint` opens `DeviceScreen` if a Firebase user is signed
@@ -362,20 +389,34 @@ Not backed by evidence — check in the code instead of assuming:
   checked.
 - **`AuthService`** returns `null` on any error; the UI cannot distinguish the
   reason.
-- **Accessibility gaps** (full list: `docs/ACCESSIBILITY_AUDIT.md`;
-  static code review, not tested on a device, nothing fixed yet): the
-  screens do not yet meet the guidelines in §1. There is no `Semantics`,
-  `semanticLabel` or `tooltip` anywhere in `lib/`, no `MediaQuery`/text-scale
-  handling, no haptics, no app locale. Login, register, start, calibration and
-  test screens are not scrollable and overflow with large text or the keyboard.
-  Connection state (red/green dot), selected state (type selector, L/M/R) is
-  color only. `AppColors.mutedText` in light mode has about 3.6:1 contrast on
-  the background. Small tap targets: the delete "X" on device cards and the
-  plain-text links (`GestureDetector` + `Text`). The system back button is
-  disabled on login/register (`PopScope(canPop: false)`).
-- **Test strategy** is not documented. CI runs `flutter test`, but
-  `test/widget_test.dart` only contains a placeholder test. The security rules
-  are not tested in CI.
+- **Accessibility: partly fixed, never tested on a device.** The full list of
+  findings is still `docs/ACCESSIBILITY_AUDIT.md` (static code review). Done so
+  far: every screen scrolls and survives text scale 2.0 (exception below);
+  `Semantics` headers, labels and tooltips on all icon-only controls; 48x48 dp
+  tap targets; state is no longer carried by colour alone (connection dot, type
+  selector and side buttons all carry an icon too); the whole palette measured
+  against WCAG AA in `test/color_contrast_test.dart`; the system back button
+  works again on login/register (`PopScope` with `onPopInvokedWithResult`).
+  Still open: no app locale / localisation, haptics only in the calibration
+  wheel, nothing verified with TalkBack or VoiceOver on real hardware.
+- **The registration form scrolls; do not try to fit it on one screen again.**
+  It was built without a scroll view for a while, because a form that needs no
+  scrolling had been asked for. Holding that promise cost a text-scale cap
+  (first 1.3x, then 1.15x), 16 px captions and 58 px fields — small print in an
+  app whose whole point is impaired vision. That was the wrong trade and was
+  reverted. Measured now on a 360x720 phone: caption 29 px, field 72 px, submit
+  button 108 px at scale 1.0, growing to 116 / 103 / 188 px at scale 2.0, with
+  no cap anywhere. Sizes are bounded from below by
+  `test/accessibility_layout_test.dart`. If the form has to get shorter, remove
+  a field (first name, last name and the belt question are not used yet, see
+  the TODO in the file) — do not shrink the type.
+- **Test strategy** is not documented. `test/accessibility_layout_test.dart`
+  renders the screens on a 360x720 phone in both themes at text scale 1.0/1.6/
+  2.0 and checks the add-device dialog; `test/color_contrast_test.dart` checks
+  the palette; `test/widget_test.dart` is still a placeholder. `DeviceScreen`
+  and `CalibrationScreen` are not covered because they read
+  `FirebaseAuth.instance` (the latter through `CalibrationService`) and need a
+  Firebase test double. The security rules are not tested in CI.
 - **Firestore language default:** The function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
 

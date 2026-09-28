@@ -6,10 +6,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'features/auth/screens/start_screen.dart';
 import 'features/device/screens/device_screen.dart';
+import 'core/theme/app_colors.dart';
 import 'core/widgets/loading_screen.dart';
 import 'firebase_options.dart';
 
@@ -28,16 +30,48 @@ Future<void> main() async {
 
 /// Root widget: a Material 3 app with a light and a dark theme.
 ///
-/// The themes only set the brightness. All actual colours come from
-/// [AppColors], which switches on the current brightness.
-///
-/// TODO(improve): Define a ColorScheme and a TextTheme (GoogleFonts.poppins)
-/// here. Material widgets that are not styled by hand (SnackBar, Dialog,
-/// TabBar, ...) would then follow the app palette, and the
-/// `GoogleFonts.poppins(...)` styles that are repeated in nearly every screen
-/// could be replaced by theme text styles.
+/// Both themes are built by [_buildTheme] from [AppColors], so Material
+/// widgets that are not styled by hand (SnackBar, Dialog, TabBar, ...) follow
+/// the app palette as well.
 class SoundPilotApp extends StatelessWidget {
   const SoundPilotApp({super.key});
+
+  /// Builds the theme for the given [brightness] from the [AppColors] palette.
+  ///
+  /// Poppins is applied here as the app-wide font, so every screen inherits it
+  /// and no widget has to name a font family itself.
+  static ThemeData _buildTheme(Brightness brightness) {
+    final base = ThemeData(brightness: brightness, useMaterial3: true);
+
+    final background = AppColors.backgroundOf(brightness);
+    final primary = AppColors.primaryOf(brightness);
+    final onPrimary = AppColors.onPrimaryOf(brightness);
+    final text = AppColors.textOf(brightness);
+
+    return base.copyWith(
+      scaffoldBackgroundColor: background,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primary,
+        brightness: brightness,
+      ).copyWith(
+        primary: primary,
+        onPrimary: onPrimary,
+        surface: background,
+        onSurface: text,
+      ),
+      textTheme: GoogleFonts.poppinsTextTheme(base.textTheme)
+          .apply(bodyColor: text, displayColor: text),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: AppColors.surfaceOf(brightness),
+        contentTextStyle: GoogleFonts.poppins(
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          color: text,
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,14 +80,8 @@ class SoundPilotApp extends StatelessWidget {
       title: 'SoundPilot',
       // Follows the light/dark setting of the device.
       themeMode: ThemeMode.system,
-      theme: ThemeData(
-        brightness: Brightness.light,
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      ),
+      theme: _buildTheme(Brightness.light),
+      darkTheme: _buildTheme(Brightness.dark),
       home: const AppEntryPoint(),
     );
   }
