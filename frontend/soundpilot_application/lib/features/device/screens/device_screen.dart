@@ -129,10 +129,14 @@ class _DeviceScreenState extends State<DeviceScreen> {
       ),
     );
 
-    await AuthService().logout();
-    await Future.delayed(const Duration(seconds: 2));
-
-    navigator.popUntil((route) => route.isFirst);
+    // NOTE: `finally`, so the loading screen is closed even if the logout
+    // throws; otherwise it stays open forever.
+    try {
+      await AuthService().logout();
+      await Future.delayed(const Duration(seconds: 2));
+    } finally {
+      navigator.popUntil((route) => route.isFirst);
+    }
   }
 
   // ── Remove ─────────────────────────────────────────────────────────────────
