@@ -519,7 +519,7 @@ the Cloud Functions), so they work the same on Windows, macOS and Linux.
 
 | Hook | Script | What it does |
 |---|---|---|
-| `SessionStart` (startup) | `session-start.mjs` | `git fetch --prune`; on a clean `main` that is behind, `git pull --ff-only`; reports uncommitted changes, stale/merged local branches and open PRs |
+| `SessionStart` (startup) | `session-start.mjs` | `git fetch --prune`; on a clean `main` that is behind, `git pull --ff-only`; on any other branch, fast-forwards the local `main` without switching (`git fetch origin main:main`, never touches the current branch); reports uncommitted changes, stale/merged local branches and open PRs |
 | `PreToolUse` (shell, file edits) | `pre-tool-guard.mjs` | **blocks** `--no-verify`, deleting `main` on GitHub, and edits to credentials (`google-services.json`, `GoogleService-Info.plist`, `.env*`, service-account JSON, keystores) and the generated `firebase_options.dart`; **asks first** for commits/pushes to `main`, force pushes, `firebase deploy`, and commands that throw away work (`reset --hard`, `clean -f`, `checkout -- .`, `restore .`, `branch -D`, `stash drop/clear`, `rm -rf`) |
 | `PostToolUse` (file edits) | `post-edit-reminders.mjs` | reminds to mirror §1–§8 of `CLAUDE.md` ↔ `docs/PROJECT_CONTEXT.md`, and to update all three schema places when `firestore.rules`, `index.ts` or `user_model.dart` change |
 

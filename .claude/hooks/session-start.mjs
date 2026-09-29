@@ -57,6 +57,20 @@ if (branch === 'main') {
   if (mainAhead > 0) {
     notes.push(`origin/main has ${mainAhead} commit(s) this branch does not have yet`);
   }
+
+  // Keep the local main current too, so new branches start from it. Without
+  // a leading `+`, git only fast-forwards: it refuses if the local main has
+  // its own commits or is checked out in another worktree, and it never
+  // touches the current branch or the working tree.
+  const localMainBehind = run('git', ['rev-parse', '--verify', '--quiet', 'refs/heads/main']) !== null
+    ? Number(run('git', ['rev-list', '--count', 'main..origin/main']) ?? 0)
+    : 0;
+  if (localMainBehind > 0) {
+    const updated = run('git', ['fetch', 'origin', 'main:main'], 60000) !== null;
+    notes.push(updated
+      ? `Fast-forwarded local main by ${localMainBehind} commit(s) (current branch untouched)`
+      : `Local main is ${localMainBehind} commit(s) behind origin/main and was left unchanged (it has its own commits or is checked out in another worktree)`);
+  }
 }
 
 if (dirty) {
