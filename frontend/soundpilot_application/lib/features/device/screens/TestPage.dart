@@ -383,7 +383,8 @@ class _WaveCardState extends State<_WaveCard>
     duration: const Duration(milliseconds: 1600),
   );
 
-  /// True if the system asks for reduced motion (see CLAUDE.md §1).
+  /// True if the system asks for reduced motion
+  /// (see docs/PROJECT_CONTEXT.md §1).
   bool _reduceMotion = false;
 
   @override

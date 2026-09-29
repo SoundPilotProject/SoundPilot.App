@@ -1,6 +1,7 @@
 # CLAUDE.md — SoundPilot
 
-Project context for Claude Code. Diploma project (HTL).
+Project context: architecture, data model and team conventions.
+Diploma project (HTL).
 
 > Rule for this document: it contains only what is backed by the code or the
 > architecture docs. Unclear points are listed under "Open Points" and are
@@ -462,20 +463,12 @@ Not backed by evidence — check in the code instead of assuming:
   Work on a branch and merge through a pull request.
 - Keep branches small and merge them quickly; delete a branch after it is
   merged.
-- Small documentation-only edits may go to `main` only if the team agreed to
-  that for the change.
-
-### Keeping the project context safe
-
-- `docs/PROJECT_CONTEXT.md` contains the same content as this file
-  (`CLAUDE.md`), so the project knowledge is preserved if `CLAUDE.md` is ever
-  deleted or replaced.
-- **Whenever `CLAUDE.md` changes, update `docs/PROJECT_CONTEXT.md` in the same
-  commit.** It is a full copy; only its title (first line) differs, and the
-  Claude-only last section of `CLAUDE.md` ("Claude Code: session start") is
-  not copied.
-- Code comments and other docs refer to `docs/PROJECT_CONTEXT.md`, not to
-  `CLAUDE.md`, so those references keep working.
+- **`main` is protected on GitHub** (ruleset `main-ruleset`): every change,
+  documentation included, goes through a pull request; merging needs green
+  `build_and_test` and `functions` checks and 1 approval. Direct pushes,
+  force pushes and deleting `main` are rejected. Admins may merge their own
+  PR without an approval (or in an emergency with failing checks) via "bypass
+  rules" / `gh pr merge --admin`, but cannot push to `main` directly either.
 
 ### Comment convention
 
@@ -502,9 +495,47 @@ Not backed by evidence — check in the code instead of assuming:
 - Find all improvement suggestions:
   `grep -rn "TODO(improve)" frontend firebase/firestore.rules firebase/functions/src`
 
-## 9. Claude Code: session start
+## 9. Claude Code
 
 Only in `CLAUDE.md`, not copied to `docs/PROJECT_CONTEXT.md`.
+
+### Keeping the project context safe
+
+- `docs/PROJECT_CONTEXT.md` holds the project knowledge (§1–§8) without
+  anything about Claude, so it is preserved and readable on its own if
+  `CLAUDE.md` is ever deleted or replaced.
+- `CLAUDE.md` contains all of it: the same §1–§8 plus this Claude-only §9.
+- **Whenever §1–§8 change, apply the same change to `docs/PROJECT_CONTEXT.md`
+  in the same commit.** Only the title (first line) differs. Claude-specific
+  content (hooks, session start, this sync rule) goes into §9 only.
+- Code comments and other docs refer to `docs/PROJECT_CONTEXT.md`, not to
+  `CLAUDE.md`, so those references keep working.
+
+### Hooks (`.claude/settings.json`)
+
+Shared hooks enforce the rules of §8 for everyone who uses Claude Code in this
+repo. They are Node scripts in `.claude/hooks/` (Node is already required for
+the Cloud Functions), so they work the same on Windows, macOS and Linux.
+
+| Hook | Script | What it does |
+|---|---|---|
+| `SessionStart` (startup) | `session-start.mjs` | `git fetch --prune`; on a clean `main` that is behind, `git pull --ff-only`; on any other branch, fast-forwards the local `main` without switching (`git fetch origin main:main`, never touches the current branch); reports uncommitted changes, stale/merged local branches and open PRs |
+| `PreToolUse` (shell, file edits) | `pre-tool-guard.mjs` | **blocks** `--no-verify`, deleting `main` on GitHub, and edits to credentials (`google-services.json`, `GoogleService-Info.plist`, `.env*`, service-account JSON, keystores) and the generated `firebase_options.dart`; **asks first** for commits/pushes to `main`, force pushes, `firebase deploy`, and commands that throw away work (`reset --hard`, `clean -f`, `checkout -- .`, `restore .`, `branch -D`, `stash drop/clear`, `rm -rf`) |
+| `PostToolUse` (file edits) | `post-edit-reminders.mjs` | reminds to mirror §1–§8 of `CLAUDE.md` ↔ `docs/PROJECT_CONTEXT.md`, and to update all three schema places when `firestore.rules`, `index.ts` or `user_model.dart` change |
+
+- The guards check the command text; they are a safety net against mistakes,
+  not a security boundary.
+- An "ask" action that is really intended (e.g. a force push to your own
+  branch) is confirmed in the permission prompt. To change a rule, edit the
+  script through a PR like any other code.
+- Review or temporarily disable hooks with `/hooks` in Claude Code.
+
+### Session start
+
+The `SessionStart` hook (see Hooks above) already runs the fetch/pull and
+collects the state below; its report is in the context at the start of a
+session. Report it to the user, and still check the points it does not cover
+(leftover remote branches of merged PRs).
 
 Before starting any task, check the state of the repo and report it:
 
