@@ -501,3 +501,22 @@ Not backed by evidence — check in the code instead of assuming:
   Fixed"). Add a short `NOTE:` only if the new code needs an explanation.
 - Find all improvement suggestions:
   `grep -rn "TODO(improve)" frontend firebase/firestore.rules firebase/functions/src`
+
+### Claude Code hooks (`.claude/settings.json`)
+
+Shared hooks enforce the rules above for everyone who uses Claude Code in this
+repo. They are Node scripts in `.claude/hooks/` (Node is already required for
+the Cloud Functions), so they work the same on Windows, macOS and Linux.
+
+| Hook | Script | What it does |
+|---|---|---|
+| `SessionStart` (startup) | `session-start.mjs` | `git fetch --prune`; on a clean `main` that is behind, `git pull --ff-only`; reports uncommitted changes, stale/merged local branches and open PRs |
+| `PreToolUse` (shell, file edits) | `pre-tool-guard.mjs` | **blocks** `--no-verify`, deleting `main` on GitHub, and edits to credentials (`google-services.json`, `GoogleService-Info.plist`, `.env*`, service-account JSON, keystores) and the generated `firebase_options.dart`; **asks first** for commits/pushes to `main`, force pushes, `firebase deploy`, and commands that throw away work (`reset --hard`, `clean -f`, `checkout -- .`, `restore .`, `branch -D`, `stash drop/clear`, `rm -rf`) |
+| `PostToolUse` (file edits) | `post-edit-reminders.mjs` | reminds to mirror `CLAUDE.md` ↔ `docs/PROJECT_CONTEXT.md`, and to update all three schema places when `firestore.rules`, `index.ts` or `user_model.dart` change |
+
+- The guards check the command text; they are a safety net against mistakes,
+  not a security boundary.
+- A blocked action that is really intended (e.g. an agreed docs-only commit to
+  `main`) is confirmed in the permission prompt. To change a rule, edit the
+  script through a PR like any other code.
+- Review or temporarily disable hooks with `/hooks` in Claude Code.
