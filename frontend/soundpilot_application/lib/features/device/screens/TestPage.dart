@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/loading_screen.dart';
 
 /// Test exercise after the calibration: plays `assets/audio/Marschieren.mp3` in
@@ -138,156 +139,135 @@ class _TestPageState extends State<TestPage> {
       body: SafeArea(
         child: Column(
           children: [
-            _TestTopBar(
+            AppTopBar(
+              title: 'Testübung',
               onBackPressed: () async {
+                // Captured before the await so no BuildContext is used across
+                // the async gap.
+                final navigator = Navigator.of(context);
                 await _stopAudio();
                 if (!mounted) return;
-                Navigator.pop(context);
+                navigator.pop();
               },
             ),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(28, 16, 28, 14),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _WaveCard(
                       leftVolume: widget.leftVolume,
                       rightVolume: widget.rightVolume,
                       isPlaying: _isPlaying,
                     ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 64,
-                      child: ElevatedButton(
-                        onPressed: _isPlaying ? null : _startAudio,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isPlaying
-                              ? AppColors.inactiveButton(context)
-                              : AppColors.primary(context),
-                          foregroundColor: AppColors.onPrimary(context),
-                          elevation: 4,
-                          // TODO(improve): `withOpacity` is deprecated, use
-                          // `withValues(alpha: ...)` (see LoginScreen).
-                          shadowColor: Colors.black.withOpacity(0.15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(40),
-                          ),
+                    const SizedBox(height: 10),
+                    // The waveform is decorative; this line states the same
+                    // information in words, so it also works without sight.
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        _isPlaying
+                            ? 'Wiedergabe läuft – links '
+                                '${widget.leftVolume}, rechts '
+                                '${widget.rightVolume}'
+                            : 'Wiedergabe gestoppt – links '
+                                '${widget.leftVolume}, rechts '
+                                '${widget.rightVolume}',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.text(context),
+                          height: 1.3,
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.play_arrow_rounded,
-                              color: AppColors.onPrimary(context),
-                              size: 28,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Start',
-                              // TODO(improve): 'Start' and 'Stop' use the
-                              // default TextStyle, all other texts use
-                              // GoogleFonts.poppins. Use the same font.
-                              style: TextStyle(
-                                fontSize: 23,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.onPrimary(context),
-                              ),
-                            ),
-                          ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _PlaybackButton(
+                      label: 'Start',
+                      icon: Icons.play_arrow_rounded,
+                      enabled: !_isPlaying,
+                      activeColor: AppColors.primary(context),
+                      activeTextColor: AppColors.onPrimary(context),
+                      onPressed: _startAudio,
+                    ),
+                    const SizedBox(height: 12),
+                    _PlaybackButton(
+                      label: 'Stop',
+                      icon: Icons.stop_rounded,
+                      enabled: _isPlaying,
+                      activeColor: AppColors.stopRed,
+                      activeTextColor: Colors.white,
+                      onPressed: _stopAudio,
+                    ),
+                    const SizedBox(height: 22),
+                    Semantics(
+                      header: true,
+                      child: Text(
+                        'Beschreibung',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.text(context),
+                          height: 1.2,
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 64,
-                      child: ElevatedButton(
-                        onPressed: _isPlaying ? _stopAudio : null,
-                        style: ElevatedButton.styleFrom(
-                          // TODO(improve): Hard-coded red; move it to
-                          // AppColors (e.g. next to `disconnectedRed`).
-                          backgroundColor: _isPlaying
-                              ? const Color(0xFFFF0000)
-                              : AppColors.inactiveButton(context),
-                          foregroundColor: Colors.white,
-                          elevation: 4,
-                          shadowColor: Colors.black.withOpacity(0.15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(40),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(
-                              Icons.stop_rounded,
-                              color: Colors.white,
-                              size: 28,
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              'Stop',
-                              style: TextStyle(
-                                fontSize: 23,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
                     Text(
-                      'Beschreibung',
-                      style: GoogleFonts.poppins(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
+                      'Drücke Start, um die Marschieren-Aufnahme abzuspielen. '
+                      'Die Wiedergabe wird an deine Links-Rechts-Kalibrierung '
+                      'angepasst.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
                         color: AppColors.text(context),
-                        height: 1.0,
+                        height: 1.45,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Center(
-                      child: Text(
-                        'Drücke Start um die Marschieren-MP3\nabzuspielen. Die Wiedergabe wird an\ndeine Links/Rechts-Kalibrierung\nangepasst.',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.text(context),
-                          height: 1.32,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 70,
-                      child: ElevatedButton(
-                        onPressed: _finishExercise,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary(context),
-                          foregroundColor: AppColors.onPrimary(context),
-                          elevation: 4,
-                          shadowColor: Colors.black.withOpacity(0.15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(42),
-                          ),
-                        ),
-                        child: Text(
-                          'Abschließen',
-                          style: GoogleFonts.poppins(
-                            fontSize: 23,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.onPrimary(context),
-                          ),
-                        ),
-                      ),
-                    ),
+                    const SizedBox(height: 16),
                   ],
+                ),
+              ),
+            ),
+            // 'Abschließen' sits outside the scroll view, so it stays pinned to
+            // the bottom of the screen and is always reachable.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: ElevatedButton(
+                    onPressed: _finishExercise,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary(context),
+                      foregroundColor: AppColors.onPrimary(context),
+                      elevation: 4,
+                      shadowColor: Colors.black.withValues(alpha: 0.15),
+                      minimumSize: const Size(double.infinity, 72),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(42),
+                      ),
+                    ),
+                    child: Text(
+                      'Abschließen',
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.onPrimary(context),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -298,13 +278,91 @@ class _TestPageState extends State<TestPage> {
   }
 }
 
-/// Card with two bar "waveforms" (left and right) whose height follows the
-/// calibrated volumes.
-class _WaveCard extends StatelessWidget {
+// ── Playback buttons ─────────────────────────────────────────────────────────
+
+/// Wide 'Start' / 'Stop' button with an icon and a centred label.
+///
+/// Disabled state is not shown by colour alone: a disabled button is also
+/// reported as disabled to screen readers because [onPressed] is null.
+class _PlaybackButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+
+  /// False while the action is not available (e.g. 'Stop' while nothing plays).
+  final bool enabled;
+
+  final Color activeColor;
+  final Color activeTextColor;
+  final VoidCallback onPressed;
+
+  const _PlaybackButton({
+    required this.label,
+    required this.icon,
+    required this.enabled,
+    required this.activeColor,
+    required this.activeTextColor,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = enabled ? activeTextColor : Colors.white;
+
+    return ElevatedButton(
+      onPressed: enabled ? onPressed : null,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: activeColor,
+        foregroundColor: activeTextColor,
+        disabledBackgroundColor: AppColors.inactiveButton(context),
+        disabledForegroundColor: Colors.white,
+        elevation: 4,
+        shadowColor: Colors.black.withValues(alpha: 0.15),
+        minimumSize: const Size(double.infinity, 64),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(40),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: foreground, size: 30),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 23,
+                fontWeight: FontWeight.w800,
+                color: foreground,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Waveform ─────────────────────────────────────────────────────────────────
+
+/// Translucent card with two bar "waveforms" (left and right). The bar heights
+/// follow the calibrated volumes and travel sideways while the sound plays.
+///
+/// The animation runs exactly as long as the playback: it starts with 'Start'
+/// and freezes at its current shape with 'Stop', so the card doubles as a
+/// visible playback indicator.
+///
+/// Decorative: the same information is available as text below the card, so the
+/// card is hidden from screen readers.
+class _WaveCard extends StatefulWidget {
   final int leftVolume;
   final int rightVolume;
 
-  /// Slightly changes the bar heights while the sound is playing.
+  /// Drives the animation: `true` while the sound is playing.
   final bool isPlaying;
 
   const _WaveCard({
@@ -313,184 +371,189 @@ class _WaveCard extends StatelessWidget {
     required this.isPlaying,
   });
 
-  /// Builds [count] bar heights (0.10–1.0) from a fixed sine pattern, scaled by
-  /// [strength] (0.0–1.0).
-  ///
-  /// NOTE: With [animated] the bars get a fixed per-bar factor; it is not a
-  /// running animation. The heights only change once when playback starts or
-  /// stops.
-  /// TODO(improve): Use an AnimationController for a real animation.
-  List<double> _buildBars({
-    required int count,
-    required double strength,
-    required bool animated,
-  }) {
-    final List<double> values = [];
-    for (int i = 0; i < count; i++) {
-      final wave = math.sin((i + 1) * 0.9).abs();
-      final shape = 0.25 + (wave * 0.75);
-      final pulse = animated ? (0.88 + (math.cos(i * 0.7).abs() * 0.22)) : 1.0;
-      values.add((shape * strength * pulse).clamp(0.10, 1.0));
+  @override
+  State<_WaveCard> createState() => _WaveCardState();
+}
+
+class _WaveCardState extends State<_WaveCard>
+    with SingleTickerProviderStateMixin {
+  /// Runs from 0 to 1 and repeats; the value is the phase of the wave.
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+
+  /// True if the system asks for reduced motion (see CLAUDE.md §1).
+  bool _reduceMotion = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _WaveCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isPlaying != widget.isPlaying) {
+      _syncAnimation();
     }
-    return values;
+  }
+
+  /// Starts or stops the repeating animation to match the playback state.
+  ///
+  /// `stop()` keeps the current value, so the bars freeze in place instead of
+  /// snapping back to their starting shape.
+  void _syncAnimation() {
+    final shouldRun = widget.isPlaying && !_reduceMotion;
+
+    if (shouldRun && !_controller.isAnimating) {
+      _controller.repeat();
+    } else if (!shouldRun && _controller.isAnimating) {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = AppColors.isDark(context);
-    // TODO(improve): The dark-mode colours below (0xFF121212 card, 0xFFF2E38A
-    // lines) are hard-coded. 0xFFF2E38A equals the dark `primary`; move both to
-    // AppColors.
-    final cardColor = isDark ? const Color(0xFF121212) : AppColors.surface(context);
-    final lineColor = isDark
-        ? const Color(0xFFF2E38A)
-        : AppColors.primary(context);
+    final lineColor = AppColors.primary(context);
 
-    final leftStrength = (leftVolume / 100).clamp(0.0, 1.0);
-    final rightStrength = (rightVolume / 100).clamp(0.0, 1.0);
+    final leftStrength = (widget.leftVolume / 100).clamp(0.0, 1.0).toDouble();
+    final rightStrength = (widget.rightVolume / 100).clamp(0.0, 1.0).toDouble();
 
-    final leftBars = _buildBars(
-      count: 22,
-      strength: leftStrength.toDouble(),
-      animated: isPlaying,
-    );
-    final rightBars = _buildBars(
-      count: 22,
-      strength: rightStrength.toDouble(),
-      animated: isPlaying,
-    );
-
-    return Container(
-      width: double.infinity,
-      height: 108,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _WaveHalf(
-              bars: leftBars,
-              color: lineColor,
-              alignRight: true,
-            ),
+    return ExcludeSemantics(
+      child: Container(
+        width: double.infinity,
+        height: 108,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          // Translucent, so the card reads as part of the background instead of
+          // a solid block. It is decoration only; the bars themselves keep the
+          // full accent colour.
+          color: AppColors.waveCard(context).withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: lineColor.withValues(alpha: 0.35),
+            width: 1.5,
           ),
-          Container(
-            width: 2,
-            height: 62,
-            color: lineColor.withOpacity(0.9),
-          ),
-          Expanded(
-            child: _WaveHalf(
-              bars: rightBars,
-              color: lineColor,
-              alignRight: false,
-            ),
-          ),
-        ],
+        ),
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            return Row(
+              children: [
+                Expanded(
+                  child: _WaveHalf(
+                    strength: leftStrength,
+                    phase: _controller.value,
+                    color: lineColor,
+                    alignRight: true,
+                  ),
+                ),
+                Container(
+                  width: 2,
+                  height: 62,
+                  color: lineColor.withValues(alpha: 0.9),
+                ),
+                Expanded(
+                  child: _WaveHalf(
+                    strength: rightStrength,
+                    // Half a period offset, so the two sides do not pulse in
+                    // lockstep and the movement reads as stereo.
+                    phase: (_controller.value + 0.5) % 1.0,
+                    color: lineColor,
+                    alignRight: false,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
 }
 
 /// One half of the [_WaveCard]: a row of glowing bars.
+///
+/// NOTE: The number of bars follows the available width (at most [_maxBars]).
+/// A fixed count of 22 overflowed the card on narrow phones.
 class _WaveHalf extends StatelessWidget {
-  /// Relative bar heights (0.0–1.0).
-  final List<double> bars;
+  /// Volume of this side as 0.0–1.0; scales every bar.
+  final double strength;
+
+  /// Phase of the travelling wave, 0.0–1.0. A constant value renders a still
+  /// waveform, which is what a stopped playback shows.
+  final double phase;
+
   final Color color;
 
   /// True for the left half, so its bars sit against the centre line.
   final bool alignRight;
 
   const _WaveHalf({
-    required this.bars,
+    required this.strength,
+    required this.phase,
     required this.color,
     required this.alignRight,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    final children = bars.map((value) {
-      final barHeight = 10 + (value * 42);
-      return Container(
-        width: 4,
-        height: barHeight,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.35),
-              blurRadius: 5,
-              spreadRadius: 0.3,
-            ),
-          ],
-        ),
-      );
-    }).toList();
+  static const double _barWidth = 4;
+  static const double _barGap = 3;
+  static const int _maxBars = 22;
 
-    return Row(
-      mainAxisAlignment:
-      alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        for (int i = 0; i < children.length; i++) ...[
-          children[i],
-          if (i != children.length - 1) const SizedBox(width: 3),
-        ],
-      ],
-    );
+  /// Height factor (0.10–1.0) of the bar at [index] for the current [phase].
+  ///
+  /// The sine runs over the bar index *and* the phase, so raising the phase
+  /// moves the whole pattern sideways.
+  double _barValue(int index) {
+    final wave = math.sin((index * 0.55) + (phase * 2 * math.pi)).abs();
+    final shape = 0.35 + (wave * 0.65);
+    return (shape * strength).clamp(0.10, 1.0);
   }
-}
-
-/// Blue top bar with a back arrow and the title 'Testübung'.
-///
-/// TODO(improve): Duplicate of the other screens' top bars, see
-/// `_LoginTopBar`.
-class _TestTopBar extends StatelessWidget {
-  final VoidCallback onBackPressed;
-
-  const _TestTopBar({
-    required this.onBackPressed,
-  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 94,
-      width: double.infinity,
-      color: AppColors.primary(context),
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onBackPressed,
-            splashRadius: 24,
-            icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: AppColors.onPrimary(context),
-              size: 36,
-            ),
-          ),
-          Expanded(
-            child: Center(
-              child: Transform.translate(
-                offset: const Offset(-18, 0),
-                child: Text(
-                  'Testübung',
-                  style: GoogleFonts.poppins(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.onPrimary(context),
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fitting =
+            ((constraints.maxWidth + _barGap) / (_barWidth + _barGap)).floor();
+        final count = fitting.clamp(0, _maxBars);
+
+        final bars = <Widget>[];
+        for (int i = 0; i < count; i++) {
+          if (i > 0) bars.add(const SizedBox(width: _barGap));
+          bars.add(Container(
+            width: _barWidth,
+            height: 10 + (_barValue(i) * 42),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.35),
+                  blurRadius: 5,
+                  spreadRadius: 0.3,
                 ),
-              ),
+              ],
             ),
-          ),
-        ],
-      ),
+          ));
+        }
+
+        return Row(
+          mainAxisAlignment:
+              alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: bars,
+        );
+      },
     );
   }
 }
