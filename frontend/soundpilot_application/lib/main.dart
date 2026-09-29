@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'features/auth/screens/start_screen.dart';
 import 'features/device/screens/device_screen.dart';
+import 'core/app_locale.dart';
 import 'core/services/guest_mode_service.dart';
 import 'core/theme/app_colors.dart';
 import 'core/widgets/loading_screen.dart';
@@ -82,6 +83,10 @@ class SoundPilotApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'SoundPilot',
+      // Fixed to German, independent of the device language (see app_locale).
+      locale: appLocale,
+      supportedLocales: appSupportedLocales,
+      localizationsDelegates: appLocalizationsDelegates,
       // Follows the light/dark setting of the device.
       themeMode: ThemeMode.system,
       theme: _buildTheme(Brightness.light),
