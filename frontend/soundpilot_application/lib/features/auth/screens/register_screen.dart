@@ -4,29 +4,19 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/auth_text_field.dart';
 import '../../../core/widgets/loading_screen.dart';
-import '../../device/screens/device_screen.dart';
 import '../auth_service.dart';
 import 'login_screen.dart';
-import 'start_screen.dart';
 
 /// Registration screen: creates an account with e-mail and password.
 ///
 /// Also offers a link to the [LoginScreen].
 class RegisterScreen extends StatefulWidget {
-  /// Where the back arrow leads: `true` returns to the [DeviceScreen] (used
-  /// when opened from there as a guest), `false` to the [StartScreen].
-  final bool returnToDeviceOnBack;
-
-  const RegisterScreen({
-    super.key,
-    this.returnToDeviceOnBack = false,
-  });
+  const RegisterScreen({super.key});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -67,14 +57,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  /// Validates the input, registers the user and replaces the whole navigation
-  /// stack with the [DeviceScreen]. A [LoadingScreen] is shown meanwhile.
+  /// Validates the input and registers the user. On success this screen
+  /// closes and AppEntryPoint shows the DeviceScreen. A [LoadingScreen] is
+  /// shown meanwhile.
   ///
   /// The minimum password length of 6 matches the Firebase Auth minimum.
   ///
   /// TODO(improve): Same points as LoginScreen._finishLogin: `setState` before
-  /// the `mounted` check, redundant `_isLoading` next to the [LoadingScreen],
-  /// and one generic error message for every failure.
+  /// the `mounted` check and redundant `_isLoading` next to the
+  /// [LoadingScreen].
   Future<void> _finishRegister() async {
     final email = _emailController.text.trim();
     // NOTE: The password is not trimmed; spaces are valid password characters.
@@ -106,7 +97,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
     );
 
-    final user = await _authService.registerWithEmail(email, password);
+    final result = await _authService.registerWithEmail(email, password);
 
     if (!mounted) return;
 
@@ -116,23 +107,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _isLoading = false;
     });
 
-    if (user == null) {
-      _showMessage('Registrierung fehlgeschlagen.');
+    if (!result.isSuccess) {
+      _showMessage(result.errorMessage ?? 'Registrierung fehlgeschlagen.');
       return;
     }
 
-    // A signed-in user must not be treated as a guest on the next start.
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('continueAsGuestThisSession', false);
-
-    if (!mounted) return;
-
-    // Remove all previous routes so back cannot return to the auth screens.
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const DeviceScreen()),
-      (route) => false,
-    );
+    // AppEntryPoint already shows the DeviceScreen for the new user;
+    // close this screen (and anything else on top) to get back to it.
+    Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   /// Shows [message] in a SnackBar.
@@ -142,30 +124,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  /// Back arrow: replaces this screen with the [DeviceScreen] or the
-  /// [StartScreen], depending on [RegisterScreen.returnToDeviceOnBack].
+  /// Back arrow: closes this screen and returns to the screen below
+  /// (StartScreen or, for a guest, the DeviceScreen).
   void _handleBack() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => widget.returnToDeviceOnBack
-            ? const DeviceScreen()
-            : const StartScreen(),
-      ),
-    );
+    Navigator.pop(context);
   }
 
 
   @override
   Widget build(BuildContext context) {
-    // `canPop: false` keeps the route, `onPopInvokedWithResult` routes the
-    // system back button/gesture through the same handler as the arrow.
+    // NOTE: The system back button/gesture does the same as the back arrow.
     return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _handleBack();
-      },
+      canPop: true,
       child: Scaffold(
         backgroundColor: AppColors.background(context),
         body: SafeArea(
@@ -334,9 +304,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (_) => LoginScreen(
-                  returnToDeviceOnBack: widget.returnToDeviceOnBack,
-                ),
+                builder: (_) => const LoginScreen(),
               ),
             );
           },

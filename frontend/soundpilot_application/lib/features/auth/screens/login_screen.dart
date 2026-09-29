@@ -4,29 +4,19 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/auth_text_field.dart';
 import '../../../core/widgets/loading_screen.dart';
-import '../../device/screens/device_screen.dart';
 import '../auth_service.dart';
 import 'register_screen.dart';
-import 'start_screen.dart';
 
 /// Login screen with e-mail and password.
 ///
 /// Also offers the password reset and a link to the [RegisterScreen].
 class LoginScreen extends StatefulWidget {
-  /// Where the back arrow leads: `true` returns to the [DeviceScreen] (used
-  /// when opened from there as a guest), `false` to the [StartScreen].
-  final bool returnToDeviceOnBack;
-
-  const LoginScreen({
-    super.key,
-    this.returnToDeviceOnBack = false,
-  });
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -51,17 +41,15 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// Validates the input, signs in and replaces the whole navigation stack with
-  /// the [DeviceScreen]. A [LoadingScreen] is shown while the login runs.
+  /// Validates the input and signs in. On success this screen closes and
+  /// AppEntryPoint shows the DeviceScreen. A [LoadingScreen] is shown while
+  /// the login runs.
   ///
   /// TODO(improve): `setState` is called before the `mounted` check. The check
   /// belongs before the `setState`. (Same in RegisterScreen._finishRegister.)
   ///
   /// TODO(improve): `_isLoading` (spinner in the button) is redundant because
   /// a full-screen [LoadingScreen] is pushed as well; use only one of them.
-  ///
-  /// TODO(improve): A failed login always shows the same generic message,
-  /// because AuthService returns `null` without a reason.
   Future<void> _finishLogin() async {
     final email = _emailController.text.trim();
     // NOTE: The password is not trimmed; spaces are valid password characters.
@@ -88,7 +76,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
 
-    final user = await _authService.loginWithEmail(email, password);
+    final result = await _authService.loginWithEmail(email, password);
 
     if (!mounted) return;
 
@@ -98,23 +86,14 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = false;
     });
 
-    if (user == null) {
-      _showMessage('Login fehlgeschlagen.');
+    if (!result.isSuccess) {
+      _showMessage(result.errorMessage ?? 'Login fehlgeschlagen.');
       return;
     }
 
-    // A signed-in user must not be treated as a guest on the next start.
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('continueAsGuestThisSession', false);
-
-    if (!mounted) return;
-
-    // Remove all previous routes so back cannot return to the auth screens.
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const DeviceScreen()),
-      (route) => false,
-    );
+    // AppEntryPoint already shows the DeviceScreen for the signed-in user;
+    // close this screen (and anything else on top) to get back to it.
+    Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   /// Sends a password reset e-mail to the address typed into the form.
@@ -126,13 +105,11 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final success = await _authService.sendPasswordReset(email);
+    final error = await _authService.sendPasswordReset(email);
 
     if (!mounted) return;
 
-    _showMessage(
-      success ? 'Passwort-Reset wurde gesendet.' : 'Reset fehlgeschlagen.',
-    );
+    _showMessage(error ?? 'Passwort-Reset wurde gesendet.');
   }
 
   /// Shows [message] in a SnackBar.
@@ -142,31 +119,19 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// Back arrow: replaces this screen with the [DeviceScreen] or the
-  /// [StartScreen], depending on [LoginScreen.returnToDeviceOnBack].
+  /// Back arrow: closes this screen and returns to the screen below
+  /// (StartScreen or, for a guest, the DeviceScreen).
   void _handleBack() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => widget.returnToDeviceOnBack
-            ? const DeviceScreen()
-            : const StartScreen(),
-      ),
-    );
+    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     final textColor = AppColors.text(context);
 
-    // `canPop: false` keeps the route, `onPopInvokedWithResult` routes the
-    // system back button/gesture through the same handler as the arrow.
+    // NOTE: The system back button/gesture does the same as the back arrow.
     return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _handleBack();
-      },
+      canPop: true,
       child: Scaffold(
         backgroundColor: AppColors.background(context),
         body: SafeArea(
@@ -320,10 +285,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   Navigator.pushReplacement(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => RegisterScreen(
-                                        returnToDeviceOnBack:
-                                            widget.returnToDeviceOnBack,
-                                      ),
+                                      builder: (_) => const RegisterScreen(),
                                     ),
                                   );
                                 },

@@ -48,7 +48,8 @@ statement about the current state of the code):
   calibration) should be available via more than one sense — visual, audio and
   haptic/vibration — where the hardware allows it.
 - **Simple flows:** short, clear German texts, one main action per screen,
-  clear error messages (see the `AuthService` open point in §7), no
+  clear error messages (auth errors: `AuthService` returns an `AuthResult`
+  with a German message from `AuthService.messageForCode`), no
   time-limited interactions.
 - **Motion:** respect the system setting for reduced animations.
 
@@ -62,7 +63,7 @@ When in doubt, choose the more accessible option and mention the trade-off.
 | `firebase_auth` | Authentication (email/password, Google Sign-In) |
 | `google_sign_in` | Google login |
 | `cloud_firestore` | included, but **not yet used** in the Dart code (see §4) |
-| `shared_preferences` | current local persistence (devices, calibration, guest flag) |
+| `shared_preferences` | current local persistence (devices, calibration, guest mode) |
 | `google_fonts` | Plus Jakarta Sans font |
 | `audioplayers` | Audio playback (calibration) |
 | `logger` | global `logger` in `core/app_logger.dart` |
@@ -98,6 +99,7 @@ core/
                                  AppTopBar, AuthTextField
   services/
     device_storage_service.dart  local persistence of devices + calibration
+    guest_mode_service.dart      guest mode flag (ValueNotifier + stored)
     calibration_service.dart     Volume L/R as int (0–100)
     audio_device_service.dart    MethodChannel com.soundpilot/audio_devices
 features/
@@ -129,9 +131,15 @@ features/
   `'Earbuds'` / `'Gürtel'` again.
 - **State management:** no package, only `StatefulWidget` + `setState`.
 - **Routing:** `Navigator.push` with `MaterialPageRoute`, no router package.
-- **Start:** `AppEntryPoint` opens `DeviceScreen` if a Firebase user is signed
-  in or the one-time flag `continueAsGuestThisSession` is set (it is reset
-  immediately at startup). Otherwise `StartScreen`.
+- **Start and auth state:** `AppEntryPoint` listens to
+  `FirebaseAuth.authStateChanges()` and `GuestModeService.active`. It shows
+  `DeviceScreen` if a user is signed in or guest mode is active, otherwise
+  `StartScreen`, and switches by itself on sign-in, logout and "Als Gast
+  fortfahren". Do not navigate to `DeviceScreen`/`StartScreen` manually:
+  login/register are pushed on top and only close themselves on success
+  (`popUntil(isFirst)`).
+- **Guest mode** (`guestMode` in SharedPreferences) stays active across app
+  starts until the user signs in or logs out. Logout leads to `StartScreen`.
 
 ## 3. Commands
 
@@ -280,14 +288,21 @@ the Bluetooth scan in `device_screen.dart` is simulated (fixed list,
 
 `isConnected` (both Calib classes) and `category` are runtime-only fields and
 are not written by `toMap()`. `isConnected` is `false` after every load.
+`category` is a `static const` of the enum `DeviceCategory` (`earbuds`,
+`belt`); its `label` is the German UI text ('Earbuds', 'Gürtel'). Use the enum,
+not category strings.
 
 Mind the naming convention: in Dart `volumeLeft`/`volumeRight`, in Firestore
 `volLeft`/`volRight`. The mapping happens exclusively in `fromMap()` /
 `toMap()`. Keep this separation when extending the models.
 
-All `fromMap` factories work defensively with fallbacks (`?? 'unknown'`,
-`?? 0.5`), because Firestore documents can be missing fields. Add new fields in
-the same style.
+All `fromMap` factories work defensively with fallbacks (`'unknown'`, `0.5`),
+because Firestore documents can be missing fields. They check the type
+(`value is String ? value : 'unknown'`), so fields of the wrong type fall back
+too. Device maps are parsed with `parseDeviceMap()`, which skips invalid
+entries instead of throwing (used by `UserModel.fromFirestore` and
+`DeviceStorageService`). Add new fields in the same style; tests are in
+`test/models/user_model_test.dart`.
 
 ## 5. Cloud Functions
 
@@ -387,8 +402,6 @@ Not backed by evidence — check in the code instead of assuming:
   `AudioDeviceService` (Android MethodChannel) exists in Dart but is not called
   by `DeviceScreen`. Whether the native Android side is implemented was not
   checked.
-- **`AuthService`** returns `null` on any error; the UI cannot distinguish the
-  reason.
 - **Accessibility: partly fixed, never tested on a device.** The full list of
   findings is still `docs/ACCESSIBILITY_AUDIT.md` (static code review). Done so
   far: every screen scrolls and survives text scale 2.0 (exception below);
@@ -396,7 +409,7 @@ Not backed by evidence — check in the code instead of assuming:
   tap targets; state is no longer carried by colour alone (connection dot, type
   selector and side buttons all carry an icon too); the whole palette measured
   against WCAG AA in `test/color_contrast_test.dart`; the system back button
-  works again on login/register (`PopScope` with `onPopInvokedWithResult`).
+  works again on login/register (`PopScope(canPop: true)`, back just pops).
   Still open: no app locale / localisation, haptics only in the calibration
   wheel, nothing verified with TalkBack or VoiceOver on real hardware.
 - **The registration form scrolls; do not try to fit it on one screen again.**
@@ -410,13 +423,22 @@ Not backed by evidence — check in the code instead of assuming:
   `test/accessibility_layout_test.dart`. If the form has to get shorter, remove
   a field (first name, last name and the belt question are not used yet, see
   the TODO in the file) — do not shrink the type.
-- **Test strategy** is not documented. `test/accessibility_layout_test.dart`
-  renders the screens on a 360x720 phone in both themes at text scale 1.0/1.6/
-  2.0 and checks the add-device dialog; `test/color_contrast_test.dart` checks
-  the palette; `test/widget_test.dart` is still a placeholder. `DeviceScreen`
-  and `CalibrationScreen` are not covered because they read
-  `FirebaseAuth.instance` (the latter through `CalibrationService`) and need a
-  Firebase test double. The security rules are not tested in CI.
+- **Leaving guest mode:** a guest can only leave guest mode by signing in;
+  there is no button to go back to the `StartScreen`.
+- **Two device-type enums:** `DeviceCategory` (`models/user_model.dart`, label
+  only) and `DeviceType` (`features/device/widgets/device_type.dart`, all UI
+  texts and the icon) describe the same two types. The device screens use
+  `DeviceType`; merging the two is open.
+- **Test strategy** is not documented. CI runs `flutter test`; tested so far
+  are the models (`test/models/`), the auth error messages
+  (`test/features/auth/`) and `GuestModeService` (`test/core/services/`).
+  `test/accessibility_layout_test.dart` renders the screens on a 360x720 phone
+  in both themes at text scale 1.0/1.6/2.0 and checks the add-device dialog;
+  `test/color_contrast_test.dart` checks the palette; `test/widget_test.dart`
+  is still a placeholder. `DeviceScreen` and `CalibrationScreen` are not
+  covered because they read `FirebaseAuth.instance` (the latter through
+  `CalibrationService`) and need a Firebase test double. The other services
+  and the security rules are not tested in CI.
 - **Firestore language default:** The function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
 
@@ -449,7 +471,9 @@ Not backed by evidence — check in the code instead of assuming:
   (`CLAUDE.md`), so the project knowledge is preserved if `CLAUDE.md` is ever
   deleted or replaced.
 - **Whenever `CLAUDE.md` changes, update `docs/PROJECT_CONTEXT.md` in the same
-  commit.** It is a full copy; only its title (first line) differs.
+  commit.** It is a full copy; only its title (first line) differs, and the
+  Claude-only last section of `CLAUDE.md` ("Claude Code: session start") is
+  not copied.
 - Code comments and other docs refer to `docs/PROJECT_CONTEXT.md`, not to
   `CLAUDE.md`, so those references keep working.
 
@@ -477,3 +501,19 @@ Not backed by evidence — check in the code instead of assuming:
   Fixed"). Add a short `NOTE:` only if the new code needs an explanation.
 - Find all improvement suggestions:
   `grep -rn "TODO(improve)" frontend firebase/firestore.rules firebase/functions/src`
+
+## 9. Claude Code: session start
+
+Only in `CLAUDE.md`, not copied to `docs/PROJECT_CONTEXT.md`.
+
+Before starting any task, check the state of the repo and report it:
+
+- **Pull:** `git fetch --prune`, then check whether `main` (or the current
+  branch) is behind `origin`; if so, pull before working.
+- **Clean up:**
+  - uncommitted changes (`git status`)
+  - local branches that are merged or whose remote branch is gone
+  - leftover remote branches of merged PRs
+  - open PRs that still wait for a merge
+
+Ask before deleting anything or discarding changes.

@@ -25,6 +25,41 @@
 /// - Firestore field names: `volLeft`/`volRight` (Dart: volumeLeft/volumeRight).
 library;
 
+import '../core/app_logger.dart';
+
+/// Kind of device. Runtime only, not persisted.
+enum DeviceCategory {
+  earbuds('Earbuds'),
+  belt('Gürtel');
+
+  const DeviceCategory(this.label);
+
+  /// German label shown in the UI.
+  final String label;
+}
+
+/// Parses a stored device map (`calibration.headphones` or
+/// `calibration.belts`, key = BD_ADDR) with [fromMap].
+///
+/// Entries that are not maps are skipped and logged instead of throwing, so
+/// one broken entry does not lose all other devices. A [raw] value that is not
+/// a map gives an empty map.
+Map<String, T> parseDeviceMap<T>(
+  Object? raw,
+  T Function(Map<String, dynamic>) fromMap,
+) {
+  if (raw is! Map) return {};
+  final result = <String, T>{};
+  raw.forEach((key, value) {
+    if (key is String && value is Map) {
+      result[key] = fromMap(Map<String, dynamic>.from(value));
+    } else {
+      logger.w('parseDeviceMap: Skipping invalid device entry "$key"');
+    }
+  });
+  return result;
+}
+
 /// Calibration data for headphones
 ///
 /// TODO(improve): The calibration flow never sets [volumeLeft]/[volumeRight]
@@ -44,13 +79,8 @@ class HeadphoneCalib {
   /// Whether the device counts as connected. Runtime only, not persisted.
   bool isConnected;
 
-  /// Category label, also used as a string in the UI (compare 'Earbuds' in
-  /// DeviceScreen).
-  ///
-  /// TODO(improve): Replace the string categories ('Earbuds' / 'Belt' here,
-  /// 'Earbuds' / 'Gürtel' in DeviceScreen) with an enum, and make this a
-  /// `static const` since it is the same for every instance.
-  final String category = 'Earbuds';
+  /// Category of every headphone device.
+  static const DeviceCategory category = DeviceCategory.earbuds;
 
   HeadphoneCalib({
     required this.modelId,
@@ -62,10 +92,13 @@ class HeadphoneCalib {
   /// Converts Firestore Map to Object.
   /// Note: isConnected is always initialized as false here.
   factory HeadphoneCalib.fromMap(Map<String, dynamic> map) {
+    // Fields of the wrong type fall back to the defaults as well.
+    final volLeft = map['volLeft'];
+    final volRight = map['volRight'];
     return HeadphoneCalib(
-      modelId: map['modelId'] ?? 'unknown',
-      volumeLeft: (map['volLeft'] ?? 0.5).toDouble(),
-      volumeRight: (map['volRight'] ?? 0.5).toDouble(),
+      modelId: map['modelId'] is String ? map['modelId'] : 'unknown',
+      volumeLeft: volLeft is num ? volLeft.toDouble() : 0.5,
+      volumeRight: volRight is num ? volRight.toDouble() : 0.5,
       isConnected: false,
     );
   }
@@ -89,8 +122,8 @@ class BeltCalib {
   /// Whether the device counts as connected. Runtime only, not persisted.
   bool isConnected;
 
-  /// Category label (see the TODO at [HeadphoneCalib.category]).
-  final String category = 'Belt';
+  /// Category of every belt device.
+  static const DeviceCategory category = DeviceCategory.belt;
 
   BeltCalib({
     required this.modelId,
@@ -99,7 +132,7 @@ class BeltCalib {
 
   factory BeltCalib.fromMap(Map<String, dynamic> map) {
     return BeltCalib(
-      modelId: map['modelId'] ?? 'unknown',
+      modelId: map['modelId'] is String ? map['modelId'] : 'unknown',
       isConnected: false,
     );
   }
@@ -159,28 +192,27 @@ class UserModel {
   /// 'New User' as the default display name, this factory uses
   /// [defaultDisplayName] (the same value).
   ///
-  /// TODO(improve): The fallbacks only cover missing keys. A device entry of
-  /// the wrong type (`value as Map<String, dynamic>`) still throws.
+  /// Fields of the wrong type fall back to the defaults too, and invalid
+  /// device entries are skipped (see [parseDeviceMap]).
   factory UserModel.fromFirestore(Map<String, dynamic> data, String id) {
-    final calib = data['calibration'] as Map<String, dynamic>? ?? {};
+    final calib = data['calibration'];
+    final calibMap = calib is Map ? calib : const {};
 
     // Parse Headphones Map
-    final hpMap = calib['headphones'] as Map<String, dynamic>? ?? {};
-    Map<String, HeadphoneCalib> parsedHeadphones = hpMap.map(
-            (key, value) => MapEntry(key, HeadphoneCalib.fromMap(value as Map<String, dynamic>))
-    );
+    final parsedHeadphones =
+        parseDeviceMap(calibMap['headphones'], HeadphoneCalib.fromMap);
 
     // Parse Belts Map
-    final beltMap = calib['belts'] as Map<String, dynamic>? ?? {};
-    Map<String, BeltCalib> parsedBelts = beltMap.map(
-            (key, value) => MapEntry(key, BeltCalib.fromMap(value as Map<String, dynamic>))
-    );
+    final parsedBelts = parseDeviceMap(calibMap['belts'], BeltCalib.fromMap);
 
+    final displayName = data['displayName'];
+    final email = data['email'];
+    final schemaVersion = data['schemaVersion'];
     return UserModel(
       id: id,
-      displayName: data['displayName'] ?? defaultDisplayName,
-      email: data['email'] ?? '',
-      schemaVersion: (data['schemaVersion'] ?? 0) as int,
+      displayName: displayName is String ? displayName : defaultDisplayName,
+      email: email is String ? email : '',
+      schemaVersion: schemaVersion is num ? schemaVersion.toInt() : 0,
       headphones: parsedHeadphones,
       belts: parsedBelts,
     );

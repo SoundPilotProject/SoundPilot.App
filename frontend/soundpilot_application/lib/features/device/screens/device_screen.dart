@@ -88,33 +88,30 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   // ── Logout ─────────────────────────────────────────────────────────────────
 
-  /// Signs out and reloads the (now guest) devices.
+  /// Signs out; AppEntryPoint then shows the StartScreen.
   ///
   /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
   /// visible for a moment and slows the UI down on purpose (same in
   /// TestPage._finishExercise and BeltVibrationScreen._finishSetup;
   /// StartScreen._continueAsGuest no longer has it, see there).
   Future<void> _logout() async {
-    Navigator.push(
-      context,
+    // NOTE: The navigator is read before the logout, because this screen is
+    // removed by AppEntryPoint during it and `context` is then no longer valid.
+    final navigator = Navigator.of(context);
+    navigator.push(
       MaterialPageRoute(
         builder: (_) => const LoadingScreen(text: 'Wird abgemeldet...'),
       ),
     );
 
-    await AuthService().logout();
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-    Navigator.pop(context);
-
-    // Reload devices for the new (guest) state
-    setState(() {
-      _isLoadingDevices = true;
-      _earbuds = {};
-      _belts = {};
-    });
-    await _loadDevices();
+    // NOTE: `finally`, so the loading screen is closed even if the logout
+    // throws; otherwise it stays open forever.
+    try {
+      await AuthService().logout();
+      await Future.delayed(const Duration(seconds: 2));
+    } finally {
+      navigator.popUntil((route) => route.isFirst);
+    }
   }
 
   // ── Remove ─────────────────────────────────────────────────────────────────
@@ -387,7 +384,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
-                        const LoginScreen(returnToDeviceOnBack: true),
+                        const LoginScreen(),
                   ),
                 );
               },
@@ -400,7 +397,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
-                        const RegisterScreen(returnToDeviceOnBack: true),
+                        const RegisterScreen(),
                   ),
                 );
               },
