@@ -462,8 +462,12 @@ Not backed by evidence — check in the code instead of assuming:
   Work on a branch and merge through a pull request.
 - Keep branches small and merge them quickly; delete a branch after it is
   merged.
-- Small documentation-only edits may go to `main` only if the team agreed to
-  that for the change.
+- **`main` is protected on GitHub** (ruleset `main-ruleset`): every change,
+  documentation included, goes through a pull request; merging needs green
+  `build_and_test` and `functions` checks and 1 approval. Direct pushes,
+  force pushes and deleting `main` are rejected. Admins may merge their own
+  PR without an approval (or in an emergency with failing checks) via "bypass
+  rules" / `gh pr merge --admin`, but cannot push to `main` directly either.
 
 ### Keeping the project context safe
 
