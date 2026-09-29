@@ -217,6 +217,10 @@ Runs on every pull request to `main` and every push to `main`:
   `firebase login:ci`.) Deploys run one after another
   (`concurrency: deploy-main`) and with `--debug`, so a failed run shows the
   cause in the Actions log.
+- The deploy step makes up to 3 attempts, 30 s apart, because Google APIs
+  sometimes return a temporary 503 (this failed the deploy of PR #20). A retry
+  shows up as a warning in the run. A deploy that fails all 3 attempts is a
+  real error (e.g. a 403), not a hiccup.
 
 ## 4. Data Model
 

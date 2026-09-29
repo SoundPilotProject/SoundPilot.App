@@ -108,6 +108,18 @@ jobs:
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
+      # Up to 3 attempts: Google APIs sometimes answer with a temporary 503,
+      # which failed a whole deploy before. A deploy only makes Firebase match
+      # main, so repeating it is safe.
       - name: Deploy to Firebase
         working-directory: firebase
-        run: firebase deploy --only firestore:rules,functions --non-interactive --debug
+        run: |
+          for attempt in 1 2 3; do
+            firebase deploy --only firestore:rules,functions --non-interactive --debug && exit 0
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Deploy attempt $attempt failed, retrying in 30 s"
+              sleep 30
+            fi
+          done
+          echo "::error::Deploy failed after 3 attempts"
+          exit 1
