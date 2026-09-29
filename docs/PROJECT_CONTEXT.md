@@ -65,6 +65,7 @@ When in doubt, choose the more accessible option and mention the trade-off.
 | `google_sign_in` | Google login |
 | `cloud_firestore` | included, but **not yet used** in the Dart code (see §4) |
 | `shared_preferences` | current local persistence (devices, calibration, guest mode) |
+| `flutter_localizations` | German labels for Flutter's built-in widgets (see §7) |
 | `google_fonts` | Plus Jakarta Sans font |
 | `audioplayers` | Audio playback (calibration) |
 | `logger` | global `logger` in `core/app_logger.dart` |
@@ -94,6 +95,7 @@ main.dart                        Entry point, themes, start routing (AppEntryPoi
 firebase_options.dart            generated
 models/user_model.dart           HeadphoneCalib, BeltCalib, UserModel
 core/
+  app_locale.dart                App language (fixed German), shared with tests
   app_logger.dart
   theme/app_colors.dart          Colors depending on context (light/dark)
   widgets/                       LoadingScreen, SoundPilotLogo,
@@ -424,8 +426,12 @@ Not backed by evidence — check in the code instead of assuming:
   tap targets; state is no longer carried by colour alone (connection dot, type
   selector and side buttons all carry an icon too); the whole palette measured
   against WCAG AA in `test/color_contrast_test.dart`; the system back button
-  works again on login/register (`PopScope(canPop: true)`, back just pops).
-  Still open: no app locale / localisation, haptics only in the calibration
+  works again on login/register (`PopScope(canPop: true)`, back just pops);
+  the app locale is fixed to German (`core/app_locale.dart`), so Flutter's
+  built-in labels are German and the app reports German to the platform
+  (whether TalkBack/VoiceOver then pick a German voice is not verified).
+  Still open: localisation (texts are hardcoded German; a second language
+  would need `gen-l10n` with ARB files), haptics only in the calibration
   wheel, nothing verified with TalkBack or VoiceOver on real hardware.
 - **The registration form scrolls; do not try to fit it on one screen again.**
   It was built without a scroll view for a while, because a form that needs no
@@ -446,7 +452,8 @@ Not backed by evidence — check in the code instead of assuming:
   `DeviceType`; merging the two is open.
 - **Test strategy** is not documented. CI runs `flutter test`; tested so far
   are the models (`test/models/`), the auth error messages
-  (`test/features/auth/`) and `GuestModeService` (`test/core/services/`).
+  (`test/features/auth/`), `GuestModeService` (`test/core/services/`) and
+  the German app locale (`test/core/app_locale_test.dart`).
   `test/accessibility_layout_test.dart` renders the screens on a 360x720 phone
   in both themes at text scale 1.0/1.6/2.0 and checks the add-device dialog;
   `test/color_contrast_test.dart` checks the palette; `test/widget_test.dart`

@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:soundpilot_application/core/app_locale.dart';
 import 'package:soundpilot_application/core/widgets/auth_text_field.dart';
 import 'package:soundpilot_application/core/widgets/loading_screen.dart';
 import 'package:soundpilot_application/features/auth/screens/login_screen.dart';
@@ -34,8 +35,14 @@ const Size _phone = Size(360, 720);
 const List<double> _textScales = [1.0, 1.6, 2.0];
 
 /// Wraps [child] in a MaterialApp with the given [brightness] and text [scale].
+///
+/// Uses the app's German locale, so Flutter's built-in labels are measured in
+/// the language the user sees.
 Widget _wrap(Widget child, Brightness brightness, double scale) {
   return MaterialApp(
+    locale: appLocale,
+    supportedLocales: appSupportedLocales,
+    localizationsDelegates: appLocalizationsDelegates,
     theme: ThemeData(brightness: brightness, useMaterial3: true),
     home: MediaQuery(
       data: MediaQueryData(textScaler: TextScaler.linear(scale)),
