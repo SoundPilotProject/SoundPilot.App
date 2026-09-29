@@ -178,6 +178,16 @@ deploying by hand; `firebase.json` has no predeploy build step.
 On Windows, `npm run lint` locally reports `linebreak-style` (CRLF) errors when
 git's `core.autocrlf` is on. The repo stores LF, so CI is not affected.
 
+CI pins Flutter 3.35.4; a newer local Flutter can rewrite transitive versions
+in `pubspec.lock` during `flutter pub get` (seen with 3.38.9: `characters`,
+`matcher`). Do not commit such lock changes unless you changed dependencies on
+purpose; discard them with `git checkout -- pubspec.lock`.
+
+On Windows, a full `flutter test` run sometimes fails to load single test files
+with "Connection closed before test suite loaded". That is a crash of the local
+test runner, not a failing test: rerun those files with
+`flutter test --concurrency=1 <files>`.
+
 ### CI/CD (`.github/workflows/ci-cd.yml`)
 
 Runs on every pull request to `main` and every push to `main`:
@@ -529,6 +539,10 @@ the Cloud Functions), so they work the same on Windows, macOS and Linux.
   branch) is confirmed in the permission prompt. To change a rule, edit the
   script through a PR like any other code.
 - Review or temporarily disable hooks with `/hooks` in Claude Code.
+- **When a hook blocks or questions a command, never work around it** (other
+  wording, a script, another tool). Tell the user what was blocked and why. If
+  it is a false positive (e.g. a trigger word inside a commit message or
+  heredoc), say so and suggest fixing the rule in the script.
 
 ### Session start
 
@@ -548,3 +562,45 @@ Before starting any task, check the state of the repo and report it:
   - open PRs that still wait for a merge
 
 Ask before deleting anything or discarding changes.
+
+### Before pushing / opening a PR
+
+- Run the checks CI runs, for the parts you changed (see §3):
+  `flutter analyze --no-fatal-infos` and `flutter test` in
+  `frontend/soundpilot_application/`; `npm run lint` and `npm run build` in
+  `firebase/functions/`. Report failures with their output; do not push
+  known-red code.
+- Leave unrelated local changes out of the commit (e.g. a `pubspec.lock` that
+  only a local `flutter pub get` changed, see §3). Stage files by name, not
+  with `git add -A`.
+- If §1–§8 of this file changed, `docs/PROJECT_CONTEXT.md` changes in the same
+  commit (see "Keeping the project context safe").
+- PR description: what changed and why, how it was tested (commands and
+  results), and anything the reviewer has to decide. Do not merge the PR
+  yourself; the user merges (admins via the ruleset bypass, see §8).
+
+### Merge conflicts in a PR
+
+- Merge `main` into the PR branch (`git merge main`); do not rebase, because
+  that needs a force push and rewrites commits teammates may have pulled.
+- Understand both sides first (`git diff <merge-base> main -- <file>` and the
+  same for the branch). Often one side restructured a file and the other
+  changed its logic; keep the restructured version and re-apply the logic
+  change on top, rather than picking one side.
+- After resolving: `flutter analyze` and `flutter test` (plus the functions
+  checks if `firebase/` is involved), and search for leftover `<<<<<<<` markers.
+- Ask before pushing to a branch another person owns, and name the decisions
+  you made (e.g. something left duplicated on purpose).
+
+### After a PR is merged
+
+When the user says a PR was merged:
+
+1. `git checkout main` and `git pull --prune`. If local changes block the
+   checkout, find out where they come from before discarding anything.
+2. Check CI for the merge commit (`gh run list --branch main --limit 1`). It
+   includes the automatic deploy of rules and functions; report a failure
+   with a link to the run. A run can take a moment to appear.
+3. Delete the merged local branch (`git branch -d`, which refuses unmerged
+   work) after asking, and check for other merged or orphaned branches and
+   open PRs, as at session start.

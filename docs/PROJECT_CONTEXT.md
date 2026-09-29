@@ -178,6 +178,16 @@ deploying by hand; `firebase.json` has no predeploy build step.
 On Windows, `npm run lint` locally reports `linebreak-style` (CRLF) errors when
 git's `core.autocrlf` is on. The repo stores LF, so CI is not affected.
 
+CI pins Flutter 3.35.4; a newer local Flutter can rewrite transitive versions
+in `pubspec.lock` during `flutter pub get` (seen with 3.38.9: `characters`,
+`matcher`). Do not commit such lock changes unless you changed dependencies on
+purpose; discard them with `git checkout -- pubspec.lock`.
+
+On Windows, a full `flutter test` run sometimes fails to load single test files
+with "Connection closed before test suite loaded". That is a crash of the local
+test runner, not a failing test: rerun those files with
+`flutter test --concurrency=1 <files>`.
+
 ### CI/CD (`.github/workflows/ci-cd.yml`)
 
 Runs on every pull request to `main` and every push to `main`:
