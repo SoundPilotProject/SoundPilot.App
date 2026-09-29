@@ -1,7 +1,7 @@
 // test/color_contrast_test.dart
 //
-// Enforces the WCAG 2.1 AA contrast requirement from CLAUDE.md §1 on the
-// palette in `core/theme/app_colors.dart`, in light and dark mode.
+// Enforces the WCAG 2.1 AA contrast requirement from docs/PROJECT_CONTEXT.md
+// §1 on the palette in `core/theme/app_colors.dart`, in light and dark mode.
 //
 // Thresholds: 4.5:1 for normal text, 3:1 for large text, icons, borders and
 // other non-text parts of a control (WCAG 1.4.3 and 1.4.11).
