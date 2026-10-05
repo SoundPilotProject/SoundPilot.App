@@ -1,6 +1,7 @@
 // lib/features/auth/auth_service.dart
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../models/user_model.dart';
@@ -122,42 +123,48 @@ class AuthService {
   /// Signs in with a Google account and links it to Firebase Auth.
   ///
   /// Returns [AuthResult.cancelled] if the user closed the dialog.
+  ///
+  /// NOTE: In the browser, Firebase Auth opens the Google popup itself
+  /// ([FirebaseAuth.signInWithPopup]). google_sign_in_web's `signIn()` is
+  /// deprecated there: it returns no reliable ID token and needs the People
+  /// API for the profile. On Android/iOS the google_sign_in plugin is used.
   Future<AuthResult> signInWithGoogle() async {
     try {
       logger.i("AuthService: Starting Google Sign-In flow");
 
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        logger.w("AuthService: Google Sign-In aborted by user");
-        return const AuthResult.cancelled();
+      final UserCredential result;
+      if (kIsWeb) {
+        result = await _auth.signInWithPopup(GoogleAuthProvider());
+      } else {
+        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        if (googleUser == null) {
+          logger.w("AuthService: Google Sign-In aborted by user");
+          return const AuthResult.cancelled();
+        }
+
+        final GoogleSignInAuthentication googleAuth =
+        await googleUser.authentication;
+
+        final AuthCredential credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
+        result = await _auth.signInWithCredential(credential);
       }
-
-      final GoogleSignInAuthentication googleAuth =
-      await googleUser.authentication;
-
-      // NOTE: On the web, google_sign_in_web's `signIn()` is documented as
-      // unable to reliably return an ID token (it does an OAuth2
-      // authorization, not an authentication). Without any token Firebase
-      // would throw something unreadable, so say what happened instead.
-      if (googleAuth.idToken == null && googleAuth.accessToken == null) {
-        logger.e("AuthService: Google returned neither an ID nor an "
-            "access token; cannot build a Firebase credential");
-        return AuthResult.failure(messageForGoogleCode(_noTokenCode));
-      }
-
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final UserCredential result =
-      await _auth.signInWithCredential(credential);
       logger.d("AuthService: Google login successful");
 
       await DeviceStorageService.migrateGuestDataAfterLogin();
 
       return _resultFor(result.user);
     } on FirebaseAuthException catch (e) {
+      // Web only: the user closed the popup, or a second click replaced it.
+      if (e.code == 'popup-closed-by-user' ||
+          e.code == 'cancelled-popup-request') {
+        logger.w("AuthService: Google Sign-In popup closed by user");
+        return const AuthResult.cancelled();
+      }
+
       logger.w("AuthService: Google Sign-In failed [${e.code}]");
       return AuthResult.failure(messageForCode(e.code));
     } on PlatformException catch (e) {
@@ -195,9 +202,10 @@ class AuthService {
   /// shows the StartScreen.
   ///
   /// NOTE: Google Sign-In is only signed out if the user signed in with
-  /// Google; it throws on platforms where it is not configured (web without
-  /// client ID, Windows). A failed Google sign-out is only logged, because the
-  /// Firebase sign-out has already succeeded at that point.
+  /// Google, and not on the web, where Firebase Auth did the Google sign-in
+  /// itself; it throws on platforms where it is not configured (Windows). A
+  /// failed Google sign-out is only logged, because the Firebase sign-out has
+  /// already succeeded at that point.
   Future<void> logout() async {
     await GuestModeService.set(false);
 
@@ -208,7 +216,7 @@ class AuthService {
 
     await _auth.signOut();
 
-    if (usedGoogle) {
+    if (usedGoogle && !kIsWeb) {
       try {
         await _googleSignIn.signOut();
       } catch (e) {
@@ -248,6 +256,10 @@ class AuthService {
       case 'network-request-failed':
         return 'Keine Internetverbindung. '
             'Bitte prüfe deine Verbindung und versuche es noch einmal.';
+      case 'popup-blocked':
+        return 'Das Google-Fenster konnte nicht geöffnet werden. '
+            'Bitte erlaube Pop-ups für diese Seite oder melde dich mit '
+            'E-Mail und Passwort an.';
       case 'too-many-requests':
         return 'Zu viele Versuche. '
             'Bitte warte kurz und versuche es dann noch einmal.';
@@ -259,10 +271,6 @@ class AuthService {
   /// Own code for a platform without a Google Sign-In implementation; the
   /// plugin itself has none, because it throws a [MissingPluginException].
   static const String _missingPluginCode = 'missing-plugin';
-
-  /// Own code for a Google account that came back without any token, so no
-  /// Firebase credential can be built from it (see [signInWithGoogle]).
-  static const String _noTokenCode = 'no-token';
 
   /// German UI message for a failure [code] of the google_sign_in plugin.
   ///
@@ -286,9 +294,6 @@ class AuthService {
         return messageForCode('network-request-failed');
       case _missingPluginCode:
         return 'Die Google-Anmeldung gibt es auf diesem Gerät nicht. '
-            'Bitte melde dich mit E-Mail und Passwort an.';
-      case _noTokenCode:
-        return 'Die Google-Anmeldung hat hier nicht funktioniert. '
             'Bitte melde dich mit E-Mail und Passwort an.';
       default:
         return messageForCode(null);

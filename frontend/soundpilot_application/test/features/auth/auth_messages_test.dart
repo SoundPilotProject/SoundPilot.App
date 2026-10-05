@@ -25,6 +25,8 @@ void main() {
           contains('Keine Internetverbindung'));
       expect(AuthService.messageForCode('invalid-email'),
           contains('ungültig'));
+      // Browser: the Google popup of signInWithPopup was blocked.
+      expect(AuthService.messageForCode('popup-blocked'), contains('Pop-ups'));
     });
 
     test('unknown codes and null give the general message', () {
@@ -51,16 +53,6 @@ void main() {
       final message = AuthService.messageForGoogleCode('missing-plugin');
 
       expect(message, contains('auf diesem Gerät nicht'));
-      expect(message, isNot(AuthService.messageForCode(null)));
-    });
-
-    test('a Google account without a token says so', () {
-      // Happens in the browser: google_sign_in_web's signIn() cannot reliably
-      // return an ID token, so no Firebase credential can be built.
-      final message = AuthService.messageForGoogleCode('no-token');
-
-      expect(message, contains('nicht funktioniert'));
-      expect(message, contains('E-Mail und Passwort'));
       expect(message, isNot(AuthService.messageForCode(null)));
     });
 

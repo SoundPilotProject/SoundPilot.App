@@ -1,0 +1,8 @@
+# Dev server of `flutter run -d chrome` (read by Flutter 3.38 and newer).
+#
+# A fixed address (http://localhost:5000) instead of a random port on every
+# start (see §3 of docs/PROJECT_CONTEXT.md). Older Flutter versions ignore
+# this file; there, pass `--web-port=5000`.
+server:
+  host: localhost
+  port: 5000

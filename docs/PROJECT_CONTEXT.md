@@ -171,16 +171,25 @@ Google-Anmeldung ist für diese App-Version nicht freigegeben."
 (`AuthService.messageForGoogleCode`). E-mail login is unaffected, and so is
 everything else in the app — only Google sign-in needs the fingerprint.
 
-Google Sign-In **in the browser** needs two more things, and is not the
-supported way to test it (see §7):
+Google Sign-In **in the browser** goes through Firebase Auth
+(`signInWithPopup`, see §7) and needs no SHA-1 and no Google Cloud setting.
+The host the app is served from must be listed under *Authorized domains* in
+the Firebase console (Authentication → Settings); `localhost` is there by
+default, on any port.
 
-- the OAuth web client ID in `web/index.html`
-  (`<meta name="google-signin-client_id">`, already committed). Without it
-  `google_sign_in_web` fails on an assertion before the dialog even opens.
-- the origin the app is served from, listed under *Authorized JavaScript
-  origins* of that web client in the Google Cloud console. `flutter run -d
-  chrome` picks a random port, so serve it on a fixed one
-  (`flutter run -d chrome --web-port=5000`) and register exactly that origin.
+`flutter run -d chrome` picks a random port unless told otherwise;
+`web_dev_config.yaml` in the app folder fixes it to `http://localhost:5000`
+(also with the run button in Android Studio). Flutter older than 3.38
+(including the 3.35.4 of CI) ignores that file, so pass `--web-port=5000`
+there.
+
+`flutter run -d chrome` (also the run button) starts Chrome with a temporary
+profile that is deleted after the run, so the Firebase login and the Google
+session are gone on the next start and the whole Google login (including the
+confirmation on the phone) is asked again. That is a debug-only effect; a
+normal browser keeps the login. To keep it while developing, give Chrome a
+fixed profile outside the repo, e.g. as additional run args:
+`--web-browser-flag=--user-data-dir=C:\Users\<you>\.flutter-chrome-profile`.
 
 Cloud Functions:
 
@@ -467,17 +476,17 @@ Not backed by evidence — check in the code instead of assuming:
   `test/accessibility_layout_test.dart`. If the form has to get shorter, remove
   a field (first name, last name and the belt question are not used yet, see
   the TODO in the file) — do not shrink the type.
-- **Google sign-in is built for Android/iOS, not for the browser.**
-  `AuthService.signInWithGoogle()` uses `GoogleSignIn.signIn()`, which
-  `google_sign_in_web` itself calls "discouraged on the web because it can't
-  reliably provide an `idToken`" — and that token is what
-  `GoogleAuthProvider.credential()` is built from. The web way would be
-  `signInSilently()` plus the Google-rendered `renderButton()`, which cannot be
-  styled and would not follow the app's accessibility rules. Nobody has decided
-  whether the browser is a target at all (`web/` is otherwise untouched Flutter
-  scaffolding). Until then: test Google sign-in on Android or iOS. The app no
-  longer crashes in the browser, it reports that the sign-in did not work and
-  points at e-mail login.
+- **Google sign-in takes two paths.** On Android/iOS,
+  `AuthService.signInWithGoogle()` uses the `google_sign_in` plugin and builds
+  a Firebase credential from its ID token. In the browser it calls
+  `FirebaseAuth.signInWithPopup(GoogleAuthProvider())` instead:
+  `google_sign_in_web`'s `signIn()` is deprecated, cannot reliably provide an
+  ID token and needs the People API for the profile, and its replacement
+  `renderButton()` cannot be styled and would not follow the app's
+  accessibility rules. The popup path keeps the app's own button. Nobody has
+  decided whether the browser is a target at all (`web/` is otherwise untouched
+  Flutter scaffolding); the client ID meta tag in `web/index.html` is only
+  needed by `google_sign_in_web`, which the web build no longer calls.
 - **Leaving guest mode:** a guest can only leave guest mode by signing in;
   there is no button to go back to the `StartScreen`.
 - **Two device-type enums:** `DeviceCategory` (`models/user_model.dart`, label
