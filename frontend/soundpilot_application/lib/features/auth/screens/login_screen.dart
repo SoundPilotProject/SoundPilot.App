@@ -8,7 +8,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/auth_text_field.dart';
-import '../../../core/widgets/loading_screen.dart';
+import '../../../core/widgets/google_sign_in_button.dart';
+import '../auth_flow.dart';
 import '../auth_service.dart';
 import 'register_screen.dart';
 
@@ -41,10 +42,12 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// Validates the input and signs in with e-mail and password.
+  /// Validates the input and signs in with e-mail and password. [runSignIn]
+  /// does the rest: loading screen, error message and closing this screen.
   ///
   /// TODO(improve): `_isLoading` (spinner in the button) is redundant because
-  /// a full-screen [LoadingScreen] is pushed as well; use only one of them.
+  /// [runSignIn] pushes a full-screen LoadingScreen as well; use only one of
+  /// them.
   Future<void> _finishLogin() async {
     final email = _emailController.text.trim();
     // NOTE: The password is not trimmed; spaces are valid password characters.
@@ -55,10 +58,13 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    await _runSignIn(
-      'Wird eingeloggt...',
-      () => _authService.loginWithEmail(email, password),
+    setState(() => _isLoading = true);
+    await runSignIn(
+      context,
+      loadingText: 'Wird eingeloggt...',
+      signIn: () => _authService.loginWithEmail(email, password),
     );
+    if (mounted) setState(() => _isLoading = false);
   }
 
   /// Signs in with a Google account.
@@ -67,55 +73,13 @@ class _LoginScreenState extends State<LoginScreen> {
   /// dialog. The Firestore document is created by the `createUserDoc` cloud
   /// function on the first sign-in, exactly as for an e-mail registration.
   Future<void> _loginWithGoogle() async {
-    await _runSignIn(
-      'Mit Google anmelden...',
-      () => _authService.signInWithGoogle(),
-    );
-  }
-
-  /// Runs [signIn] behind a full-screen [LoadingScreen] with [loadingText] and
-  /// handles its result.
-  ///
-  /// On success this screen (and anything on top of it) closes, because
-  /// AppEntryPoint already shows the DeviceScreen for the signed-in user. A
-  /// failure is reported in a SnackBar. A cancelled sign-in — the user closed
-  /// the Google dialog — carries no message and shows nothing, because the
-  /// user aborted it on purpose.
-  Future<void> _runSignIn(
-    String loadingText,
-    Future<AuthResult> Function() signIn,
-  ) async {
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Loading route on top of this screen; it is popped again below.
-    Navigator.push(
+    setState(() => _isLoading = true);
+    await runSignIn(
       context,
-      MaterialPageRoute(
-        builder: (_) => LoadingScreen(text: loadingText),
-      ),
+      loadingText: 'Mit Google anmelden...',
+      signIn: () => _authService.signInWithGoogle(),
     );
-
-    final result = await signIn();
-
-    if (!mounted) return;
-
-    Navigator.pop(context);
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    if (result.isSuccess) {
-      Navigator.popUntil(context, (route) => route.isFirst);
-      return;
-    }
-
-    final error = result.errorMessage;
-    if (error != null) _showMessage(error);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   /// Sends a password reset e-mail to the address typed into the form.
@@ -252,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               const SizedBox(height: 16),
                               const Spacer(),
-                              _GoogleSignInButton(
+                              GoogleSignInButton(
                                 onPressed:
                                     _isLoading ? null : _loginWithGoogle,
                               ),
@@ -365,109 +329,6 @@ class _FieldLabel extends StatelessWidget {
           fontWeight: FontWeight.w900,
           color: AppColors.text(context),
           height: 1.2,
-        ),
-      ),
-    );
-  }
-}
-
-// ── Google sign-in ───────────────────────────────────────────────────────────
-
-/// Blue of the Google logo.
-///
-/// Deliberately not in [AppColors]: it is a foreign brand colour used by the
-/// badge below, not part of the app palette.
-const Color _googleBlue = Color(0xFF4285F4);
-
-/// "Mit Google anmelden" button above the primary 'Anmelden' button.
-///
-/// Outlined instead of filled, so e-mail login stays the most prominent
-/// action, while the border and the badge still mark this as a button. The
-/// label grows with the system font size and wraps to a second line instead of
-/// being clipped. [onPressed] is `null` while a sign-in is already running,
-/// which disables the button.
-class _GoogleSignInButton extends StatelessWidget {
-  final VoidCallback? onPressed;
-
-  const _GoogleSignInButton({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    final labelColor = onPressed == null
-        ? AppColors.mutedText(context)
-        : AppColors.text(context);
-
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        backgroundColor: AppColors.surface(context),
-        foregroundColor: AppColors.text(context),
-        side: BorderSide(color: AppColors.inputBorder(context), width: 2),
-        minimumSize: const Size(double.infinity, 80),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(50),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const _GoogleBadge(),
-          const SizedBox(width: 14),
-          Flexible(
-            child: Text(
-              'Mit Google anmelden',
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: labelColor,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// White circle with a blue "G" in front of the button label.
-///
-/// NOTE: Decoration only, excluded from the semantics tree — the button label
-/// already says "Mit Google anmelden", so the meaning never rests on the
-/// picture. The circle stays white in both themes, so the blue "G" keeps its
-/// contrast (3.1:1, above the WCAG AA threshold of 3:1 for graphics). Its size
-/// follows the system font size like the label next to it; the glyph inside is
-/// not scaled a second time.
-///
-/// TODO(improve): Use the official multi-colour Google logo asset instead (see
-/// Google's branding guidelines for sign-in buttons).
-class _GoogleBadge extends StatelessWidget {
-  const _GoogleBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    final double diameter = MediaQuery.textScalerOf(context).scale(34);
-
-    return ExcludeSemantics(
-      child: Container(
-        width: diameter,
-        height: diameter,
-        alignment: Alignment.center,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-        ),
-        child: Text(
-          'G',
-          textScaler: TextScaler.noScaling,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: diameter * 0.62,
-            fontWeight: FontWeight.w900,
-            color: _googleBlue,
-            height: 1.0,
-          ),
         ),
       ),
     );

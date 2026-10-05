@@ -99,7 +99,8 @@ core/
   app_logger.dart
   theme/app_colors.dart          Colors depending on context (light/dark)
   widgets/                       LoadingScreen, SoundPilotLogo,
-                                 AppTopBar, AuthTextField
+                                 AppTopBar, AuthTextField,
+                                 GoogleSignInButton, GoogleLogo
   services/
     device_storage_service.dart  local persistence of devices + calibration
     guest_mode_service.dart      guest mode flag (ValueNotifier + stored)
@@ -107,6 +108,7 @@ core/
     audio_device_service.dart    MethodChannel com.soundpilot/audio_devices
 features/
   auth/auth_service.dart
+  auth/auth_flow.dart            shared sign-in flow of login + register
   auth/screens/                  start, login, register
   device/screens/                device_screen, calibration,
                                  belt_vibration_screen,
@@ -158,6 +160,16 @@ Debug SHA-1 for Android/Google Sign-In (Windows):
 cd frontend/soundpilot_application/android
 gradlew.bat signingReport
 ```
+
+**Every developer has to register their own debug SHA-1 once** in the Firebase
+console (Project settings → the Android app → "Add fingerprint"), and then put
+the newly downloaded `google-services.json` into `android/app/`. The debug
+keystore is generated locally on every machine, so a build signed with an
+unregistered one is refused by Google: the Google sign-in fails with
+`ApiException: 10` (DEVELOPER_ERROR), which the app reports as "Die
+Google-Anmeldung ist für diese App-Version nicht freigegeben."
+(`AuthService.messageForGoogleCode`). E-mail login is unaffected, and so is
+everything else in the app — only Google sign-in needs the fingerprint.
 
 Cloud Functions:
 

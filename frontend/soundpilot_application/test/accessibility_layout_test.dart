@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:soundpilot_application/core/app_locale.dart';
 import 'package:soundpilot_application/core/widgets/auth_text_field.dart';
+import 'package:soundpilot_application/core/widgets/google_logo.dart';
 import 'package:soundpilot_application/core/widgets/loading_screen.dart';
 import 'package:soundpilot_application/features/auth/screens/login_screen.dart';
 import 'package:soundpilot_application/features/auth/screens/register_screen.dart';
@@ -114,37 +115,66 @@ void main() {
     });
   });
 
-  group('LoginScreen offers the Google sign-in', () {
-    _forEveryScale('Button über "Anmelden"', (tester, brightness, scale) async {
-      await tester.pumpWidget(_wrap(const LoginScreen(), brightness, scale));
-      await tester.pump();
+  group('Both auth screens offer the Google sign-in', () {
+    // Screen, label of its Google button, label of its primary button. The
+    // Google button sits above the primary one on both screens.
+    final cases = <String, List<String>>{
+      'LoginScreen': ['Mit Google anmelden', 'Anmelden'],
+      'RegisterScreen': ['Mit Google registrieren', 'Registrieren'],
+    };
 
-      expect(tester.takeException(), isNull);
+    for (final entry in cases.entries) {
+      final isLogin = entry.key == 'LoginScreen';
+      final googleLabel = entry.value[0];
+      final primaryLabel = entry.value[1];
 
-      // 'Anmelden' is also the title of the top bar, so the button is found
-      // through its type.
-      final googleButton = find.widgetWithText(
-        OutlinedButton,
-        'Mit Google anmelden',
-      );
-      final loginButton = find.widgetWithText(ElevatedButton, 'Anmelden');
-      expect(googleButton, findsOneWidget);
-      expect(loginButton, findsOneWidget);
+      _forEveryScale('${entry.key}: Button über "$primaryLabel"',
+          (tester, brightness, scale) async {
+        await tester.pumpWidget(_wrap(
+          isLogin ? const LoginScreen() : const RegisterScreen(),
+          brightness,
+          scale,
+        ));
+        await tester.pump();
 
-      // The team asked for it above the primary button.
-      expect(
-        tester.getCenter(googleButton).dy,
-        lessThan(tester.getCenter(loginButton).dy),
-        reason: 'the Google button belongs above "Anmelden" (scale $scale)',
-      );
+        expect(tester.takeException(), isNull);
 
-      // Large enough to hit, at every font size.
-      expect(
-        tester.getSize(googleButton).height,
-        greaterThanOrEqualTo(48.0),
-        reason: 'tap target of the Google button (scale $scale)',
-      );
-    });
+        // Both labels are also the title of the top bar, so the buttons are
+        // found through their type.
+        final googleButton =
+            find.widgetWithText(OutlinedButton, googleLabel);
+        final primaryButton =
+            find.widgetWithText(ElevatedButton, primaryLabel);
+        expect(googleButton, findsOneWidget);
+        expect(primaryButton, findsOneWidget);
+
+        // The team asked for it above the primary button.
+        expect(
+          tester.getCenter(googleButton).dy,
+          lessThan(tester.getCenter(primaryButton).dy),
+          reason: 'the Google button belongs above "$primaryLabel"',
+        );
+
+        // Large enough to hit, at every font size.
+        expect(
+          tester.getSize(googleButton).height,
+          greaterThanOrEqualTo(48.0),
+          reason: 'tap target of the Google button (scale $scale)',
+        );
+
+        // The logo is decoration: the label has to carry the meaning, so the
+        // logo must not add anything to the semantics tree.
+        expect(find.byType(GoogleLogo), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(GoogleLogo),
+            matching: find.byType(ExcludeSemantics),
+          ),
+          findsOneWidget,
+          reason: 'the Google logo must stay out of the semantics tree',
+        );
+      });
+    }
   });
 
   group('RegisterScreen stays large and readable', () {

@@ -1,6 +1,7 @@
 // lib/features/auth/auth_service.dart
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../models/user_model.dart';
 import '../../core/app_logger.dart';
@@ -149,6 +150,29 @@ class AuthService {
     } on FirebaseAuthException catch (e) {
       logger.w("AuthService: Google Sign-In failed [${e.code}]");
       return AuthResult.failure(messageForCode(e.code));
+    } on PlatformException catch (e) {
+      // The plugin wraps every failure of the native Google side in a
+      // PlatformException. The code plus the native status code in the message
+      // is the only hint there is, so log both: 'sign_in_failed' together with
+      // 'ApiException: 10' (DEVELOPER_ERROR) means the SHA-1 fingerprint of
+      // the installed build is not registered in the Firebase project.
+      logger.e(
+        "AuthService: Google Sign-In failed natively "
+        "[${e.code}] ${e.message}",
+        error: e,
+      );
+
+      // iOS reports a closed dialog as an exception instead of a null account.
+      if (e.code == 'sign_in_canceled') return const AuthResult.cancelled();
+
+      return AuthResult.failure(messageForGoogleCode(e.code));
+    } on MissingPluginException catch (e) {
+      // No Google Sign-In implementation for this platform (e.g. Windows).
+      logger.e(
+        "AuthService: Google Sign-In is not available on this platform",
+        error: e,
+      );
+      return AuthResult.failure(messageForGoogleCode(_missingPluginCode));
     } catch (e) {
       logger.e("AuthService: Critical error during Google Sign-In", error: e);
       return AuthResult.failure(messageForCode(null));
@@ -219,6 +243,38 @@ class AuthService {
             'Bitte warte kurz und versuche es dann noch einmal.';
       default:
         return 'Etwas ist schiefgelaufen. Bitte versuche es noch einmal.';
+    }
+  }
+
+  /// Own code for a platform without a Google Sign-In implementation; the
+  /// plugin itself has none, because it throws a [MissingPluginException].
+  static const String _missingPluginCode = 'missing-plugin';
+
+  /// German UI message for a failure [code] of the google_sign_in plugin.
+  ///
+  /// Separate from [messageForCode]: these codes come from the plugin and the
+  /// native Google side, not from Firebase Auth. Unknown codes fall back to the
+  /// general message.
+  ///
+  /// NOTE: 'sign_in_failed' is what Android reports for the frequent setup
+  /// error DEVELOPER_ERROR (ApiException: 10) — the SHA-1 fingerprint of the
+  /// installed build is not registered in the Firebase project, so Google
+  /// refuses to hand out an ID token. Every developer has to add the SHA-1 of
+  /// their own debug keystore there once (see §3 of docs/PROJECT_CONTEXT.md).
+  /// The message therefore names e-mail login as the way out instead of
+  /// blaming the user.
+  static String messageForGoogleCode(String? code) {
+    switch (code) {
+      case 'sign_in_failed':
+        return 'Die Google-Anmeldung ist für diese App-Version nicht '
+            'freigegeben. Bitte melde dich mit E-Mail und Passwort an.';
+      case 'network_error':
+        return messageForCode('network-request-failed');
+      case _missingPluginCode:
+        return 'Die Google-Anmeldung gibt es auf diesem Gerät nicht. '
+            'Bitte melde dich mit E-Mail und Passwort an.';
+      default:
+        return messageForCode(null);
     }
   }
 

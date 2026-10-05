@@ -35,6 +35,40 @@ void main() {
     });
   });
 
+  group('AuthService.messageForGoogleCode', () {
+    test('a blocked setup names e-mail login as the way out', () {
+      // Android's DEVELOPER_ERROR (unregistered SHA-1) arrives as
+      // 'sign_in_failed'. It must not end up in the general message, because
+      // the user cannot do anything about it except use e-mail.
+      final message = AuthService.messageForGoogleCode('sign_in_failed');
+
+      expect(message, contains('nicht freigegeben'));
+      expect(message, contains('E-Mail und Passwort'));
+      expect(message, isNot(AuthService.messageForCode(null)));
+    });
+
+    test('a platform without the plugin says so', () {
+      final message = AuthService.messageForGoogleCode('missing-plugin');
+
+      expect(message, contains('auf diesem Gerät nicht'));
+      expect(message, isNot(AuthService.messageForCode(null)));
+    });
+
+    test('a network error reuses the Firebase message', () {
+      expect(
+        AuthService.messageForGoogleCode('network_error'),
+        AuthService.messageForCode('network-request-failed'),
+      );
+    });
+
+    test('unknown codes and null give the general message', () {
+      final general = AuthService.messageForCode(null);
+
+      expect(AuthService.messageForGoogleCode('some_new_code'), general);
+      expect(AuthService.messageForGoogleCode(null), general);
+    });
+  });
+
   group('AuthResult', () {
     test('success has a user and no message', () {
       final result = AuthResult.success(
