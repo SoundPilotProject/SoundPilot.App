@@ -99,7 +99,8 @@ core/
   app_logger.dart
   theme/app_colors.dart          Colors depending on context (light/dark)
   widgets/                       LoadingScreen, SoundPilotLogo,
-                                 AppTopBar, AuthTextField
+                                 AppTopBar, AuthTextField,
+                                 GoogleSignInButton, GoogleLogo
   services/
     device_storage_service.dart  local persistence of devices + calibration
     guest_mode_service.dart      guest mode flag (ValueNotifier + stored)
@@ -107,6 +108,7 @@ core/
     audio_device_service.dart    MethodChannel com.soundpilot/audio_devices
 features/
   auth/auth_service.dart
+  auth/auth_flow.dart            shared sign-in flow of login + register
   auth/screens/                  start, login, register
   device/screens/                device_screen, calibration,
                                  belt_vibration_screen,
@@ -158,6 +160,36 @@ Debug SHA-1 for Android/Google Sign-In (Windows):
 cd frontend/soundpilot_application/android
 gradlew.bat signingReport
 ```
+
+**Every developer has to register their own debug SHA-1 once** in the Firebase
+console (Project settings → the Android app → "Add fingerprint"), and then put
+the newly downloaded `google-services.json` into `android/app/`. The debug
+keystore is generated locally on every machine, so a build signed with an
+unregistered one is refused by Google: the Google sign-in fails with
+`ApiException: 10` (DEVELOPER_ERROR), which the app reports as "Die
+Google-Anmeldung ist für diese App-Version nicht freigegeben."
+(`AuthService.messageForGoogleCode`). E-mail login is unaffected, and so is
+everything else in the app — only Google sign-in needs the fingerprint.
+
+Google Sign-In **in the browser** goes through Firebase Auth
+(`signInWithPopup`, see §7) and needs no SHA-1 and no Google Cloud setting.
+The host the app is served from must be listed under *Authorized domains* in
+the Firebase console (Authentication → Settings); `localhost` is there by
+default, on any port.
+
+`flutter run -d chrome` picks a random port unless told otherwise;
+`web_dev_config.yaml` in the app folder fixes it to `http://localhost:5000`
+(also with the run button in Android Studio). Flutter older than 3.38
+(including the 3.35.4 of CI) ignores that file, so pass `--web-port=5000`
+there.
+
+`flutter run -d chrome` (also the run button) starts Chrome with a temporary
+profile that is deleted after the run, so the Firebase login and the Google
+session are gone on the next start and the whole Google login (including the
+confirmation on the phone) is asked again. That is a debug-only effect; a
+normal browser keeps the login. To keep it while developing, give Chrome a
+fixed profile outside the repo, e.g. as additional run args:
+`--web-browser-flag=--user-data-dir=C:\Users\<you>\.flutter-chrome-profile`.
 
 Cloud Functions:
 
@@ -444,6 +476,17 @@ Not backed by evidence — check in the code instead of assuming:
   `test/accessibility_layout_test.dart`. If the form has to get shorter, remove
   a field (first name, last name and the belt question are not used yet, see
   the TODO in the file) — do not shrink the type.
+- **Google sign-in takes two paths.** On Android/iOS,
+  `AuthService.signInWithGoogle()` uses the `google_sign_in` plugin and builds
+  a Firebase credential from its ID token. In the browser it calls
+  `FirebaseAuth.signInWithPopup(GoogleAuthProvider())` instead:
+  `google_sign_in_web`'s `signIn()` is deprecated, cannot reliably provide an
+  ID token and needs the People API for the profile, and its replacement
+  `renderButton()` cannot be styled and would not follow the app's
+  accessibility rules. The popup path keeps the app's own button. Nobody has
+  decided whether the browser is a target at all (`web/` is otherwise untouched
+  Flutter scaffolding); the client ID meta tag in `web/index.html` is only
+  needed by `google_sign_in_web`, which the web build no longer calls.
 - **Leaving guest mode:** a guest can only leave guest mode by signing in;
   there is no button to go back to the `StartScreen`.
 - **Two device-type enums:** `DeviceCategory` (`models/user_model.dart`, label

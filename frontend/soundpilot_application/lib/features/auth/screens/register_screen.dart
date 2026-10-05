@@ -8,7 +8,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/auth_text_field.dart';
-import '../../../core/widgets/loading_screen.dart';
+import '../../../core/widgets/google_sign_in_button.dart';
+import '../auth_flow.dart';
 import '../auth_service.dart';
 import 'login_screen.dart';
 
@@ -57,15 +58,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  /// Validates the input and registers the user. On success this screen
-  /// closes and AppEntryPoint shows the DeviceScreen. A [LoadingScreen] is
-  /// shown meanwhile.
+  /// Validates the input and registers the user. [runSignIn] does the rest:
+  /// loading screen, error message and closing this screen.
   ///
   /// The minimum password length of 6 matches the Firebase Auth minimum.
   ///
-  /// TODO(improve): Same points as LoginScreen._finishLogin: `setState` before
-  /// the `mounted` check and redundant `_isLoading` next to the
-  /// [LoadingScreen].
+  /// TODO(improve): `_isLoading` (spinner in the button) is redundant because
+  /// [runSignIn] pushes a full-screen LoadingScreen as well; use only one of
+  /// them.
   Future<void> _finishRegister() async {
     final email = _emailController.text.trim();
     // NOTE: The password is not trimmed; spaces are valid password characters.
@@ -81,40 +81,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
-
-    if (!mounted) return;
-
-    // Loading route on top of this screen; it is popped again below.
-    Navigator.push(
+    setState(() => _isLoading = true);
+    await runSignIn(
       context,
-      MaterialPageRoute(
-        builder: (_) => const LoadingScreen(
-          text: 'Konto wird erstellt...',
-        ),
-      ),
+      loadingText: 'Konto wird erstellt...',
+      signIn: () => _authService.registerWithEmail(email, password),
     );
+    if (mounted) setState(() => _isLoading = false);
+  }
 
-    final result = await _authService.registerWithEmail(email, password);
-
-    if (!mounted) return;
-
-    Navigator.pop(context);
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    if (!result.isSuccess) {
-      _showMessage(result.errorMessage ?? 'Registrierung fehlgeschlagen.');
-      return;
-    }
-
-    // AppEntryPoint already shows the DeviceScreen for the new user;
-    // close this screen (and anything else on top) to get back to it.
-    Navigator.popUntil(context, (route) => route.isFirst);
+  /// Creates the account with a Google account instead of the form.
+  ///
+  /// Google sign-in registers and signs in with the same call: the first
+  /// sign-in creates the Firebase Auth account, and the `createUserDoc` cloud
+  /// function then creates the Firestore document. The form fields stay empty
+  /// — name and e-mail come from the Google account.
+  Future<void> _registerWithGoogle() async {
+    setState(() => _isLoading = true);
+    await runSignIn(
+      context,
+      loadingText: 'Mit Google registrieren...',
+      signIn: () => _authService.signInWithGoogle(),
+    );
+    if (mounted) setState(() => _isLoading = false);
   }
 
   /// Shows [message] in a SnackBar.
@@ -250,6 +239,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
 
         const SizedBox(height: _gapBeforeSubmit),
+        GoogleSignInButton(
+          label: 'Mit Google registrieren',
+          onPressed: _isLoading ? null : _registerWithGoogle,
+        ),
+
+        const SizedBox(height: 14),
         ElevatedButton(
           onPressed: _isLoading ? null : _finishRegister,
           style: ElevatedButton.styleFrom(

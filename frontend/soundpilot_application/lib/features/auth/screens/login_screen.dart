@@ -8,7 +8,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/auth_text_field.dart';
-import '../../../core/widgets/loading_screen.dart';
+import '../../../core/widgets/google_sign_in_button.dart';
+import '../auth_flow.dart';
 import '../auth_service.dart';
 import 'register_screen.dart';
 
@@ -41,15 +42,12 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// Validates the input and signs in. On success this screen closes and
-  /// AppEntryPoint shows the DeviceScreen. A [LoadingScreen] is shown while
-  /// the login runs.
-  ///
-  /// TODO(improve): `setState` is called before the `mounted` check. The check
-  /// belongs before the `setState`. (Same in RegisterScreen._finishRegister.)
+  /// Validates the input and signs in with e-mail and password. [runSignIn]
+  /// does the rest: loading screen, error message and closing this screen.
   ///
   /// TODO(improve): `_isLoading` (spinner in the button) is redundant because
-  /// a full-screen [LoadingScreen] is pushed as well; use only one of them.
+  /// [runSignIn] pushes a full-screen LoadingScreen as well; use only one of
+  /// them.
   Future<void> _finishLogin() async {
     final email = _emailController.text.trim();
     // NOTE: The password is not trimmed; spaces are valid password characters.
@@ -60,40 +58,28 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
-
-    if (!mounted) return;
-
-    // Loading route on top of this screen; it is popped again below.
-    Navigator.push(
+    setState(() => _isLoading = true);
+    await runSignIn(
       context,
-      MaterialPageRoute(
-        builder: (_) => const LoadingScreen(
-          text: 'Wird eingeloggt...',
-        ),
-      ),
+      loadingText: 'Wird eingeloggt...',
+      signIn: () => _authService.loginWithEmail(email, password),
     );
+    if (mounted) setState(() => _isLoading = false);
+  }
 
-    final result = await _authService.loginWithEmail(email, password);
-
-    if (!mounted) return;
-
-    Navigator.pop(context);
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    if (!result.isSuccess) {
-      _showMessage(result.errorMessage ?? 'Login fehlgeschlagen.');
-      return;
-    }
-
-    // AppEntryPoint already shows the DeviceScreen for the signed-in user;
-    // close this screen (and anything else on top) to get back to it.
-    Navigator.popUntil(context, (route) => route.isFirst);
+  /// Signs in with a Google account.
+  ///
+  /// Needs nothing from the form: the account is picked in Google's own
+  /// dialog. The Firestore document is created by the `createUserDoc` cloud
+  /// function on the first sign-in, exactly as for an e-mail registration.
+  Future<void> _loginWithGoogle() async {
+    setState(() => _isLoading = true);
+    await runSignIn(
+      context,
+      loadingText: 'Mit Google anmelden...',
+      signIn: () => _authService.signInWithGoogle(),
+    );
+    if (mounted) setState(() => _isLoading = false);
   }
 
   /// Sends a password reset e-mail to the address typed into the form.
@@ -230,6 +216,11 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               const SizedBox(height: 16),
                               const Spacer(),
+                              GoogleSignInButton(
+                                onPressed:
+                                    _isLoading ? null : _loginWithGoogle,
+                              ),
+                              const SizedBox(height: 14),
                               ElevatedButton(
                                 onPressed: _isLoading ? null : _finishLogin,
                                 style: ElevatedButton.styleFrom(

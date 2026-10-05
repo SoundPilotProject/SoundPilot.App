@@ -20,6 +20,17 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
+  <!-- Google Sign-In (web only). google_sign_in_web reads the OAuth web
+       client ID from this tag and asserts if it is missing. The value is
+       the client_type 3 entry of android/app/google-services.json; an
+       OAuth client ID is public by design, it is sent to every visitor.
+       NOTE: the tag alone is not enough. The web client also has to list
+       the origin it is served from (e.g. http://localhost:5000) under
+       Authorized JavaScript origins in the Google Cloud console, and
+       flutter run needs a fixed --web-port to match it. See section 3 of
+       docs/PROJECT_CONTEXT.md. -->
+  <meta name="google-signin-client_id" content="115904987507-ee8j9ar75grcc69e0ov31m4s87foalhb.apps.googleusercontent.com">
+
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
