@@ -54,6 +54,16 @@ void main() {
       expect(message, isNot(AuthService.messageForCode(null)));
     });
 
+    test('a Google account without a token says so', () {
+      // Happens in the browser: google_sign_in_web's signIn() cannot reliably
+      // return an ID token, so no Firebase credential can be built.
+      final message = AuthService.messageForGoogleCode('no-token');
+
+      expect(message, contains('nicht funktioniert'));
+      expect(message, contains('E-Mail und Passwort'));
+      expect(message, isNot(AuthService.messageForCode(null)));
+    });
+
     test('a network error reuses the Firebase message', () {
       expect(
         AuthService.messageForGoogleCode('network_error'),

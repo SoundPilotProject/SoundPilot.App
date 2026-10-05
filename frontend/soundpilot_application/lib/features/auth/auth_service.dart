@@ -135,6 +135,16 @@ class AuthService {
       final GoogleSignInAuthentication googleAuth =
       await googleUser.authentication;
 
+      // NOTE: On the web, google_sign_in_web's `signIn()` is documented as
+      // unable to reliably return an ID token (it does an OAuth2
+      // authorization, not an authentication). Without any token Firebase
+      // would throw something unreadable, so say what happened instead.
+      if (googleAuth.idToken == null && googleAuth.accessToken == null) {
+        logger.e("AuthService: Google returned neither an ID nor an "
+            "access token; cannot build a Firebase credential");
+        return AuthResult.failure(messageForGoogleCode(_noTokenCode));
+      }
+
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
@@ -250,6 +260,10 @@ class AuthService {
   /// plugin itself has none, because it throws a [MissingPluginException].
   static const String _missingPluginCode = 'missing-plugin';
 
+  /// Own code for a Google account that came back without any token, so no
+  /// Firebase credential can be built from it (see [signInWithGoogle]).
+  static const String _noTokenCode = 'no-token';
+
   /// German UI message for a failure [code] of the google_sign_in plugin.
   ///
   /// Separate from [messageForCode]: these codes come from the plugin and the
@@ -272,6 +286,9 @@ class AuthService {
         return messageForCode('network-request-failed');
       case _missingPluginCode:
         return 'Die Google-Anmeldung gibt es auf diesem Gerät nicht. '
+            'Bitte melde dich mit E-Mail und Passwort an.';
+      case _noTokenCode:
+        return 'Die Google-Anmeldung hat hier nicht funktioniert. '
             'Bitte melde dich mit E-Mail und Passwort an.';
       default:
         return messageForCode(null);

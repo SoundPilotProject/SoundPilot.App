@@ -171,6 +171,17 @@ Google-Anmeldung ist für diese App-Version nicht freigegeben."
 (`AuthService.messageForGoogleCode`). E-mail login is unaffected, and so is
 everything else in the app — only Google sign-in needs the fingerprint.
 
+Google Sign-In **in the browser** needs two more things, and is not the
+supported way to test it (see §7):
+
+- the OAuth web client ID in `web/index.html`
+  (`<meta name="google-signin-client_id">`, already committed). Without it
+  `google_sign_in_web` fails on an assertion before the dialog even opens.
+- the origin the app is served from, listed under *Authorized JavaScript
+  origins* of that web client in the Google Cloud console. `flutter run -d
+  chrome` picks a random port, so serve it on a fixed one
+  (`flutter run -d chrome --web-port=5000`) and register exactly that origin.
+
 Cloud Functions:
 
 ```cmd
@@ -456,6 +467,17 @@ Not backed by evidence — check in the code instead of assuming:
   `test/accessibility_layout_test.dart`. If the form has to get shorter, remove
   a field (first name, last name and the belt question are not used yet, see
   the TODO in the file) — do not shrink the type.
+- **Google sign-in is built for Android/iOS, not for the browser.**
+  `AuthService.signInWithGoogle()` uses `GoogleSignIn.signIn()`, which
+  `google_sign_in_web` itself calls "discouraged on the web because it can't
+  reliably provide an `idToken`" — and that token is what
+  `GoogleAuthProvider.credential()` is built from. The web way would be
+  `signInSilently()` plus the Google-rendered `renderButton()`, which cannot be
+  styled and would not follow the app's accessibility rules. Nobody has decided
+  whether the browser is a target at all (`web/` is otherwise untouched Flutter
+  scaffolding). Until then: test Google sign-in on Android or iOS. The app no
+  longer crashes in the browser, it reports that the sign-in did not work and
+  points at e-mail login.
 - **Leaving guest mode:** a guest can only leave guest mode by signing in;
   there is no button to go back to the `StartScreen`.
 - **Two device-type enums:** `DeviceCategory` (`models/user_model.dart`, label
