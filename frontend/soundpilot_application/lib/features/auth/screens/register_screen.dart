@@ -63,9 +63,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   ///
   /// The minimum password length of 6 matches the Firebase Auth minimum.
   ///
-  /// TODO(improve): Same points as LoginScreen._finishLogin: `setState` before
-  /// the `mounted` check and redundant `_isLoading` next to the
-  /// [LoadingScreen].
+  /// TODO(improve): `setState` is called before the `mounted` check; the check
+  /// belongs before it. `_isLoading` (spinner in the button) is redundant next
+  /// to the full-screen [LoadingScreen]. LoginScreen._runSignIn shows the
+  /// first point fixed and could be shared with this screen.
   Future<void> _finishRegister() async {
     final email = _emailController.text.trim();
     // NOTE: The password is not trimmed; spaces are valid password characters.

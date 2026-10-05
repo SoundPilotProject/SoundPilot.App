@@ -114,6 +114,39 @@ void main() {
     });
   });
 
+  group('LoginScreen offers the Google sign-in', () {
+    _forEveryScale('Button über "Anmelden"', (tester, brightness, scale) async {
+      await tester.pumpWidget(_wrap(const LoginScreen(), brightness, scale));
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+
+      // 'Anmelden' is also the title of the top bar, so the button is found
+      // through its type.
+      final googleButton = find.widgetWithText(
+        OutlinedButton,
+        'Mit Google anmelden',
+      );
+      final loginButton = find.widgetWithText(ElevatedButton, 'Anmelden');
+      expect(googleButton, findsOneWidget);
+      expect(loginButton, findsOneWidget);
+
+      // The team asked for it above the primary button.
+      expect(
+        tester.getCenter(googleButton).dy,
+        lessThan(tester.getCenter(loginButton).dy),
+        reason: 'the Google button belongs above "Anmelden" (scale $scale)',
+      );
+
+      // Large enough to hit, at every font size.
+      expect(
+        tester.getSize(googleButton).height,
+        greaterThanOrEqualTo(48.0),
+        reason: 'tap target of the Google button (scale $scale)',
+      );
+    });
+  });
+
   group('RegisterScreen stays large and readable', () {
     // The form used to be squeezed onto one screen, which forced 16 px
     // captions and 58 px fields. Readability wins over "no scrolling": the
