@@ -83,6 +83,17 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// Sends a password reset e-mail to the address typed into the form.
+  ///
+  /// TODO(improve): Show the result in a dialog or as text on the screen that
+  /// stays until the user closes it. A SnackBar disappears after a few seconds
+  /// (time-limited, see the accessibility rules), and the result message is
+  /// long.
+  /// TODO(improve): Disable "Passwort vergessen?" and show progress while the
+  /// request runs. AuthService ignores a second request meanwhile, but each
+  /// tap still shows the message again.
+  /// TODO(improve): Move the reset into its own short step ("Passwort
+  /// zurücksetzen": one field, one button) instead of reusing the login
+  /// form's e-mail field, for one main action per screen.
   Future<void> _sendPasswordReset() async {
     final email = _emailController.text.trim();
 
@@ -95,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
 
-    _showMessage(error ?? 'Passwort-Reset wurde gesendet.');
+    _showMessage(error ?? AuthService.passwordResetSentMessage);
   }
 
   /// Shows [message] in a SnackBar.
