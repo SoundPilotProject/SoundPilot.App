@@ -63,12 +63,13 @@ When in doubt, choose the more accessible option and mention the trade-off.
 | `firebase_core` | Initialization |
 | `firebase_auth` | Authentication (email/password, Google Sign-In) |
 | `google_sign_in` | Google login |
-| `cloud_firestore` | included, but **not yet used** in the Dart code (see §4) |
-| `shared_preferences` | current local persistence (devices, calibration, guest mode) |
+| `cloud_firestore` | devices and calibration of signed-in users (`FirestoreDeviceRepository`, see §4) |
+| `shared_preferences` | local persistence (guest devices, guest mode) |
 | `flutter_localizations` | German labels for Flutter's built-in widgets (see §7) |
 | `google_fonts` | Plus Jakarta Sans font |
 | `audioplayers` | Audio playback (calibration) |
 | `logger` | global `logger` in `core/app_logger.dart` |
+| `fake_cloud_firestore` (dev) | in-memory Firestore for the repository tests; pinned to 4.1.0, newer versions need newer Firebase packages |
 
 `firebase_database` is **not** included.
 
@@ -102,6 +103,9 @@ core/
                                  AppTopBar, AuthTextField,
                                  GoogleSignInButton, GoogleLogo
   services/
+    device_repository.dart       DeviceRepository + LocalDeviceRepository
+                                 (guest)
+    firestore_device_repository.dart  devices of a signed-in user
     device_storage_service.dart  local persistence of devices + calibration
     guest_mode_service.dart      guest mode flag (ValueNotifier + stored)
     audio_device_service.dart    MethodChannel com.soundpilot/audio_devices
@@ -141,7 +145,9 @@ features/
   `StartScreen`, and switches by itself on sign-in, logout and "Als Gast
   fortfahren". Do not navigate to `DeviceScreen`/`StartScreen` manually:
   login/register are pushed on top and only close themselves on success
-  (`popUntil(isFirst)`).
+  (`popUntil(isFirst)`). It also hands `DeviceScreen` its `DeviceRepository`
+  (see §4) and whether a user is signed in, so the screen itself does not
+  touch Firebase.
 - **Guest mode** (`guestMode` in SharedPreferences) stays active across app
   starts until the user signs in or logs out. Logout leads to `StartScreen`.
 
@@ -262,22 +268,37 @@ Runs on every pull request to `main` and every push to `main`:
 
 ### Current state of persistence
 
-The app currently stores devices and calibration **only locally** in
-SharedPreferences (`DeviceStorageService`):
+`DeviceScreen` reads and writes the devices through a `DeviceRepository`
+(`core/services/device_repository.dart`): `watch()` delivers the whole device
+list (`DeviceData`) and again after every change, and every write changes one
+device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
 
-- Key `user_calibration_<uid>`, for guests `user_calibration_guest`
-- Value: a JSON string `{ "headphones": {...}, "belts": {...} }`
-- After login/registration, `migrateGuestDataAfterLogin()` copies the guest
-  data to the user key — only if the user has no data there yet.
-  The guest data is not deleted.
-- There is **no synchronization with Firestore**.
+- **Signed-in users: Firestore** (`FirestoreDeviceRepository`), field
+  `calibration` of `users/{uid}` (schema below).
+  - Reads with a snapshot listener, so a document the cloud function writes
+    late is picked up (see §6, eventual consistency).
+  - Writes one device per field path (`FieldPath(['calibration',
+    'headphones', key])`), deletes with `FieldValue.delete()`; never the whole
+    map. Writes wait until the document exists.
+  - Offline: Android and iOS keep a Firestore cache by default; in the browser
+    `main.dart` turns it on (`persistenceEnabled`). A write shows up at once
+    but its future only completes when the server has it, so `DeviceScreen`
+    does not await writes; a failed write is reported with a SnackBar.
+- **Guests: locally** (`LocalDeviceRepository` → `DeviceStorageService`),
+  SharedPreferences key `user_calibration_guest`, value a JSON string
+  `{ "headphones": {...}, "belts": {...} }` (same format as `calibration`).
+- **Taking over local devices:** on the first snapshot from the server,
+  `FirestoreDeviceRepository` uploads the devices stored under
+  `user_calibration_guest` and `user_calibration_<uid>` (the latter from
+  before the sync) that are not in the account yet, in one update; devices
+  already in the account win. Afterwards both local keys are removed. If the
+  upload fails, they stay and are tried again on the next start.
 - The earbud volumes are part of this map (`HeadphoneCalib.volumeLeft` /
   `volumeRight`, one pair per device). `CalibrationScreen` gets the earbud and
   saves through a callback; its wheel shows them as 1–100
   (`volumeToWheel` / `wheelToVolume` in `calibration.dart`).
-
-The Firestore schema below is the target schema that the Cloud Function already
-creates and that the Dart models map.
+- The connection state is runtime only: `DeviceScreen` keeps the connected
+  keys itself; nothing is stored.
 
 ### Firestore: collection `users`
 
@@ -431,7 +452,11 @@ For client code this means:
   are blocked. Do not build queries over the whole `users` collection. A rule
   for a new subcollection has to be added on purpose.
 - The rules were tested against the Firestore emulator (13 allow/deny cases,
-  2026-09-24). Re-test after changing them.
+  2026-09-24). Re-test after changing them. The writes of
+  `FirestoreDeviceRepository` were sent to the emulator as REST field-path
+  updates on 2026-10-07: put/remove of a device (also with a `AA:BB:…` key)
+  and the multi-device import are allowed; `displayName`, another user's
+  document and a document that does not exist yet are denied.
 
 ### Eventual consistency on registration
 
@@ -445,9 +470,16 @@ document that does not exist yet also fails.
 
 Not backed by evidence — check in the code instead of assuming:
 
-- **Firestore integration is missing in the client.** Devices and calibration
-  are stored only locally (see §4). Whether and when to switch to Firestore is
-  open.
+- **Firestore sync: not tried on a device yet.** Tested with
+  `fake_cloud_firestore` and the rules in the emulator (§4, §6), not with the
+  real backend, offline, or on two phones at once.
+- **Firestore cache after logout:** the signed-in user's devices stay in the
+  local Firestore cache after logout (until the next user's data replaces
+  them). Whether that matters on shared phones is open;
+  `FirebaseFirestore.clearPersistence()` would remove it.
+- **Guest devices go to the next account:** a guest's devices are uploaded
+  into whichever account signs in next on that phone. That is the intended
+  "keep your guest work" behaviour, but it is not asked.
 - **Real Bluetooth integration is missing.** The scan is simulated.
   `AudioDeviceService` (Android MethodChannel) exists in Dart but is not called
   by `DeviceScreen`. Whether the native Android side is implemented was not
@@ -516,9 +548,12 @@ Not backed by evidence — check in the code instead of assuming:
   `test/color_contrast_test.dart` checks the palette;
   `test/features/device/calibration_screen_test.dart` checks that the
   calibration starts at and saves the volumes of its earbud;
-  `test/widget_test.dart` is still a placeholder. `DeviceScreen` is not
-  covered because it reads `FirebaseAuth.instance` and needs a Firebase test
-  double. The other services and the security rules are not tested in CI.
+  `test/features/device/device_screen_test.dart` checks the `DeviceScreen`
+  with a fake repository (`test/helpers/`), which the layout test uses too;
+  `test/core/services/` tests both repositories (Firestore with
+  `fake_cloud_firestore`);
+  `test/widget_test.dart` is still a placeholder. `AuthService`,
+  `AudioDeviceService` and the security rules are not tested in CI.
 - **Firestore language default:** The function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
 

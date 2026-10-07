@@ -5,10 +5,9 @@
 // dark mode at text scale 1.0, 1.6 and 2.0, and must not throw (an overflow
 // reports itself as an exception in a test).
 //
-// The DeviceScreen is not covered: it reaches for `FirebaseAuth.instance`, so
-// it cannot be pumped without a Firebase test double. The DeviceScreen.s two
-// layout-heavy parts (AddDeviceDialog, DeviceCard) live in
-// `features/device/widgets/` and are covered here.
+// The DeviceScreen is rendered with a fake repository (two devices per type),
+// both signed in and as a guest; its dialog and cards are also checked on
+// their own.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -27,10 +26,13 @@ import 'package:soundpilot_application/features/device/screens/TestPage.dart';
 import 'package:soundpilot_application/features/device/screens/belt_vibration_screen.dart';
 import 'package:soundpilot_application/features/device/screens/belt_warning_distance_screen.dart';
 import 'package:soundpilot_application/features/device/screens/calibration.dart';
+import 'package:soundpilot_application/features/device/screens/device_screen.dart';
 import 'package:soundpilot_application/features/device/widgets/add_device_dialog.dart';
 import 'package:soundpilot_application/features/device/widgets/device_card.dart';
 import 'package:soundpilot_application/features/device/widgets/device_type.dart';
 import 'package:soundpilot_application/models/user_model.dart';
+
+import 'helpers/fake_device_repository.dart';
 
 /// Screen size of a small phone in logical pixels.
 const Size _phone = Size(360, 720);
@@ -97,6 +99,32 @@ void main() {
         await tester.pumpWidget(_wrap(entry.value(), brightness, scale));
         await tester.pump();
 
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final isSignedIn in [true, false]) {
+      _forEveryScale('DeviceScreen (angemeldet: $isSignedIn)',
+          (tester, brightness, scale) async {
+        final repository = FakeDeviceRepository();
+        await tester.pumpWidget(_wrap(
+          DeviceScreen(repository: repository, isSignedIn: isSignedIn),
+          brightness,
+          scale,
+        ));
+        repository.devices.add(DeviceData(
+          headphones: {
+            'aa': HeadphoneCalib(modelId: 'Kopfhörer mit langem Namen'),
+            'cc': HeadphoneCalib(modelId: 'Pods'),
+          },
+          belts: {
+            'bb': BeltCalib(modelId: 'Gürtel 1'),
+            'dd': BeltCalib(modelId: 'Gürtel 2'),
+          },
+        ));
+        await tester.pump();
+
+        expect(find.text('Pods'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }

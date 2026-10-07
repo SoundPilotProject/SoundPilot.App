@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../models/user_model.dart';
 import '../../core/app_logger.dart';
-import '../../core/services/device_storage_service.dart';
 import '../../core/services/guest_mode_service.dart';
 
 /// Result of a sign-in or registration.
@@ -60,9 +59,6 @@ class AuthService {
 
       logger.d("AuthService: Email registration successful");
 
-      // Take over the guest data (devices + calibration) into the user account.
-      await DeviceStorageService.migrateGuestDataAfterLogin();
-
       return await _resultFor(result.user);
     } on FirebaseAuthException catch (e) {
       logger.w("AuthService: Email registration failed [${e.code}]");
@@ -87,13 +83,9 @@ class AuthService {
 
       logger.d("AuthService: Email login successful");
 
-      // Copies locally saved guest calibration data to the user's own local
-      // key (only if the user has no data yet — e.g. first login on a new
-      // device). NOTE: This is a purely local copy in SharedPreferences.
-      // Original intent of this comment: upload the locally saved calibration
-      // data to Firestore, only if the user has no cloud data yet. That upload
-      // does not exist yet.
-      await DeviceStorageService.migrateGuestDataAfterLogin();
+      // NOTE: The locally saved guest devices are uploaded to the user's
+      // Firestore document by FirestoreDeviceRepository once the document
+      // exists, not here (devices already in the account win).
 
       return await _resultFor(result.user);
     } on FirebaseAuthException catch (e) {
@@ -182,8 +174,6 @@ class AuthService {
         result = await _auth.signInWithCredential(credential);
       }
       logger.d("AuthService: Google login successful");
-
-      await DeviceStorageService.migrateGuestDataAfterLogin();
 
       return await _resultFor(result.user);
     } on FirebaseAuthException catch (e) {

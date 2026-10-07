@@ -6,7 +6,8 @@
 // The add-device dialog, the device card and the legend live in
 // `features/device/widgets/`.
 
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -14,9 +15,10 @@ import '../../../models/user_model.dart';
 import '../../auth/auth_service.dart';
 import 'calibration.dart';
 import 'belt_warning_distance_screen.dart';
+import '../../../core/app_logger.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/loading_screen.dart';
-import '../../../core/services/device_storage_service.dart';
+import '../../../core/services/device_repository.dart';
 import '../../auth/screens/login_screen.dart';
 import '../../auth/screens/register_screen.dart';
 import '../widgets/add_device_dialog.dart';
@@ -25,12 +27,27 @@ import '../widgets/device_type.dart';
 
 /// Main screen after start-up (signed in or guest).
 ///
-/// Shows the earbuds and belts stored locally (see [DeviceStorageService]).
-/// Guests see 'Login' and 'Registrieren', signed-in users see 'Abmelden'.
-/// Tapping a device opens its calibration ([CalibrationScreen]) or belt setup
+/// Shows the earbuds and belts of [repository] (Firestore for a signed-in
+/// user, local for a guest) and stays in sync with it. Guests see 'Login' and
+/// 'Registrieren', signed-in users see 'Abmelden'. Tapping a device opens its
+/// calibration ([CalibrationScreen]) or belt setup
 /// ([BeltWarningDistanceScreen]).
 class DeviceScreen extends StatefulWidget {
-  const DeviceScreen({super.key});
+  /// Where the devices are read and written.
+  ///
+  /// NOTE: Only the repository of the first build is used (in `initState`);
+  /// AppEntryPoint gives every user its own key, so a new user gets a new
+  /// screen.
+  final DeviceRepository repository;
+
+  /// Whether a Firebase user is signed in (otherwise: guest).
+  final bool isSignedIn;
+
+  const DeviceScreen({
+    super.key,
+    required this.repository,
+    required this.isSignedIn,
+  });
 
   @override
   State<DeviceScreen> createState() => _DeviceScreenState();
@@ -44,47 +61,79 @@ class _DeviceScreenState extends State<DeviceScreen> {
   /// Belts, same structure as [_earbuds].
   Map<String, BeltCalib> _belts = {};
 
-  /// True until the devices have been loaded from local storage.
+  /// Keys of the devices that count as connected in this session.
+  ///
+  /// NOTE: Runtime only, like `isConnected` in the model; kept here because
+  /// every update from the repository brings new objects, all not connected.
+  final Set<String> _connected = {};
+
+  /// True until the repository has delivered the devices for the first time.
   bool _isLoadingDevices = true;
+
+  /// Set if the devices could not be loaded.
+  bool _loadFailed = false;
+
+  /// The repository of the first build (see [DeviceScreen.repository]).
+  late final DeviceRepository _repository = widget.repository;
+
+  StreamSubscription<DeviceData>? _devices;
 
   @override
   void initState() {
     super.initState();
-    _loadDevices();
-  }
-
-  /// Loads the devices of the current user (or guest) from local storage.
-  Future<void> _loadDevices() async {
-    // Call the new method from the storage service
-    final stored = await DeviceStorageService.loadUserCalibration();
-
-    if (!mounted) return;
-
-    setState(() {
-      // Assign the maps directly from the result
-      _earbuds = stored['headphones'] as Map<String, HeadphoneCalib>? ?? {};
-      _belts = stored['belts'] as Map<String, BeltCalib>? ?? {};
-      _isLoadingDevices = false;
-    });
-  }
-
-  /// Saves both device maps to local storage.
-  ///
-  /// NOTE: The callers do not `await` this method, so a failed save is not
-  /// noticed by the UI.
-  ///
-  /// NOTE: `isConnected` is not part of `toMap()`, so it is lost on the next
-  /// load and every device shows as not connected again after a restart.
-  Future<void> _persistDevices() async {
-    // Call the new save method and pass the maps
-    await DeviceStorageService.saveUserCalibration(
-      headphones: _earbuds,
-      belts: _belts,
+    _devices = _repository.watch().listen(
+      (data) {
+        setState(() {
+          _earbuds = data.headphones;
+          _belts = data.belts;
+          _isLoadingDevices = false;
+          _loadFailed = false;
+        });
+      },
+      onError: (Object e) {
+        logger.e('DeviceScreen: Loading the devices failed', error: e);
+        setState(() {
+          _isLoadingDevices = false;
+          _loadFailed = true;
+        });
+      },
     );
   }
 
-  /// True if a Firebase user is signed in (otherwise: guest).
-  bool get _isLoggedIn => FirebaseAuth.instance.currentUser != null;
+  @override
+  void dispose() {
+    _devices?.cancel();
+    _repository.dispose();
+    super.dispose();
+  }
+
+  /// Starts a write without waiting for it, and tells the user if it fails.
+  ///
+  /// NOTE: Not awaited on purpose: offline, a Firestore write only completes
+  /// once it reached the server, but the list already shows it (see
+  /// FirestoreDeviceRepository).
+  void _save(Future<void> write) {
+    write.catchError((Object e) {
+      logger.e('DeviceScreen: Saving failed', error: e);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.error_outline),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Die Änderung konnte nicht gespeichert werden. '
+                  'Bitte versuche es später noch einmal.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    });
+  }
 
   // ── Logout ─────────────────────────────────────────────────────────────────
 
@@ -116,57 +165,45 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   // ── Remove ─────────────────────────────────────────────────────────────────
 
-  /// Removes the device with the map key [key] (BD_ADDR) of the given [type]
-  /// and saves the list.
+  /// Removes the device with the map key [key] (BD_ADDR) of the given [type].
   void _removeDevice(DeviceType type, String key) {
-    setState(() {
-      if (type == DeviceType.earbuds) {
-        _earbuds.remove(key);
-      } else {
-        _belts.remove(key);
-      }
-    });
-    _persistDevices();
+    _connected.remove(key);
+    _save(type == DeviceType.earbuds
+        ? _repository.removeHeadphone(key)
+        : _repository.removeBelt(key));
   }
 
   // ── Calibration / Setup ────────────────────────────────────────────────────
 
-  /// Opens the [CalibrationScreen] for the earbud with the map key [key]. The
-  /// screen saves its volumes into this earbud; if it returns `true`, the
-  /// earbud is also marked as connected.
-  Future<void> _openCalibrationForEarbud(String key) async {
-    final calib = _earbuds[key];
-    if (calib == null) return;
-
+  /// Opens the [CalibrationScreen] for the earbud [calib] with the map key
+  /// [key]. The screen saves its volumes into this earbud; if it returns
+  /// `true`, the earbud is also marked as connected.
+  ///
+  /// NOTE: [calib] is passed in instead of read from [_earbuds], because a
+  /// newly added earbud is only in the list once the repository reports it.
+  Future<void> _openCalibrationForEarbud(
+    String key,
+    HeadphoneCalib calib,
+  ) async {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => CalibrationScreen(
           calib: calib,
-          onSave: (updated) => _saveEarbud(key, updated),
+          onSave: (updated) async =>
+              _save(_repository.putHeadphone(key, updated)),
         ),
       ),
     );
 
     if (!mounted) return;
-    final earbud = _earbuds[key];
-    if (result == true && earbud != null) {
-      setState(() => earbud.isConnected = true);
-      _persistDevices();
+    if (result == true) {
+      setState(() => _connected.add(key));
     }
   }
 
-  /// Replaces the earbud [key] with [calib] and saves the list. Does nothing
-  /// if the earbud was removed in the meantime.
-  Future<void> _saveEarbud(String key, HeadphoneCalib calib) async {
-    if (!_earbuds.containsKey(key)) return;
-    setState(() => _earbuds[key] = calib);
-    await _persistDevices();
-  }
-
   /// Opens the belt setup ([BeltWarningDistanceScreen]) for the belt with the
-  /// map key [key]; if it returns `true`, the belt is marked as connected and
-  /// saved.
+  /// map key [key]; if it returns `true`, the belt is marked as connected.
   ///
   /// TODO(improve): The setup screens do not return the entered values yet.
   Future<void> _openBeltSetup(String key) async {
@@ -176,10 +213,8 @@ class _DeviceScreenState extends State<DeviceScreen> {
     );
 
     if (!mounted) return;
-    final belt = _belts[key];
-    if (result == true && belt != null) {
-      setState(() => belt.isConnected = true);
-      _persistDevices();
+    if (result == true) {
+      setState(() => _connected.add(key));
     }
   }
 
@@ -201,27 +236,17 @@ class _DeviceScreenState extends State<DeviceScreen> {
     final tempMacAddress = 'dummy_mac_${DateTime.now().millisecondsSinceEpoch}';
 
     if (result.type == DeviceType.earbuds) {
-      setState(() {
-        // Add to map using the new MAC address key
-        _earbuds[tempMacAddress] = HeadphoneCalib(
-          modelId: result.name,
-          isConnected: false,
-        );
-      });
-      _persistDevices();
+      final calib = HeadphoneCalib(modelId: result.name);
+      _save(_repository.putHeadphone(tempMacAddress, calib));
 
       if (result.openCalibration) {
-        await _openCalibrationForEarbud(tempMacAddress);
+        await _openCalibrationForEarbud(tempMacAddress, calib);
       }
     } else {
-      setState(() {
-        // Add to map using the new MAC address key
-        _belts[tempMacAddress] = BeltCalib(
-          modelId: result.name,
-          isConnected: false,
-        );
-      });
-      _persistDevices();
+      _save(_repository.putBelt(
+        tempMacAddress,
+        BeltCalib(modelId: result.name),
+      ));
 
       // NOTE: Belts open their setup here as well. The dialog used to ask for
       // this only for earbuds, so a newly added belt was never set up.
@@ -283,26 +308,54 @@ class _DeviceScreenState extends State<DeviceScreen> {
           ),
         ),
         const SizedBox(height: 18),
+        if (_loadFailed) ...[
+          _buildLoadError(),
+          const SizedBox(height: 18),
+        ],
         ..._buildDeviceGroup(
           type: DeviceType.earbuds,
           devices: {
             for (final e in _earbuds.entries)
-              e.key: (name: e.value.modelId, isConnected: e.value.isConnected),
+              e.key: (name: e.value.modelId, isConnected: _connected.contains(e.key)),
           },
-          onOpen: _openCalibrationForEarbud,
+          onOpen: (key) => _openCalibrationForEarbud(key, _earbuds[key]!),
         ),
         const SizedBox(height: 18),
         ..._buildDeviceGroup(
           type: DeviceType.belt,
           devices: {
             for (final e in _belts.entries)
-              e.key: (name: e.value.modelId, isConnected: e.value.isConnected),
+              e.key: (name: e.value.modelId, isConnected: _connected.contains(e.key)),
           },
           onOpen: _openBeltSetup,
         ),
         const SizedBox(height: 20),
         const Spacer(),
         const LegendBox(),
+      ],
+    );
+  }
+
+  /// Message shown above the (empty) lists if the devices could not be
+  /// loaded; icon and text, not colour alone.
+  Widget _buildLoadError() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.error_outline, color: AppColors.text(context), size: 28),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            'Deine Geräte konnten nicht geladen werden. '
+            'Bitte starte die App später noch einmal.',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: AppColors.text(context),
+              height: 1.3,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -365,7 +418,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
   Widget _buildTopButtons() {
     final stacked = MediaQuery.textScalerOf(context).scale(17) > 24;
 
-    final authButtons = _isLoggedIn
+    final authButtons = widget.isSignedIn
         ? <({int flex, String text, VoidCallback onPressed})>[
             (flex: 7, text: 'Abmelden', onPressed: _logout),
           ]
