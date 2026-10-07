@@ -34,7 +34,12 @@ class AuthResult {
 /// can tell the user what went wrong (wrong password, no network, ...).
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  /// NOTE: One shared instance, created on first use (static fields are
+  /// lazy). In the browser the constructor already calls Google's
+  /// `id.initialize()`, so one instance per AuthService logged "initialize()
+  /// is called multiple times". The web never uses it (see
+  /// [signInWithGoogle] and [logout]), so there it is never created.
+  static final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   // ── Register ───────────────────────────────────────────────────────────────
 
