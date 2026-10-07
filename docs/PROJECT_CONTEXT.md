@@ -179,9 +179,7 @@ default, on any port.
 
 `flutter run -d chrome` picks a random port unless told otherwise;
 `web_dev_config.yaml` in the app folder fixes it to `http://localhost:5000`
-(also with the run button in Android Studio). Flutter older than 3.38
-(including the 3.35.4 of CI) ignores that file, so pass `--web-port=5000`
-there.
+(also with the run button in Android Studio).
 
 `flutter run -d chrome` (also the run button) starts Chrome with a temporary
 profile that is deleted after the run, so the Firebase login and the Google
@@ -212,10 +210,15 @@ deploying by hand; `firebase.json` has no predeploy build step.
 On Windows, `npm run lint` locally reports `linebreak-style` (CRLF) errors when
 git's `core.autocrlf` is on. The repo stores LF, so CI is not affected.
 
-CI pins Flutter 3.35.4; a newer local Flutter can rewrite transitive versions
-in `pubspec.lock` during `flutter pub get` (seen with 3.38.9: `characters`,
-`matcher`). Do not commit such lock changes unless you changed dependencies on
-purpose; discard them with `git checkout -- pubspec.lock`.
+**Everyone uses the Flutter version CI pins (3.47.6).** `pubspec.yaml`
+requires its Dart (`sdk: ^3.13.0`), so an older Flutter stops at
+`flutter pub get`. A different Flutter also gives different analyzer warnings
+and deprecations than CI, and can rewrite transitive versions in
+`pubspec.lock` during `flutter pub get`. Do not commit such lock changes unless
+you changed dependencies on purpose; discard them with
+`git checkout -- pubspec.lock`. To upgrade, change the CI version, the `sdk`
+constraint, the lock and this section in one PR, and the whole team upgrades
+with it.
 
 On Windows, a full `flutter test` run sometimes fails to load single test files
 with "Connection closed before test suite loaded". That is a crash of the local
@@ -228,7 +231,7 @@ Runs on every pull request to `main` and every push to `main`:
 
 | Job | Steps | Fails on |
 |---|---|---|
-| `build_and_test` | `flutter pub get`, `flutter analyze --no-fatal-infos`, `flutter test` (Flutter 3.35.4) | analyzer warnings/errors, failing tests |
+| `build_and_test` | `flutter pub get`, `flutter analyze --no-fatal-infos`, `flutter test` (Flutter 3.47.6) | analyzer warnings/errors, failing tests |
 | `functions` | `npm ci`, `npm run lint`, `npm run build` (Node.js 22) | lint errors, TypeScript errors |
 | `deploy` | build functions, `firebase deploy --only firestore:rules,functions` | any deploy error |
 
