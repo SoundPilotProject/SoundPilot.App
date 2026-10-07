@@ -63,7 +63,7 @@ class AuthService {
       // Take over the guest data (devices + calibration) into the user account.
       await DeviceStorageService.migrateGuestDataAfterLogin();
 
-      return _resultFor(result.user);
+      return await _resultFor(result.user);
     } on FirebaseAuthException catch (e) {
       logger.w("AuthService: Email registration failed [${e.code}]");
       return AuthResult.failure(messageForCode(e.code));
@@ -95,7 +95,7 @@ class AuthService {
       // does not exist yet.
       await DeviceStorageService.migrateGuestDataAfterLogin();
 
-      return _resultFor(result.user);
+      return await _resultFor(result.user);
     } on FirebaseAuthException catch (e) {
       logger.w("AuthService: Email login failed [${e.code}]");
       return AuthResult.failure(messageForCode(e.code));
@@ -185,7 +185,7 @@ class AuthService {
 
       await DeviceStorageService.migrateGuestDataAfterLogin();
 
-      return _resultFor(result.user);
+      return await _resultFor(result.user);
     } on FirebaseAuthException catch (e) {
       // Web only: the user closed the popup, or a second click replaced it.
       if (e.code == 'popup-closed-by-user' ||
