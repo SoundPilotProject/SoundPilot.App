@@ -107,16 +107,40 @@ class AuthService {
 
   // ── Password reset ─────────────────────────────────────────────────────────
 
-  /// Sends a password reset e-mail. Returns `null` if it was sent, otherwise
-  /// a German error message for the UI.
-  Future<String?> sendPasswordReset(String email) async {
+  /// German UI message after a password reset request that did not fail.
+  ///
+  /// NOTE: Deliberately does not claim that an e-mail was sent. With e-mail
+  /// enumeration protection Firebase reports success for an address without
+  /// an account too, and sends nothing.
+  static const String passwordResetSentMessage =
+      'Falls es ein Konto mit dieser E-Mail-Adresse gibt, haben wir dir eine '
+      'E-Mail zum Zurücksetzen des Passworts geschickt. '
+      'Bitte schau auch im Spam-Ordner nach.';
+
+  /// The reset request that is still running, see [sendPasswordReset].
+  Future<String?>? _pendingPasswordReset;
+
+  /// Sends a password reset e-mail. Returns `null` if the request did not
+  /// fail (the UI then shows [passwordResetSentMessage]), otherwise a German
+  /// error message for the UI.
+  ///
+  /// NOTE: A second call while a request is still running returns that
+  /// request instead of sending another e-mail (double tap). Firebase also
+  /// sends the e-mail for an account that only uses Google; setting a
+  /// password through the link adds e-mail/password to the same account.
+  Future<String?> sendPasswordReset(String email) {
+    return _pendingPasswordReset ??= _sendPasswordReset(email)
+        .whenComplete(() => _pendingPasswordReset = null);
+  }
+
+  Future<String?> _sendPasswordReset(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
-      logger.i("AuthService: Password reset email sent");
+      logger.i("AuthService: Password reset email requested");
       return null;
     } on FirebaseAuthException catch (e) {
       logger.w("AuthService: Password reset failed [${e.code}]");
-      return messageForCode(e.code);
+      return messageForResetCode(e.code);
     } catch (e) {
       logger.e("AuthService: Critical error during password reset", error: e);
       return messageForCode(null);
@@ -271,6 +295,18 @@ class AuthService {
       default:
         return 'Etwas ist schiefgelaufen. Bitte versuche es noch einmal.';
     }
+  }
+
+  /// German UI message for a failed password reset with [code], or `null` if
+  /// the UI should treat it as sent.
+  ///
+  /// NOTE: 'user-not-found' only comes if e-mail enumeration protection is
+  /// off. It is treated as sent, so the reset never reveals whether an address
+  /// has an account, and because [messageForCode]'s "E-Mail oder Passwort ist
+  /// falsch." makes no sense when no password was entered.
+  static String? messageForResetCode(String? code) {
+    if (code == 'user-not-found') return null;
+    return messageForCode(code);
   }
 
   /// Own code for a platform without a Google Sign-In implementation; the

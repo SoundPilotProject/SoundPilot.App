@@ -71,6 +71,35 @@ void main() {
     });
   });
 
+  group('AuthService.messageForResetCode', () {
+    test('an unknown address counts as sent', () {
+      // Only possible without e-mail enumeration protection. The reset must
+      // not reveal whether an account exists, and "E-Mail oder Passwort ist
+      // falsch." would make no sense without a password.
+      expect(AuthService.messageForResetCode('user-not-found'), isNull);
+    });
+
+    test('other codes give the normal message', () {
+      expect(
+        AuthService.messageForResetCode('invalid-email'),
+        AuthService.messageForCode('invalid-email'),
+      );
+      expect(
+        AuthService.messageForResetCode('network-request-failed'),
+        AuthService.messageForCode('network-request-failed'),
+      );
+      expect(
+        AuthService.messageForResetCode(null),
+        AuthService.messageForCode(null),
+      );
+    });
+
+    test('the success message does not promise an e-mail', () {
+      expect(AuthService.passwordResetSentMessage, contains('Falls es ein Konto'));
+      expect(AuthService.passwordResetSentMessage, contains('Spam'));
+    });
+  });
+
   group('AuthResult', () {
     test('success has a user and no message', () {
       final result = AuthResult.success(
