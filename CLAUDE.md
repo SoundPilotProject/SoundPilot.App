@@ -109,7 +109,7 @@ core/
 features/
   auth/auth_service.dart
   auth/auth_flow.dart            shared sign-in flow of login + register
-  auth/screens/                  start, login, register
+  auth/screens/                  start, login, register, password_reset
   device/screens/                device_screen, calibration,
                                  belt_vibration_screen,
                                  belt_warning_distance_screen, TestPage
@@ -488,17 +488,17 @@ Not backed by evidence — check in the code instead of assuming:
   Flutter scaffolding); the client ID meta tag in `web/index.html` is only
   needed by `google_sign_in_web`, which the web build no longer calls.
 - **Password reset and Google accounts.** "Passwort vergessen?" on the login
-  screen calls `AuthService.sendPasswordReset`; the link opens Firebase's own
-  web page. According to Firebase's documentation (not tried on this project):
+  screen opens `PasswordResetScreen` (one field, pre-filled with the typed
+  address, one button; the result stays on screen as text with an icon), which
+  calls `AuthService.sendPasswordReset`; the link opens Firebase's own web
+  page. According to Firebase's documentation (not tried on this project):
   a reset for an account that only uses Google adds e-mail/password to the
   same account. The other way round, a Google sign-in with the Gmail address of
   an e-mail/password account whose address is not verified replaces the
   password, and the reset is then the way back. The app never sends a
   verification e-mail; whether it should is open. Whether e-mail enumeration
   protection is on and which language the reset e-mail template uses (console:
-  Authentication → Templates) has not been checked. The UI part of the reset
-  (SnackBar, no progress, no own step) is a `TODO(improve)` in
-  `login_screen.dart`.
+  Authentication → Templates) has not been checked.
 - **Leaving guest mode:** a guest can only leave guest mode by signing in;
   there is no button to go back to the `StartScreen`.
 - **Two device-type enums:** `DeviceCategory` (`models/user_model.dart`, label
@@ -510,7 +510,8 @@ Not backed by evidence — check in the code instead of assuming:
   (`test/features/auth/`), `GuestModeService` (`test/core/services/`) and
   the German app locale (`test/core/app_locale_test.dart`).
   `test/accessibility_layout_test.dart` renders the screens on a 360x720 phone
-  in both themes at text scale 1.0/1.6/2.0 and checks the add-device dialog;
+  in both themes at text scale 1.0/1.6/2.0 and checks the add-device dialog
+  and the password reset flow;
   `test/color_contrast_test.dart` checks the palette; `test/widget_test.dart`
   is still a placeholder. `DeviceScreen` and `CalibrationScreen` are not
   covered because they read `FirebaseAuth.instance` (the latter through

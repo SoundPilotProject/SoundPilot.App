@@ -19,7 +19,9 @@ import 'package:soundpilot_application/core/app_locale.dart';
 import 'package:soundpilot_application/core/widgets/auth_text_field.dart';
 import 'package:soundpilot_application/core/widgets/google_logo.dart';
 import 'package:soundpilot_application/core/widgets/loading_screen.dart';
+import 'package:soundpilot_application/features/auth/auth_service.dart';
 import 'package:soundpilot_application/features/auth/screens/login_screen.dart';
+import 'package:soundpilot_application/features/auth/screens/password_reset_screen.dart';
 import 'package:soundpilot_application/features/auth/screens/register_screen.dart';
 import 'package:soundpilot_application/features/auth/screens/start_screen.dart';
 import 'package:soundpilot_application/features/device/screens/TestPage.dart';
@@ -78,6 +80,8 @@ void main() {
       'LoadingScreen': () => const LoadingScreen(text: 'Wird geladen...'),
       'LoginScreen': () => const LoginScreen(),
       'RegisterScreen': () => const RegisterScreen(),
+      'PasswordResetScreen': () =>
+          const PasswordResetScreen(initialEmail: 'max@example.com'),
       'BeltWarningDistanceScreen': () => const BeltWarningDistanceScreen(),
       'BeltVibrationScreen': () => const BeltVibrationScreen(),
       'TestPage': () => const TestPage(leftVolume: 40, rightVolume: 80),
@@ -175,6 +179,171 @@ void main() {
         );
       });
     }
+  });
+
+  group('PasswordResetScreen', () {
+    _forEveryScale('Ergebnis bleibt sichtbar', (tester, brightness, scale) async {
+      final requested = <String>[];
+      await tester.pumpWidget(_wrap(
+        PasswordResetScreen(
+          initialEmail: 'max@example.com',
+          sendReset: (email) async {
+            requested.add(email);
+            return null;
+          },
+        ),
+        brightness,
+        scale,
+      ));
+      await tester.pump();
+
+      // Pre-filled from the login screen.
+      expect(find.text('max@example.com'), findsOneWidget);
+
+      // At large text scales the button is below the fold; the screen scrolls.
+      final sendButton = find.widgetWithText(ElevatedButton, 'Link senden');
+      await tester.ensureVisible(sendButton);
+      await tester.pumpAndSettle();
+      await tester.tap(sendButton);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(requested, ['max@example.com']);
+      // The result is text on the screen, with an icon, and stays there.
+      expect(find.text(AuthService.passwordResetSentMessage), findsOneWidget);
+      expect(find.byIcon(Icons.mark_email_read_outlined), findsOneWidget);
+      await tester.pump(const Duration(seconds: 30));
+      expect(find.text(AuthService.passwordResetSentMessage), findsOneWidget);
+
+      // After success the one action is going back.
+      expect(find.widgetWithText(ElevatedButton, 'Zurück zur Anmeldung'),
+          findsOneWidget);
+      expect(
+        tester
+            .getSize(find.widgetWithText(ElevatedButton, 'Zurück zur Anmeldung'))
+            .height,
+        greaterThanOrEqualTo(48.0),
+      );
+    });
+
+    testWidgets('empty address gives a message and sends nothing',
+        (tester) async {
+      var calls = 0;
+      await tester.pumpWidget(_wrap(
+        PasswordResetScreen(sendReset: (_) async {
+          calls++;
+          return null;
+        }),
+        Brightness.light,
+        1.0,
+      ));
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Link senden'));
+      await tester.pump();
+
+      expect(calls, 0);
+      expect(find.text('Bitte gib deine E-Mail-Adresse ein.'), findsOneWidget);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    });
+
+    testWidgets('shows the error and keeps the address editable',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        PasswordResetScreen(
+          initialEmail: 'max@',
+          sendReset: (_) async => AuthService.messageForCode('invalid-email'),
+        ),
+        Brightness.dark,
+        1.0,
+      ));
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Link senden'));
+      await tester.pumpAndSettle();
+
+      final error = AuthService.messageForCode('invalid-email');
+      expect(find.text(error), findsOneWidget);
+      expect(find.widgetWithText(ElevatedButton, 'Link senden'), findsOneWidget);
+
+      // Correcting the address clears the old result.
+      await tester.enterText(find.byType(TextField), 'max@example.com');
+      await tester.pump();
+      expect(find.text(error), findsNothing);
+    });
+
+    testWidgets('is disabled while sending and sends only once',
+        (tester) async {
+      var calls = 0;
+      await tester.pumpWidget(_wrap(
+        PasswordResetScreen(
+          initialEmail: 'max@example.com',
+          sendReset: (_) async {
+            calls++;
+            await Future<void>.delayed(const Duration(seconds: 1));
+            return null;
+          },
+        ),
+        Brightness.light,
+        1.0,
+      ));
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Link senden'));
+      await tester.pump();
+      expect(find.text('Wird gesendet...'), findsOneWidget);
+      await tester.tap(find.byType(ElevatedButton));
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(calls, 1);
+      expect(find.text(AuthService.passwordResetSentMessage), findsOneWidget);
+    });
+
+    testWidgets('a changed address after success offers sending again',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        PasswordResetScreen(
+          initialEmail: 'max@example.com',
+          sendReset: (_) async => null,
+        ),
+        Brightness.light,
+        1.0,
+      ));
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Link senden'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(ElevatedButton, 'Zurück zur Anmeldung'),
+          findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'anna@example.com');
+      await tester.pump();
+      expect(find.text(AuthService.passwordResetSentMessage), findsNothing);
+      expect(find.widgetWithText(ElevatedButton, 'Link senden'), findsOneWidget);
+    });
+
+    testWidgets('"Passwort vergessen?" opens it with the typed address',
+        (tester) async {
+      tester.view.physicalSize = _phone;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(_wrap(const LoginScreen(), Brightness.light, 1.0));
+      await tester.enterText(find.byType(TextField).first, ' max@example.com ');
+      await tester.tap(find.text('Passwort vergessen?'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PasswordResetScreen), findsOneWidget);
+      expect(
+        tester.widget<PasswordResetScreen>(find.byType(PasswordResetScreen))
+            .initialEmail,
+        'max@example.com',
+      );
+
+      // Back returns to the login form.
+      await tester.tap(find.byTooltip('Zurück'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PasswordResetScreen), findsNothing);
+      expect(find.byType(LoginScreen), findsOneWidget);
+    });
   });
 
   group('RegisterScreen stays large and readable', () {

@@ -11,6 +11,7 @@ import '../../../core/widgets/auth_text_field.dart';
 import '../../../core/widgets/google_sign_in_button.dart';
 import '../auth_flow.dart';
 import '../auth_service.dart';
+import 'password_reset_screen.dart';
 import 'register_screen.dart';
 
 /// Login screen with e-mail and password.
@@ -82,31 +83,17 @@ class _LoginScreenState extends State<LoginScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
-  /// Sends a password reset e-mail to the address typed into the form.
-  ///
-  /// TODO(improve): Show the result in a dialog or as text on the screen that
-  /// stays until the user closes it. A SnackBar disappears after a few seconds
-  /// (time-limited, see the accessibility rules), and the result message is
-  /// long.
-  /// TODO(improve): Disable "Passwort vergessen?" and show progress while the
-  /// request runs. AuthService ignores a second request meanwhile, but each
-  /// tap still shows the message again.
-  /// TODO(improve): Move the reset into its own short step ("Passwort
-  /// zurücksetzen": one field, one button) instead of reusing the login
-  /// form's e-mail field, for one main action per screen.
-  Future<void> _sendPasswordReset() async {
-    final email = _emailController.text.trim();
-
-    if (email.isEmpty) {
-      _showMessage('Bitte zuerst deine E-Mail eingeben.');
-      return;
-    }
-
-    final error = await _authService.sendPasswordReset(email);
-
-    if (!mounted) return;
-
-    _showMessage(error ?? AuthService.passwordResetSentMessage);
+  /// Opens the password reset as its own step, with the address typed here
+  /// already filled in.
+  void _openPasswordReset() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PasswordResetScreen(
+          initialEmail: _emailController.text.trim(),
+        ),
+      ),
+    );
   }
 
   /// Shows [message] in a SnackBar.
@@ -207,7 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               Align(
                                 alignment: Alignment.centerLeft,
                                 child: TextButton(
-                                  onPressed: _sendPasswordReset,
+                                  onPressed: _openPasswordReset,
                                   style: TextButton.styleFrom(
                                     minimumSize: const Size(0, 48),
                                     padding: const EdgeInsets.symmetric(
