@@ -10,6 +10,7 @@ import 'package:soundpilot_application/core/app_locale.dart';
 import 'package:soundpilot_application/features/device/screens/device_screen.dart';
 import 'package:soundpilot_application/models/user_model.dart';
 
+import '../../helpers/fake_auth_service.dart';
 import '../../helpers/fake_device_repository.dart';
 
 final _devices = DeviceData(
@@ -21,6 +22,7 @@ Future<void> _pumpScreen(
   WidgetTester tester,
   FakeDeviceRepository repository, {
   bool isSignedIn = true,
+  FakeAuthService? authService,
 }) async {
   tester.view.physicalSize = const Size(360, 720);
   tester.view.devicePixelRatio = 1.0;
@@ -30,7 +32,11 @@ Future<void> _pumpScreen(
     locale: appLocale,
     supportedLocales: appSupportedLocales,
     localizationsDelegates: appLocalizationsDelegates,
-    home: DeviceScreen(repository: repository, isSignedIn: isSignedIn),
+    home: DeviceScreen(
+      repository: repository,
+      isSignedIn: isSignedIn,
+      authService: authService,
+    ),
   ));
 }
 
@@ -143,5 +149,69 @@ void main() {
     expect(first.writes, ['removeHeadphone aa']);
     expect(first.disposed, isTrue);
     expect(second.writes, isEmpty);
+  });
+
+  group('logout', () {
+    testWidgets('without unsaved changes it logs out right away',
+        (tester) async {
+      final auth = FakeAuthService();
+      final repository = FakeDeviceRepository();
+      await _pumpScreen(tester, repository, authService: auth);
+      repository.devices.add(_devices);
+      await tester.pump();
+
+      await tester.tap(find.text('Abmelden'));
+      // The loading screen has an endless spinner: step through the 2 s
+      // pause instead of pumpAndSettle.
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+
+      expect(find.text('Nicht gespeicherte Änderungen'), findsNothing);
+      expect(auth.logouts, 1);
+      // The listener was stopped before the sign-out.
+      expect(repository.devices.hasListener, isFalse);
+    });
+
+    testWidgets('with unsaved changes it asks, and can stay signed in',
+        (tester) async {
+      final auth = FakeAuthService(unsavedChanges: true);
+      final repository = FakeDeviceRepository();
+      await _pumpScreen(tester, repository, authService: auth);
+      repository.devices.add(_devices);
+      await tester.pump();
+
+      await tester.tap(find.text('Abmelden'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nicht gespeicherte Änderungen'), findsOneWidget);
+
+      await tester.tap(find.text('Angemeldet bleiben'));
+      await tester.pumpAndSettle();
+
+      expect(auth.logouts, 0);
+      expect(find.text('Pods'), findsOneWidget);
+      // Still listening: the list keeps following the repository.
+      expect(repository.devices.hasListener, isTrue);
+    });
+
+    testWidgets('with unsaved changes "Trotzdem abmelden" logs out',
+        (tester) async {
+      final auth = FakeAuthService(unsavedChanges: true);
+      final repository = FakeDeviceRepository();
+      await _pumpScreen(tester, repository, authService: auth);
+      repository.devices.add(_devices);
+      await tester.pump();
+
+      await tester.tap(find.text('Abmelden'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Trotzdem abmelden'));
+      // The loading screen has an endless spinner: step through the 2 s
+      // pause instead of pumpAndSettle.
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+
+      expect(auth.logouts, 1);
+    });
   });
 }

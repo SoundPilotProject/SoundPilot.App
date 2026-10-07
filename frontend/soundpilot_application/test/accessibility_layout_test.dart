@@ -30,6 +30,7 @@ import 'package:soundpilot_application/features/device/screens/device_screen.dar
 import 'package:soundpilot_application/features/device/widgets/add_device_dialog.dart';
 import 'package:soundpilot_application/features/device/widgets/device_card.dart';
 import 'package:soundpilot_application/features/device/widgets/device_type.dart';
+import 'package:soundpilot_application/features/device/widgets/unsynced_logout_dialog.dart';
 import 'package:soundpilot_application/models/user_model.dart';
 
 import 'helpers/fake_device_repository.dart';
@@ -88,6 +89,7 @@ void main() {
       'BeltWarningDistanceScreen': () => const BeltWarningDistanceScreen(),
       'BeltVibrationScreen': () => const BeltVibrationScreen(),
       'TestPage': () => const TestPage(leftVolume: 40, rightVolume: 80),
+      'UnsyncedLogoutDialog': () => const UnsyncedLogoutDialog(),
       'CalibrationScreen': () => CalibrationScreen(
             calib: HeadphoneCalib(modelId: 'Pods'),
             onSave: (_) async {},

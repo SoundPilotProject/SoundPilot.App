@@ -118,7 +118,7 @@ features/
                                  belt_warning_distance_screen, TestPage
   device/widgets/                device_type (DeviceType + device scan),
                                  add_device_dialog, device_card,
-                                 belt_setup_fields
+                                 belt_setup_fields, unsynced_logout_dialog
 ```
 
 - **Fonts:** Plus Jakarta Sans is set once as the `textTheme` of both themes
@@ -280,10 +280,21 @@ device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
   - Writes one device per field path (`FieldPath(['calibration',
     'headphones', key])`), deletes with `FieldValue.delete()`; never the whole
     map. Writes wait until the document exists.
-  - Offline: Android and iOS keep a Firestore cache by default; in the browser
-    `main.dart` turns it on (`persistenceEnabled`). A write shows up at once
-    but its future only completes when the server has it, so `DeviceScreen`
-    does not await writes; a failed write is reported with a SnackBar.
+  - Offline: Android and iOS keep a Firestore cache on disk by default; the
+    browser keeps it in memory only (its default, on purpose, see logout
+    below), so offline does not survive a reload there. A write shows up at
+    once but its future only completes when the server has it, so
+    `DeviceScreen` does not await writes; a failed write is reported with a
+    SnackBar.
+  - **Logout clears the cache** (Android/iOS): `AuthService.logout()` calls
+    `terminate()` + `clearPersistence()` after the sign-out, so the user's
+    devices do not stay on the phone. FlutterFire creates a new instance on
+    the next use. The web plugin keeps the terminated instance (every later
+    call fails until a reload), which is why the browser has no disk cache.
+  - Clearing also drops writes that have not reached the server. Before the
+    logout, `DeviceScreen` asks `AuthService.hasUnsavedChanges()`, which waits
+    up to 5 s for them; if they are still pending (offline) it shows
+    `UnsyncedLogoutDialog` ("Angemeldet bleiben" / "Trotzdem abmelden").
 - **Guests: locally** (`LocalDeviceRepository` → `DeviceStorageService`),
   SharedPreferences key `user_calibration_guest`, value a JSON string
   `{ "headphones": {...}, "belts": {...} }` (same format as `calibration`).
@@ -473,10 +484,10 @@ Not backed by evidence — check in the code instead of assuming:
 - **Firestore sync: not tried on a device yet.** Tested with
   `fake_cloud_firestore` and the rules in the emulator (§4, §6), not with the
   real backend, offline, or on two phones at once.
-- **Firestore cache after logout:** the signed-in user's devices stay in the
-  local Firestore cache after logout (until the next user's data replaces
-  them). Whether that matters on shared phones is open;
-  `FirebaseFirestore.clearPersistence()` would remove it.
+- **Firestore cache after logout:** cleared on Android/iOS (§4). Not tried on
+  a real phone yet, and `clearPersistence()` only drops the data, it does not
+  overwrite it securely (FlutterFire documentation). In the browser the
+  memory cache lasts until the tab is reloaded or closed.
 - **Guest devices go to the next account:** a guest's devices are uploaded
   into whichever account signs in next on that phone. That is the intended
   "keep your guest work" behaviour, but it is not asked.

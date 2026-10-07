@@ -1,5 +1,8 @@
 // lib/features/auth/auth_service.dart
 
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
@@ -32,7 +35,9 @@ class AuthResult {
 /// translated into short German messages by [messageForCode], so the screens
 /// can tell the user what went wrong (wrong password, no network, ...).
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  /// NOTE: `late`, so an AuthService (or a test double of it) can be created
+  /// without Firebase; FirebaseAuth is only touched on first use.
+  late final FirebaseAuth _auth = FirebaseAuth.instance;
   /// NOTE: One shared instance, created on first use (static fields are
   /// lazy). In the browser the constructor already calls Google's
   /// `id.initialize()`, so one instance per AuthService logged "initialize()
@@ -225,6 +230,11 @@ class AuthService {
   /// itself; it throws on platforms where it is not configured (Windows). A
   /// failed Google sign-out is only logged, because the Firebase sign-out has
   /// already succeeded at that point.
+  ///
+  /// Afterwards the local Firestore cache is deleted on Android/iOS, so the
+  /// user's devices do not stay on the phone ([_clearFirestoreCache]). Changes
+  /// that have not reached the server yet are lost with it; ask
+  /// [hasUnsavedChanges] first.
   Future<void> logout() async {
     await GuestModeService.set(false);
 
@@ -243,7 +253,61 @@ class AuthService {
       }
     }
 
+    await _clearFirestoreCache();
+
     logger.i("AuthService: User logged out");
+  }
+
+  /// Whether changes of the signed-in user are still waiting to be sent to
+  /// Firestore after waiting up to [wait] for them (e.g. offline).
+  Future<bool> hasUnsavedChanges({
+    Duration wait = const Duration(seconds: 5),
+  }) {
+    if (_auth.currentUser == null) return Future.value(false);
+    return writesStillPending(
+      FirebaseFirestore.instance.waitForPendingWrites(),
+      wait,
+    );
+  }
+
+  /// `true` if [pendingWrites] (from `waitForPendingWrites()`) has not
+  /// completed within [wait].
+  ///
+  /// NOTE: An error also counts as pending: then it is unknown whether
+  /// something would be lost, and asking once too often is cheaper than a
+  /// lost calibration.
+  static Future<bool> writesStillPending(
+    Future<void> pendingWrites,
+    Duration wait,
+  ) async {
+    try {
+      await pendingWrites.timeout(wait);
+      return false;
+    } on TimeoutException {
+      return true;
+    } catch (e) {
+      logger.w("AuthService: Checking pending writes failed", error: e);
+      return true;
+    }
+  }
+
+  /// Deletes the local Firestore cache (Android/iOS).
+  ///
+  /// NOTE: `clearPersistence()` only works on a terminated instance. On
+  /// Android/iOS FlutterFire creates a new one on the next use, so the next
+  /// sign-in works. The web plugin keeps the terminated one (every later call
+  /// would fail until a reload), so the browser has no disk cache instead (see
+  /// main.dart) and is skipped here. A failure is only logged: the sign-out
+  /// itself has already happened.
+  Future<void> _clearFirestoreCache() async {
+    if (kIsWeb) return;
+    try {
+      await FirebaseFirestore.instance.terminate();
+      await FirebaseFirestore.instance.clearPersistence();
+      logger.i("AuthService: Firestore cache cleared");
+    } catch (e) {
+      logger.w("AuthService: Clearing the Firestore cache failed", error: e);
+    }
   }
 
   // ── Helper ─────────────────────────────────────────────────────────────────
