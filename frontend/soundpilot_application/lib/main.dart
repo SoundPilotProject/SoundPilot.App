@@ -3,10 +3,8 @@
 // App entry point: initializes Firebase, configures the Material themes and
 // decides which screen is shown first (device list or start screen).
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -30,12 +28,10 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Android and iOS keep a Firestore cache by default (devices work offline);
-  // the browser only if asked. Has to be set before Firestore is used.
-  if (kIsWeb) {
-    FirebaseFirestore.instance.settings =
-        const Settings(persistenceEnabled: true);
-  }
+  // NOTE: Android and iOS keep a Firestore cache on disk by default (devices
+  // work offline); AuthService.logout deletes it. The browser keeps its cache
+  // in memory only (the default there) on purpose: the web plugin cannot
+  // delete a disk cache and keep working, see AuthService._clearFirestoreCache.
 
   // Read before the first frame, so a guest does not see the StartScreen
   // flash up.

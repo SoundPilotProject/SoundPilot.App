@@ -24,6 +24,7 @@ import '../../auth/screens/register_screen.dart';
 import '../widgets/add_device_dialog.dart';
 import '../widgets/device_card.dart';
 import '../widgets/device_type.dart';
+import '../widgets/unsynced_logout_dialog.dart';
 
 /// Main screen after start-up (signed in or guest).
 ///
@@ -43,10 +44,14 @@ class DeviceScreen extends StatefulWidget {
   /// Whether a Firebase user is signed in (otherwise: guest).
   final bool isSignedIn;
 
+  /// Used for the logout; tests pass a double. Defaults to [AuthService].
+  final AuthService? authService;
+
   const DeviceScreen({
     super.key,
     required this.repository,
     required this.isSignedIn,
+    this.authService,
   });
 
   @override
@@ -139,24 +144,49 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   /// Signs out; AppEntryPoint then shows the StartScreen.
   ///
+  /// The logout deletes the local Firestore cache, and with it changes that
+  /// have not reached the server yet (offline). If there are any, the user is
+  /// asked first ([UnsyncedLogoutDialog]) and can stay signed in.
+  ///
   /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
   /// visible for a moment and slows the UI down on purpose (same in
   /// TestPage._finishExercise and BeltVibrationScreen._finishSetup;
   /// StartScreen._continueAsGuest no longer has it, see there).
   Future<void> _logout() async {
+    final auth = widget.authService ?? AuthService();
+
     // NOTE: The navigator is read before the logout, because this screen is
     // removed by AppEntryPoint during it and `context` is then no longer valid.
     final navigator = Navigator.of(context);
-    navigator.push(
-      MaterialPageRoute(
-        builder: (_) => const LoadingScreen(text: 'Wird abgemeldet...'),
-      ),
-    );
+    void showLoading() => navigator.push(
+          MaterialPageRoute(
+            builder: (_) => const LoadingScreen(text: 'Wird abgemeldet...'),
+          ),
+        );
 
+    showLoading();
     // NOTE: `finally`, so the loading screen is closed even if the logout
     // throws; otherwise it stays open forever.
     try {
-      await AuthService().logout();
+      if (await auth.hasUnsavedChanges()) {
+        navigator.pop();
+        if (!mounted) return;
+        final logOutAnyway = await showDialog<bool>(
+          context: context,
+          builder: (_) => const UnsyncedLogoutDialog(),
+        );
+        if (logOutAnyway != true) return;
+        showLoading();
+      }
+
+      // NOTE: Stop listening before the sign-out, so the listener gets no
+      // permission-denied and the list does not flash an error meanwhile. Not
+      // awaited: the Firestore listener is removed at once, and the returned
+      // future never completes under the fake clock of widget tests.
+      unawaited(_devices?.cancel());
+      _devices = null;
+
+      await auth.logout();
       await Future.delayed(const Duration(seconds: 2));
     } finally {
       navigator.popUntil((route) => route.isFirst);
