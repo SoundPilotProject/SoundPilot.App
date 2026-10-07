@@ -3,14 +3,18 @@
 // App entry point: initializes Firebase, configures the Material themes and
 // decides which screen is shown first (device list or start screen).
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'features/auth/screens/start_screen.dart';
 import 'features/device/screens/device_screen.dart';
 import 'core/app_locale.dart';
+import 'core/services/device_repository.dart';
+import 'core/services/firestore_device_repository.dart';
 import 'core/services/guest_mode_service.dart';
 import 'core/theme/app_colors.dart';
 import 'core/widgets/loading_screen.dart';
@@ -25,6 +29,13 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Android and iOS keep a Firestore cache by default (devices work offline);
+  // the browser only if asked. Has to be set before Firestore is used.
+  if (kIsWeb) {
+    FirebaseFirestore.instance.settings =
+        const Settings(persistenceEnabled: true);
+  }
 
   // Read before the first frame, so a guest does not see the StartScreen
   // flash up.
@@ -121,13 +132,21 @@ class AppEntryPoint extends StatelessWidget {
         // the devices) is created when switching between user and guest.
         final user = snapshot.data;
         if (user != null) {
-          return DeviceScreen(key: ValueKey('user_${user.uid}'));
+          return DeviceScreen(
+            key: ValueKey('user_${user.uid}'),
+            repository: FirestoreDeviceRepository(uid: user.uid),
+            isSignedIn: true,
+          );
         }
 
         return ValueListenableBuilder<bool>(
           valueListenable: GuestModeService.active,
           builder: (context, isGuest, _) => isGuest
-              ? const DeviceScreen(key: ValueKey('guest'))
+              ? DeviceScreen(
+                  key: const ValueKey('guest'),
+                  repository: LocalDeviceRepository(),
+                  isSignedIn: false,
+                )
               : const StartScreen(),
         );
       },

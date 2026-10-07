@@ -106,6 +106,48 @@ void main() {
     });
   });
 
+  // ── DeviceData ─────────────────────────────────────────────────────────────
+
+  group('DeviceData', () {
+    test('reads and writes the calibration map format', () {
+      final map = {
+        'headphones': {
+          'aa': {'modelId': 'Pods', 'volLeft': 0.3, 'volRight': 0.7},
+        },
+        'belts': {
+          'bb': {'modelId': 'Belt'},
+        },
+      };
+
+      expect(DeviceData.fromMap(map).toMap(), map);
+    });
+
+    test('anything that is not a map gives no devices', () {
+      final data = DeviceData.fromMap('broken');
+
+      expect(data.headphones, isEmpty);
+      expect(data.belts, isEmpty);
+    });
+
+    test('with/without return a changed copy and keep the original', () {
+      final original = DeviceData(belts: {'bb': BeltCalib(modelId: 'Belt')});
+
+      final changed = original
+          .withHeadphone('aa', HeadphoneCalib(modelId: 'Pods'))
+          .withoutBelt('bb');
+
+      expect(changed.headphones.keys, ['aa']);
+      expect(changed.belts, isEmpty);
+      expect(original.headphones, isEmpty);
+      expect(original.belts.keys, ['bb']);
+      expect(changed.withoutHeadphone('aa').headphones, isEmpty);
+      expect(
+        changed.withBelt('cc', BeltCalib(modelId: 'B2')).belts.keys,
+        ['cc'],
+      );
+    });
+  });
+
   // ── UserModel ──────────────────────────────────────────────────────────────
 
   group('UserModel.fromFirestore', () {

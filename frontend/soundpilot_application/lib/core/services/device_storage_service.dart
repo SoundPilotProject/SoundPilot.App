@@ -1,122 +1,68 @@
 // lib/core/services/device_storage_service.dart
 //
-// Manages local persistence for device lists and calibration data using SharedPreferences.
-// Key schema: user_calibration_<userId>
-// Guests use the "guest" suffix.
+// Local persistence of the device list and calibration in SharedPreferences.
+// Key schema: user_calibration_<owner>; the guest is the owner "guest".
 
 import 'dart:convert';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_logger.dart';
 import '../../models/user_model.dart';
 
-/// Local (SharedPreferences) storage for the device list and the calibration
-/// of headphones and belts, including the guest-to-user migration.
+/// Local (SharedPreferences) storage for the devices of one owner.
 ///
-/// TODO(improve): Everything is stored locally only. The Firestore document
-/// (`users/{uid}.calibration`) is not used yet; see docs/PROJECT_CONTEXT.md for
-/// the planned field-path updates per device.
+/// Guests keep their devices here ([LocalDeviceRepository]). Signed-in users
+/// keep them in Firestore; for them this storage only holds data from before
+/// the Firestore sync, which [FirestoreDeviceRepository] uploads once and then
+/// clears.
 class DeviceStorageService {
-  /// Current Firebase User ID or 'guest' for anonymous mode.
-  static String get _userId =>
-      FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+  /// Owner of the guest's devices.
+  static const String guestOwner = 'guest';
 
-  /// We store the entire calibration structure (Headphones + Belts) as a
-  /// single JSON string.
-  static String get _calibrationKey => 'user_calibration_$_userId';
+  /// The whole structure (headphones + belts) is stored as one JSON string,
+  /// in the same format as the Firestore field `calibration`.
+  static String _key(String owner) => 'user_calibration_$owner';
 
-  // ── Save Calibration ───────────────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────────
 
-  /// Stores both headphone and belt calibration maps to local storage.
-  /// Converts the typed objects into JSON-compatible maps.
-  static Future<void> saveUserCalibration({
-    required Map<String, HeadphoneCalib> headphones,
-    required Map<String, BeltCalib> belts,
-  }) async {
+  /// Stores [data] as the devices of [owner].
+  static Future<void> save(String owner, DeviceData data) async {
     final prefs = await SharedPreferences.getInstance();
-
-    final data = {
-      'headphones': headphones.map((key, val) => MapEntry(key, val.toMap())),
-      'belts': belts.map((key, val) => MapEntry(key, val.toMap())),
-    };
-
-    await prefs.setString(_calibrationKey, jsonEncode(data));
-    logger.i('DeviceStorageService: Calibration for $_userId saved locally.');
+    await prefs.setString(_key(owner), jsonEncode(data.toMap()));
+    logger.i('DeviceStorageService: Devices of $owner saved locally.');
   }
 
-  // ── Load Calibration ───────────────────────────────────────────────────────
+  // ── Load ───────────────────────────────────────────────────────────────────
 
-  /// Loads the stored device calibrations from local storage.
-  /// Returns a Map containing 'headphones' and 'belts' maps.
-  ///
-  /// TODO(improve): Return a small typed class instead of an untyped
-  /// `Map<String, dynamic>`. Callers currently have to cast the values
-  /// (see DeviceScreen._loadDevices).
-  static Future<Map<String, dynamic>> loadUserCalibration() async {
+  /// Loads the devices of [owner]; no devices if nothing is stored.
+  static Future<DeviceData> load(String owner) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_calibrationKey);
+    final raw = prefs.getString(_key(owner));
 
     if (raw == null || raw.isEmpty) {
-      logger.i('DeviceStorageService: No local data found for $_userId');
-      return {
-        'headphones': <String, HeadphoneCalib>{},
-        'belts': <String, BeltCalib>{}
-      };
+      logger.i('DeviceStorageService: No local data found for $owner');
+      return const DeviceData();
     }
 
     try {
-      final decoded = jsonDecode(raw) as Map<String, dynamic>;
-
-      // Reconstruct HeadphoneCalib objects from stored maps
-      // (invalid entries are skipped, see parseDeviceMap)
-      final headphones =
-          parseDeviceMap(decoded['headphones'], HeadphoneCalib.fromMap);
-
-      // Reconstruct BeltCalib objects from stored maps
-      final belts = parseDeviceMap(decoded['belts'], BeltCalib.fromMap);
-
-      logger.i('DeviceStorageService: Calibration for $_userId loaded successfully.');
-      return {
-        'headphones': headphones,
-        'belts': belts
-      };
+      // Invalid entries are skipped, see parseDeviceMap.
+      final data = DeviceData.fromMap(jsonDecode(raw));
+      logger.i('DeviceStorageService: Devices of $owner loaded successfully.');
+      return data;
     } catch (e) {
       // NOTE: A parse error results in an empty device list. The corrupt data
       // is then overwritten with the next save, so it is lost.
       logger.e('DeviceStorageService: Error parsing local calibration', error: e);
-      return {
-        'headphones': <String, HeadphoneCalib>{},
-        'belts': <String, BeltCalib>{}
-      };
+      return const DeviceData();
     }
   }
 
-  // ── Guest to User Migration ────────────────────────────────────────────────
+  // ── Clear ──────────────────────────────────────────────────────────────────
 
-  /// Transfers guest data to the user's account after a successful login.
-  /// Ensures that calibration work done in guest mode is preserved.
-  static Future<void> migrateGuestDataAfterLogin() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-
+  /// Removes the stored devices of [owner].
+  static Future<void> clear(String owner) async {
     final prefs = await SharedPreferences.getInstance();
-
-    final guestData = prefs.getString('user_calibration_guest');
-    final userData = prefs.getString('user_calibration_$uid');
-
-    // Only migrate if the user doesn't have data yet and guest data exists
-    if (userData == null && guestData != null) {
-      await prefs.setString('user_calibration_$uid', guestData);
-
-      // Optional: Clear guest data to avoid redundant migrations
-      // await prefs.remove('user_calibration_guest');
-      // TODO: Decide whether to clear the guest data. While it stays, the next
-      // guest session sees the old data again, and any other new account on
-      // this device also inherits it (the migration only checks that the user
-      // has no data yet).
-
-      logger.i('DeviceStorageService: Guest data successfully migrated to user $uid.');
-    }
+    await prefs.remove(_key(owner));
+    logger.i('DeviceStorageService: Local devices of $owner removed.');
   }
 }

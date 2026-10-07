@@ -19,9 +19,10 @@
 /// - 'isConnected' is a RUNTIME property and is NOT persisted in the database.
 ///
 /// CURRENT STATE:
-/// - The app does not read or write Firestore yet. These models are persisted
-///   locally as JSON by DeviceStorageService (SharedPreferences), using the
-///   same toMap()/fromMap() format that is planned for Firestore.
+/// - Signed-in users' devices ([DeviceData]) are stored in Firestore by
+///   FirestoreDeviceRepository, a guest's locally as JSON by
+///   DeviceStorageService (SharedPreferences), both in the same
+///   toMap()/fromMap() format.
 /// - Firestore field names: `volLeft`/`volRight` (Dart: volumeLeft/volumeRight).
 library;
 
@@ -148,6 +149,48 @@ class BeltCalib {
   Map<String, dynamic> toMap() => {
     'modelId': modelId,
   };
+}
+
+/// The devices of one user (or the guest): headphones and belts, each keyed by
+/// BD_ADDR. Immutable; the `with…` / `without…` methods return a copy.
+class DeviceData {
+  final Map<String, HeadphoneCalib> headphones;
+  final Map<String, BeltCalib> belts;
+
+  const DeviceData({this.headphones = const {}, this.belts = const {}});
+
+  /// Parses the `calibration` map (`{headphones: {...}, belts: {...}}`) of the
+  /// Firestore document or of the local JSON. Anything that is not a map
+  /// gives no devices; invalid entries are skipped (see [parseDeviceMap]).
+  factory DeviceData.fromMap(Object? raw) {
+    final map = raw is Map ? raw : const {};
+    return DeviceData(
+      headphones: parseDeviceMap(map['headphones'], HeadphoneCalib.fromMap),
+      belts: parseDeviceMap(map['belts'], BeltCalib.fromMap),
+    );
+  }
+
+  /// The same structure as the Firestore field `calibration`.
+  Map<String, dynamic> toMap() => {
+    'headphones': headphones.map((k, v) => MapEntry(k, v.toMap())),
+    'belts': belts.map((k, v) => MapEntry(k, v.toMap())),
+  };
+
+  DeviceData withHeadphone(String key, HeadphoneCalib calib) =>
+      DeviceData(headphones: {...headphones, key: calib}, belts: belts);
+
+  DeviceData withoutHeadphone(String key) => DeviceData(
+    headphones: Map.of(headphones)..remove(key),
+    belts: belts,
+  );
+
+  DeviceData withBelt(String key, BeltCalib calib) =>
+      DeviceData(headphones: headphones, belts: {...belts, key: calib});
+
+  DeviceData withoutBelt(String key) => DeviceData(
+    headphones: headphones,
+    belts: Map.of(belts)..remove(key),
+  );
 }
 
 /// The user profile: basic info plus all calibrated devices.
