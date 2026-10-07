@@ -6,6 +6,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../app_logger.dart';
 import '../../models/user_model.dart';
@@ -53,32 +54,48 @@ class FirestoreDeviceRepository implements DeviceRepository {
       FieldPath(['calibration', group, key]);
 
   @override
-  Stream<DeviceData> watch() async* {
-    await for (final snapshot in _doc.snapshots()) {
-      final data = snapshot.data();
+  Stream<DeviceData> watch() => watchSnapshots(_doc.snapshots());
 
-      if (data == null) {
-        // NOTE: From the server this means the cloud function has not created
-        // the document yet: wait for the next snapshot. From the cache it
-        // means offline with nothing cached (e.g. first start after a
-        // reinstall), where waiting could take forever: show no devices.
-        if (snapshot.metadata.isFromCache) yield const DeviceData();
-        continue;
-      }
+  /// Turns the document [snapshots] into device lists; [watch] passes the
+  /// real listener, tests a stream of their own.
+  ///
+  /// NOTE: A stream transformation on purpose, not an `async*` generator with
+  /// `await for`. Cancelling an `async*` stream does not cancel the Firestore
+  /// listener while the generator waits for the next snapshot. After logout
+  /// that listener then gets `permission-denied`, and the error ended up
+  /// uncaught (in the future of `cancel()`, which nobody awaits). Here,
+  /// cancelling ends the listener at once.
+  @visibleForTesting
+  Stream<DeviceData> watchSnapshots(
+    Stream<DocumentSnapshot<Map<String, dynamic>>> snapshots,
+  ) {
+    return snapshots.transform(StreamTransformer.fromHandlers(
+      handleData: (snapshot, sink) {
+        final data = snapshot.data();
 
-      if (!_exists.isCompleted) _exists.complete();
+        if (data == null) {
+          // NOTE: From the server this means the cloud function has not
+          // created the document yet: wait for the next snapshot. From the
+          // cache it means offline with nothing cached (e.g. first start after
+          // a reinstall), where waiting could take forever: show no devices.
+          if (snapshot.metadata.isFromCache) sink.add(const DeviceData());
+          return;
+        }
 
-      final devices = DeviceData.fromMap(data['calibration']);
+        if (!_exists.isCompleted) _exists.complete();
 
-      // Only against server data, so a device deleted on another phone is not
-      // brought back from a stale cache.
-      if (!_importStarted && !snapshot.metadata.isFromCache) {
-        _importStarted = true;
-        unawaited(_importLocalDevices(devices));
-      }
+        final devices = DeviceData.fromMap(data['calibration']);
 
-      yield devices;
-    }
+        // Only against server data, so a device deleted on another phone is
+        // not brought back from a stale cache.
+        if (!_importStarted && !snapshot.metadata.isFromCache) {
+          _importStarted = true;
+          unawaited(_importLocalDevices(devices));
+        }
+
+        sink.add(devices);
+      },
+    ));
   }
 
   /// Uploads the devices stored locally (guest and this user) that are not in

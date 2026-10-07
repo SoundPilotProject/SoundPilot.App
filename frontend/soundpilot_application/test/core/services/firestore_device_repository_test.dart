@@ -4,6 +4,9 @@
 // through the snapshot listener, one write per device, waiting for a document
 // the cloud function creates late, and the one-off upload of local devices.
 
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -113,6 +116,32 @@ void main() {
     await write;
 
     expect((await calibration())!['belts']['bb'], {'modelId': 'Belt'});
+  });
+
+  test('cancelling ends the Firestore listener; a late error is not uncaught',
+      () async {
+    // Stands in for the snapshot listener of the document.
+    final snapshots =
+        StreamController<DocumentSnapshot<Map<String, dynamic>>>();
+    final uncaught = <Object>[];
+
+    await runZonedGuarded(() async {
+      final subscription = repository
+          .watchSnapshots(snapshots.stream)
+          .listen((_) {}, onError: (_) {});
+      await _settle();
+
+      // Logout: DeviceScreen.dispose cancels without awaiting.
+      subscription.cancel();
+      await _settle();
+      expect(snapshots.hasListener, isFalse);
+
+      // What Firestore sends the listener once nobody is signed in.
+      snapshots.addError('permission-denied');
+      await _settle();
+    }, (error, _) => uncaught.add(error));
+
+    expect(uncaught, isEmpty);
   });
 
   test('uploads local devices once, keeps the account ones, clears local',
