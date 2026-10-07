@@ -88,9 +88,8 @@ class AuthService {
 
       logger.d("AuthService: Email login successful");
 
-      // NOTE: The locally saved guest devices are uploaded to the user's
-      // Firestore document by FirestoreDeviceRepository once the document
-      // exists, not here (devices already in the account win).
+      // NOTE: The locally saved guest devices are not taken over: they are
+      // deleted when guest mode ends (GuestModeService.end in _resultFor).
 
       return await _resultFor(result.user);
     } on FirebaseAuthException catch (e) {
@@ -236,7 +235,7 @@ class AuthService {
   /// that have not reached the server yet are lost with it; ask
   /// [hasUnsavedChanges] first.
   Future<void> logout() async {
-    await GuestModeService.set(false);
+    await GuestModeService.end();
 
     // Read before the sign-out, currentUser is null afterwards.
     final usedGoogle = _auth.currentUser?.providerData
@@ -401,8 +400,9 @@ class AuthService {
     final model = _mapFirebaseUser(user);
     if (model == null) return AuthResult.failure(messageForCode(null));
 
-    // A signed-in user is no guest, also not on the next app start.
-    await GuestModeService.set(false);
+    // A signed-in user is no guest, also not on the next app start; the
+    // guest's devices are deleted, not taken over.
+    await GuestModeService.end();
     return AuthResult.success(model);
   }
 

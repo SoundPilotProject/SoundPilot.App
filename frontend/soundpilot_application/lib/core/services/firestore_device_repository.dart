@@ -27,9 +27,11 @@ import 'device_storage_service.dart';
 /// - Offline, Firestore applies writes to its local cache at once (so [watch]
 ///   shows them) and sends them later; the returned futures only complete
 ///   then. Callers should therefore not wait for them in the UI.
-/// - On the first snapshot from the server, devices that are still stored
-///   locally (guest, or this user before the Firestore sync) are uploaded once
-///   and removed locally (see [_importLocalDevices]).
+/// - On the first snapshot from the server, devices this user still has
+///   stored locally from before the Firestore sync are uploaded once and
+///   removed locally (see [_importLocalDevices]). Guest devices are never
+///   uploaded; they stay on the phone until guest mode ends
+///   (GuestModeService.end).
 class FirestoreDeviceRepository implements DeviceRepository {
   FirestoreDeviceRepository({required this.uid, FirebaseFirestore? firestore})
       : _db = firestore ?? FirebaseFirestore.instance;
@@ -98,28 +100,26 @@ class FirestoreDeviceRepository implements DeviceRepository {
     ));
   }
 
-  /// Uploads the devices stored locally (guest and this user) that are not in
-  /// [cloud] yet, then removes them locally.
+  /// Uploads the devices this user stored locally before the Firestore sync
+  /// (`user_calibration_<uid>`) that are not in [cloud] yet, then removes
+  /// them locally.
   ///
   /// A device that is already in the account wins over the local one. If the
   /// upload fails, the local data stays and is tried again on the next start.
   Future<void> _importLocalDevices(DeviceData cloud) async {
-    final owners = [DeviceStorageService.guestOwner, uid];
     try {
+      final local = await DeviceStorageService.load(uid);
       final updates = <Object, Object?>{};
-      for (final owner in owners) {
-        final local = await DeviceStorageService.load(owner);
-        local.headphones.forEach((key, calib) {
-          if (!cloud.headphones.containsKey(key)) {
-            updates[_path('headphones', key)] = calib.toMap();
-          }
-        });
-        local.belts.forEach((key, calib) {
-          if (!cloud.belts.containsKey(key)) {
-            updates[_path('belts', key)] = calib.toMap();
-          }
-        });
-      }
+      local.headphones.forEach((key, calib) {
+        if (!cloud.headphones.containsKey(key)) {
+          updates[_path('headphones', key)] = calib.toMap();
+        }
+      });
+      local.belts.forEach((key, calib) {
+        if (!cloud.belts.containsKey(key)) {
+          updates[_path('belts', key)] = calib.toMap();
+        }
+      });
 
       if (updates.isNotEmpty) {
         await _doc.update(updates);
@@ -127,9 +127,7 @@ class FirestoreDeviceRepository implements DeviceRepository {
             'device(s) uploaded for $uid.');
       }
 
-      for (final owner in owners) {
-        await DeviceStorageService.clear(owner);
-      }
+      await DeviceStorageService.clear(uid);
     } catch (e) {
       logger.e('FirestoreDeviceRepository: Upload of local devices failed',
           error: e);

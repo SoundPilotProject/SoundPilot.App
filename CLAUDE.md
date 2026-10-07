@@ -150,6 +150,8 @@ features/
   touch Firebase.
 - **Guest mode** (`guestMode` in SharedPreferences) stays active across app
   starts until the user signs in or logs out. Logout leads to `StartScreen`.
+  Guest mode ends through `GuestModeService.end()`, which also deletes the
+  guest's devices (see §4).
 
 ## 3. Commands
 
@@ -295,15 +297,19 @@ device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
     logout, `DeviceScreen` asks `AuthService.hasUnsavedChanges()`, which waits
     up to 5 s for them; if they are still pending (offline) it shows
     `UnsyncedLogoutDialog` ("Angemeldet bleiben" / "Trotzdem abmelden").
-- **Guests: locally** (`LocalDeviceRepository` → `DeviceStorageService`),
-  SharedPreferences key `user_calibration_guest`, value a JSON string
-  `{ "headphones": {...}, "belts": {...} }` (same format as `calibration`).
-- **Taking over local devices:** on the first snapshot from the server,
+- **Guests: only on the phone** (`LocalDeviceRepository` →
+  `DeviceStorageService`), SharedPreferences key `user_calibration_guest`,
+  value a JSON string `{ "headphones": {...}, "belts": {...} }` (same format
+  as `calibration`). They stay across app starts while guest mode is active,
+  are **never uploaded** into an account, and are deleted when guest mode
+  ends: on sign-in, registration and logout (`GuestModeService.end()`, called
+  by `AuthService`). The next guest starts with an empty list.
+- **Old local devices of a user:** on the first snapshot from the server,
   `FirestoreDeviceRepository` uploads the devices stored under
-  `user_calibration_guest` and `user_calibration_<uid>` (the latter from
-  before the sync) that are not in the account yet, in one update; devices
-  already in the account win. Afterwards both local keys are removed. If the
-  upload fails, they stay and are tried again on the next start.
+  `user_calibration_<uid>` (written by app versions before the sync) that are
+  not in the account yet, in one update; devices already in the account win.
+  Afterwards the local key is removed. If the upload fails, it stays and is
+  tried again on the next start.
 - The earbud volumes are part of this map (`HeadphoneCalib.volumeLeft` /
   `volumeRight`, one pair per device). `CalibrationScreen` gets the earbud and
   saves through a callback; its wheel shows them as 1–100
@@ -488,9 +494,10 @@ Not backed by evidence — check in the code instead of assuming:
   a real phone yet, and `clearPersistence()` only drops the data, it does not
   overwrite it securely (FlutterFire documentation). In the browser the
   memory cache lasts until the tab is reloaded or closed.
-- **Guest devices go to the next account:** a guest's devices are uploaded
-  into whichever account signs in next on that phone. That is the intended
-  "keep your guest work" behaviour, but it is not asked.
+- **Guest devices are lost on sign-in, without a warning.** By decision,
+  guest data is deleted when guest mode ends (§4). A guest who calibrated
+  devices and then registers starts with an empty account; the login and
+  registration screens do not say so yet.
 - **Real Bluetooth integration is missing.** The scan is simulated.
   `AudioDeviceService` (Android MethodChannel) exists in Dart but is not called
   by `DeviceScreen`. Whether the native Android side is implemented was not
