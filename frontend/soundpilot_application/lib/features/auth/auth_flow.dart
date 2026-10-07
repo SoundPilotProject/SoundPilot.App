@@ -6,13 +6,15 @@ import 'package:flutter/material.dart';
 
 import '../../core/widgets/loading_screen.dart';
 import 'auth_service.dart';
+import 'guest_devices_offer.dart';
 
 /// Runs [signIn] behind a full-screen [LoadingScreen] that shows [loadingText],
 /// and reports the result to the user.
 ///
-/// On success every route above the first one is popped: AppEntryPoint already
-/// shows the DeviceScreen for the signed-in user, so the auth screens only
-/// have to get out of the way.
+/// On success the guest devices stored on this phone, if any, are offered for
+/// the account ([offerGuestDevices]). Then every route above the first one is
+/// popped: AppEntryPoint already shows the DeviceScreen for the signed-in
+/// user, so the auth screens only have to get out of the way.
 ///
 /// A failure is shown in a SnackBar with the German message of the
 /// [AuthResult]. A cancelled sign-in — the user closed the Google dialog —
@@ -42,7 +44,10 @@ Future<void> runSignIn(
 
   Navigator.pop(context);
 
-  if (result.isSuccess) {
+  final user = result.user;
+  if (user != null) {
+    await offerGuestDevices(context, uid: user.id);
+    if (!context.mounted) return;
     Navigator.popUntil(context, (route) => route.isFirst);
     return;
   }

@@ -88,8 +88,8 @@ class AuthService {
 
       logger.d("AuthService: Email login successful");
 
-      // NOTE: The locally saved guest devices are not taken over: they are
-      // deleted when guest mode ends (GuestModeService.end in _resultFor).
+      // NOTE: Whether the locally saved guest devices are taken over is asked
+      // after the sign-in (offerGuestDevices in auth_flow.dart).
 
       return await _resultFor(result.user);
     } on FirebaseAuthException catch (e) {
@@ -400,9 +400,10 @@ class AuthService {
     final model = _mapFirebaseUser(user);
     if (model == null) return AuthResult.failure(messageForCode(null));
 
-    // A signed-in user is no guest, also not on the next app start; the
-    // guest's devices are deleted, not taken over.
-    await GuestModeService.end();
+    // A signed-in user is no guest, also not on the next app start.
+    // NOTE: Only the flag; the guest's devices stay until the user decided
+    // what happens with them (offerGuestDevices in auth_flow.dart).
+    await GuestModeService.set(false);
     return AuthResult.success(model);
   }
 

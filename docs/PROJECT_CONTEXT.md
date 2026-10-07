@@ -112,6 +112,8 @@ core/
 features/
   auth/auth_service.dart
   auth/auth_flow.dart            shared sign-in flow of login + register
+  auth/guest_devices_offer.dart  after sign-in: take over or delete the
+                                 guest devices (GuestDevicesDialog)
   auth/screens/                  start, login, register, password_reset
   device/screens/                device_screen, calibration,
                                  belt_vibration_screen,
@@ -150,8 +152,9 @@ features/
   touch Firebase.
 - **Guest mode** (`guestMode` in SharedPreferences) stays active across app
   starts until the user signs in or logs out. Logout leads to `StartScreen`.
-  Guest mode ends through `GuestModeService.end()`, which also deletes the
-  guest's devices (see §4).
+  On sign-in and registration only the flag is turned off; the guest's
+  devices are then offered for the account (see §4). Logout ends guest mode
+  with `GuestModeService.end()`, which also deletes the guest's devices.
 
 ## 3. Commands
 
@@ -300,10 +303,20 @@ device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
 - **Guests: only on the phone** (`LocalDeviceRepository` →
   `DeviceStorageService`), SharedPreferences key `user_calibration_guest`,
   value a JSON string `{ "headphones": {...}, "belts": {...} }` (same format
-  as `calibration`). They stay across app starts while guest mode is active,
-  are **never uploaded** into an account, and are deleted when guest mode
-  ends: on sign-in, registration and logout (`GuestModeService.end()`, called
-  by `AuthService`). The next guest starts with an empty list.
+  as `calibration`). They stay across app starts while guest mode is active
+  and are **only uploaded if the user agrees**:
+  - After a successful sign-in or registration on a phone with guest
+    devices, `runSignIn` calls `offerGuestDevices` (`GuestDevicesDialog`:
+    "Geräte übernehmen" / "Geräte löschen"; back and tapping outside do
+    nothing, no time limit).
+  - "Übernehmen" waits for the user document and adds the devices that are
+    not in the account yet (`FirestoreDeviceRepository.addMissingDevices`,
+    the account wins), at most `guestUploadTimeout` (30 s), then deletes them
+    on the phone. If it fails, a SnackBar says so and they stay, so the
+    question comes again on the next sign-in.
+  - "Löschen" deletes them on the phone.
+  - Logout deletes any guest devices that are left (`GuestModeService.end()`),
+    so the next guest starts with an empty list.
 - **Old local devices of a user:** on the first snapshot from the server,
   `FirestoreDeviceRepository` uploads the devices stored under
   `user_calibration_<uid>` (written by app versions before the sync) that are
@@ -494,10 +507,11 @@ Not backed by evidence — check in the code instead of assuming:
   a real phone yet, and `clearPersistence()` only drops the data, it does not
   overwrite it securely (FlutterFire documentation). In the browser the
   memory cache lasts until the tab is reloaded or closed.
-- **Guest devices are lost on sign-in, without a warning.** By decision,
-  guest data is deleted when guest mode ends (§4). A guest who calibrated
-  devices and then registers starts with an empty account; the login and
-  registration screens do not say so yet.
+- **Guest devices if the app is closed during the question:** if the app is
+  closed while `GuestDevicesDialog` is open (or the take-over failed), the
+  guest devices stay on the phone. They are offered again on the next
+  sign-in, and a new guest session would show them meanwhile. Accepted on
+  purpose; the take-over has not been tried on a real phone yet.
 - **Real Bluetooth integration is missing.** The scan is simulated.
   `AudioDeviceService` (Android MethodChannel) exists in Dart but is not called
   by `DeviceScreen`. Whether the native Android side is implemented was not

@@ -196,4 +196,32 @@ void main() {
         await DeviceStorageService.load(DeviceStorageService.guestOwner);
     expect(guest.headphones.keys, ['gg']);
   });
+
+  test('addMissingDevices adds only new devices and waits for the document',
+      () async {
+    // Right after registration: the document does not exist yet.
+    var done = false;
+    final adding = repository
+        .addMissingDevices(DeviceData(
+          headphones: {
+            'aa': HeadphoneCalib(modelId: 'Guest Pods', volumeLeft: 0.1),
+            'gg': HeadphoneCalib(modelId: 'New Pods', volumeLeft: 0.4),
+          },
+          belts: {'bb': BeltCalib(modelId: 'Guest Belt')},
+        ))
+        .then((_) => done = true);
+    await _settle();
+    expect(done, isFalse);
+
+    await db.collection('users').doc(_uid).set(_userDoc({
+      'headphones': {'aa': {'modelId': 'Cloud Pods', 'volLeft': 0.9}},
+      'belts': <String, dynamic>{},
+    }));
+    await adding;
+
+    final stored = await calibration();
+    expect(stored!['headphones']['aa']['modelId'], 'Cloud Pods');
+    expect(stored['headphones']['gg']['volLeft'], 0.4);
+    expect(stored['belts']['bb'], {'modelId': 'Guest Belt'});
+  });
 }

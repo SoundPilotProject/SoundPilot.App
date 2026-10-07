@@ -9,7 +9,9 @@ import '../app_logger.dart';
 import 'device_storage_service.dart';
 
 /// Guest mode: set when the user chooses "Als Gast fortfahren" on the
-/// StartScreen, ended ([end]) on sign-in, registration and logout.
+/// StartScreen, turned off on sign-in and registration (the guest's devices
+/// are then offered for take-over, see offerGuestDevices) and ended ([end])
+/// on logout.
 ///
 /// The value is stored in SharedPreferences, so a guest goes straight to the
 /// DeviceScreen on the next app start. AppEntryPoint listens to [active] and
@@ -38,10 +40,8 @@ class GuestModeService {
     await prefs.setBool(_key, value);
   }
 
-  /// Ends guest mode and deletes the guest's devices from this phone.
-  ///
-  /// Guest data only belongs to the guest session: it is never uploaded into
-  /// an account, and the next guest starts with an empty list.
+  /// Ends guest mode and deletes the guest's devices from this phone, so the
+  /// next guest starts with an empty list.
   static Future<void> end() async {
     await set(false);
     await DeviceStorageService.clear(DeviceStorageService.guestOwner);

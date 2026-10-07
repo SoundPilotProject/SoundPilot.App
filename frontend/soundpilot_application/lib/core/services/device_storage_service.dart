@@ -12,7 +12,8 @@ import '../../models/user_model.dart';
 /// Local (SharedPreferences) storage for the devices of one owner.
 ///
 /// Guests keep their devices here ([LocalDeviceRepository]), only on this
-/// phone, until guest mode ends (GuestModeService.end deletes them).
+/// phone. After a sign-in the user decides whether they go into the account
+/// (offerGuestDevices); either way they are deleted here afterwards.
 /// Signed-in users keep them in Firestore; for them this storage only holds
 /// data from before the Firestore sync, which [FirestoreDeviceRepository]
 /// uploads once and then clears.
