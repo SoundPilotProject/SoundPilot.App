@@ -61,9 +61,6 @@ Map<String, T> parseDeviceMap<T>(
 }
 
 /// Calibration data for headphones
-///
-/// TODO(improve): The calibration flow never sets [volumeLeft]/[volumeRight]
-/// (see CalibrationService), so they always keep their default of 0.5.
 class HeadphoneCalib {
   /// Model name of the device (Firestore: `modelId`).
   final String modelId;
@@ -100,6 +97,16 @@ class HeadphoneCalib {
       volumeLeft: volLeft is num ? volLeft.toDouble() : 0.5,
       volumeRight: volRight is num ? volRight.toDouble() : 0.5,
       isConnected: false,
+    );
+  }
+
+  /// Copy with the given volumes replaced; [isConnected] is kept.
+  HeadphoneCalib copyWith({double? volumeLeft, double? volumeRight}) {
+    return HeadphoneCalib(
+      modelId: modelId,
+      volumeLeft: volumeLeft ?? this.volumeLeft,
+      volumeRight: volumeRight ?? this.volumeRight,
+      isConnected: isConnected,
     );
   }
 

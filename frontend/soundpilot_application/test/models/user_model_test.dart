@@ -52,6 +52,20 @@ void main() {
 
       expect(map.keys, unorderedEquals(['modelId', 'volLeft', 'volRight']));
     });
+
+    test('copyWith replaces only the given volumes and keeps isConnected', () {
+      final calib = HeadphoneCalib(
+        modelId: 'Pods',
+        volumeLeft: 0.2,
+        volumeRight: 0.8,
+        isConnected: true,
+      ).copyWith(volumeLeft: 0.6);
+
+      expect(calib.modelId, 'Pods');
+      expect(calib.volumeLeft, 0.6);
+      expect(calib.volumeRight, 0.8);
+      expect(calib.isConnected, isTrue);
+    });
   });
 
   // ── BeltCalib ──────────────────────────────────────────────────────────────

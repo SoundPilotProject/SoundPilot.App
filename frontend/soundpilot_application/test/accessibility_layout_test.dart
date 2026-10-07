@@ -5,9 +5,8 @@
 // dark mode at text scale 1.0, 1.6 and 2.0, and must not throw (an overflow
 // reports itself as an exception in a test).
 //
-// The DeviceScreen and the CalibrationScreen are not covered: they reach for
-// `FirebaseAuth.instance` (directly, resp. through CalibrationService), so they
-// cannot be pumped without a Firebase test double. The DeviceScreen.s two
+// The DeviceScreen is not covered: it reaches for `FirebaseAuth.instance`, so
+// it cannot be pumped without a Firebase test double. The DeviceScreen.s two
 // layout-heavy parts (AddDeviceDialog, DeviceCard) live in
 // `features/device/widgets/` and are covered here.
 
@@ -27,9 +26,11 @@ import 'package:soundpilot_application/features/auth/screens/start_screen.dart';
 import 'package:soundpilot_application/features/device/screens/TestPage.dart';
 import 'package:soundpilot_application/features/device/screens/belt_vibration_screen.dart';
 import 'package:soundpilot_application/features/device/screens/belt_warning_distance_screen.dart';
+import 'package:soundpilot_application/features/device/screens/calibration.dart';
 import 'package:soundpilot_application/features/device/widgets/add_device_dialog.dart';
 import 'package:soundpilot_application/features/device/widgets/device_card.dart';
 import 'package:soundpilot_application/features/device/widgets/device_type.dart';
+import 'package:soundpilot_application/models/user_model.dart';
 
 /// Screen size of a small phone in logical pixels.
 const Size _phone = Size(360, 720);
@@ -85,6 +86,10 @@ void main() {
       'BeltWarningDistanceScreen': () => const BeltWarningDistanceScreen(),
       'BeltVibrationScreen': () => const BeltVibrationScreen(),
       'TestPage': () => const TestPage(leftVolume: 40, rightVolume: 80),
+      'CalibrationScreen': () => CalibrationScreen(
+            calib: HeadphoneCalib(modelId: 'Pods'),
+            onSave: (_) async {},
+          ),
     };
 
     for (final entry in screens.entries) {
