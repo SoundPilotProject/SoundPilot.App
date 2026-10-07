@@ -1,6 +1,6 @@
 // lib/features/device/screens/calibration.dart
 //
-// Left/right volume calibration for an earbud (two scroll wheels).
+// Left/right volume calibration of one earbud (two scroll wheels).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,40 +8,48 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
-import '../../../core/widgets/loading_screen.dart';
-import '../../../core/services/calibration_service.dart';
+import '../../../models/user_model.dart';
 import 'TestPage.dart';
 
-/// Screen where the user sets the left and right volume (1–100) of an earbud.
+/// Converts a stored volume (0.0–1.0, see [HeadphoneCalib]) to the wheel
+/// value 1–100.
+int volumeToWheel(double volume) => (volume * 100).round().clamp(1, 100);
+
+/// Converts a wheel value 1–100 to the stored volume (0.01–1.0).
+double wheelToVolume(int value) => value / 100;
+
+/// Screen where the user sets the left and right volume (1–100) of one earbud.
 ///
-/// The values are saved through [CalibrationService] and passed to the
-/// [TestPage]. The screen pops with `true` once the test exercise was finished.
-///
-/// TODO(improve): The volumes are not tied to a device. The screen takes no
-/// device key and only returns `true`, so `HeadphoneCalib.volumeLeft` /
-/// `volumeRight` are never set and every earbud shares one calibration (stored
-/// per user in [CalibrationService]). Pass the device key (BD_ADDR) in and
-/// save the values per device (e.g. `calibration.headphones.<BD_ADDR>.volLeft`).
+/// The wheels start at the volumes of [calib]. Before the [TestPage] opens,
+/// the chosen values are handed to [onSave] as a copy of [calib]. The screen
+/// pops with `true` once the test exercise was finished.
 ///
 /// TODO(improve): Rename the file to `calibration_screen.dart` so it matches
 /// the class name (same for `TestPage.dart` -> `test_page.dart`).
 class CalibrationScreen extends StatefulWidget {
-  const CalibrationScreen({super.key});
+  /// The earbud being calibrated; its volumes are the starting values.
+  final HeadphoneCalib calib;
+
+  /// Stores the new calibration of this earbud.
+  final Future<void> Function(HeadphoneCalib calib) onSave;
+
+  const CalibrationScreen({
+    super.key,
+    required this.calib,
+    required this.onSave,
+  });
 
   @override
   State<CalibrationScreen> createState() => _CalibrationScreenState();
 }
 
 class _CalibrationScreenState extends State<CalibrationScreen> {
-  /// Currently selected volumes (default 50, replaced by the saved values).
-  int _leftVolume = 50;
-  int _rightVolume = 50;
+  /// Currently selected volumes, starting at the earbud's saved values.
+  late int _leftVolume;
+  late int _rightVolume;
 
-  /// True until the saved calibration has been loaded.
-  bool _isLoading = true;
-
-  late FixedExtentScrollController _leftController;
-  late FixedExtentScrollController _rightController;
+  late final FixedExtentScrollController _leftController;
+  late final FixedExtentScrollController _rightController;
 
   /// Selectable volumes 1..100 (wheel item index = value - 1).
   final List<int> _values = List.generate(100, (index) => index + 1);
@@ -49,32 +57,12 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   @override
   void initState() {
     super.initState();
-    // Temporary controllers — replaced after data loads
-    _leftController = FixedExtentScrollController(initialItem: 49);
-    _rightController = FixedExtentScrollController(initialItem: 49);
-    _loadSavedCalibration();
-  }
-
-  /// Loads the saved values and rebuilds the wheel controllers with them as
-  /// the initial item.
-  Future<void> _loadSavedCalibration() async {
-    final data = await CalibrationService.load();
-
-    if (!mounted) return;
-
-    // Dispose old controllers before replacing them
-    _leftController.dispose();
-    _rightController.dispose();
-
-    setState(() {
-      _leftVolume = data.leftVolume;
-      _rightVolume = data.rightVolume;
-      _leftController =
-          FixedExtentScrollController(initialItem: data.leftVolume - 1);
-      _rightController =
-          FixedExtentScrollController(initialItem: data.rightVolume - 1);
-      _isLoading = false;
-    });
+    _leftVolume = volumeToWheel(widget.calib.volumeLeft);
+    _rightVolume = volumeToWheel(widget.calib.volumeRight);
+    _leftController =
+        FixedExtentScrollController(initialItem: _leftVolume - 1);
+    _rightController =
+        FixedExtentScrollController(initialItem: _rightVolume - 1);
   }
 
   @override
@@ -87,11 +75,12 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   /// Saves the current values and opens the [TestPage]. If the test was
   /// finished (`true`), this screen pops with `true` as well.
   Future<void> _openTestPage() async {
-    // Save current values before opening the test page so TestPage
-    // can read them.
-    await CalibrationService.save(
-      CalibrationData(leftVolume: _leftVolume, rightVolume: _rightVolume),
-    );
+    // Save current values before opening the test page, so they are kept
+    // even if the test is left without finishing it.
+    await widget.onSave(widget.calib.copyWith(
+      volumeLeft: wheelToVolume(_leftVolume),
+      volumeRight: wheelToVolume(_rightVolume),
+    ));
 
     if (!mounted) return;
 
@@ -112,10 +101,6 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const LoadingScreen(text: 'Kalibrierung wird geladen...');
-    }
-
     return Scaffold(
       backgroundColor: AppColors.background(context),
       body: SafeArea(

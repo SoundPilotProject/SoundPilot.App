@@ -116,20 +116,14 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   // ── Remove ─────────────────────────────────────────────────────────────────
 
-  /// Removes the device at position [index] of the given [type] and saves the
-  /// list.
-  ///
-  /// TODO(improve): The device is found by its position in the map
-  /// (`keys.elementAt(index)`). This only works as long as the iteration order
-  /// stays stable. Pass the map key (BD_ADDR) instead of the index.
-  void _removeDevice(DeviceType type, int index) {
+  /// Removes the device with the map key [key] (BD_ADDR) of the given [type]
+  /// and saves the list.
+  void _removeDevice(DeviceType type, String key) {
     setState(() {
       if (type == DeviceType.earbuds) {
-        final keyToRemove = _earbuds.keys.elementAt(index);
-        _earbuds.remove(keyToRemove);
+        _earbuds.remove(key);
       } else {
-        final keyToRemove = _belts.keys.elementAt(index);
-        _belts.remove(keyToRemove);
+        _belts.remove(key);
       }
     });
     _persistDevices();
@@ -137,50 +131,54 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   // ── Calibration / Setup ────────────────────────────────────────────────────
 
-  /// Opens the [CalibrationScreen] for the earbud at position [index]; if it
-  /// returns `true`, the earbud is marked as connected and saved.
-  ///
-  /// TODO(improve): Look the device up by its map key (BD_ADDR) instead of the
-  /// index (see [_removeDevice]), and pass the key to the calibration screen.
-  /// Today the calibration values are not tied to this earbud at all (see
-  /// CalibrationScreen).
-  Future<void> _openCalibrationForEarbud(int index) async {
+  /// Opens the [CalibrationScreen] for the earbud with the map key [key]. The
+  /// screen saves its volumes into this earbud; if it returns `true`, the
+  /// earbud is also marked as connected.
+  Future<void> _openCalibrationForEarbud(String key) async {
+    final calib = _earbuds[key];
+    if (calib == null) return;
+
     final result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => const CalibrationScreen()),
+      MaterialPageRoute(
+        builder: (_) => CalibrationScreen(
+          calib: calib,
+          onSave: (updated) => _saveEarbud(key, updated),
+        ),
+      ),
     );
 
     if (!mounted) return;
-    if (result == true && index >= 0 && index < _earbuds.length) {
-      setState(() {
-        // Find the key by index to update the connected state
-        final key = _earbuds.keys.elementAt(index);
-        _earbuds[key]!.isConnected = true;
-      });
+    final earbud = _earbuds[key];
+    if (result == true && earbud != null) {
+      setState(() => earbud.isConnected = true);
       _persistDevices();
     }
   }
 
-  /// Opens the belt setup ([BeltWarningDistanceScreen]) for the belt at
-  /// position [index]; if it returns `true`, the belt is marked as connected
-  /// and saved.
+  /// Replaces the earbud [key] with [calib] and saves the list. Does nothing
+  /// if the earbud was removed in the meantime.
+  Future<void> _saveEarbud(String key, HeadphoneCalib calib) async {
+    if (!_earbuds.containsKey(key)) return;
+    setState(() => _earbuds[key] = calib);
+    await _persistDevices();
+  }
+
+  /// Opens the belt setup ([BeltWarningDistanceScreen]) for the belt with the
+  /// map key [key]; if it returns `true`, the belt is marked as connected and
+  /// saved.
   ///
-  /// TODO(improve): Same as [_openCalibrationForEarbud]: use the map key
-  /// instead of the index. The setup screens do not return the entered values
-  /// yet.
-  Future<void> _openBeltSetup(int index) async {
+  /// TODO(improve): The setup screens do not return the entered values yet.
+  Future<void> _openBeltSetup(String key) async {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const BeltWarningDistanceScreen()),
     );
 
     if (!mounted) return;
-    if (result == true && index >= 0 && index < _belts.length) {
-      setState(() {
-        // Find the key by index to update the connected state
-        final key = _belts.keys.elementAt(index);
-        _belts[key]!.isConnected = true;
-      });
+    final belt = _belts[key];
+    if (result == true && belt != null) {
+      setState(() => belt.isConnected = true);
       _persistDevices();
     }
   }
@@ -189,10 +187,6 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   /// Shows the [AddDeviceDialog] and stores the chosen device, then opens the
   /// calibration (earbuds) or the setup (belts) right away.
-  ///
-  /// TODO(improve): `newIndex` is computed from the map length before the
-  /// device is added. This relies on the new entry being last; use the new
-  /// map key instead.
   Future<void> _openAddDeviceDialog() async {
     final result = await showDialog<AddDeviceResult>(
       context: context,
@@ -207,7 +201,6 @@ class _DeviceScreenState extends State<DeviceScreen> {
     final tempMacAddress = 'dummy_mac_${DateTime.now().millisecondsSinceEpoch}';
 
     if (result.type == DeviceType.earbuds) {
-      final newIndex = _earbuds.length;
       setState(() {
         // Add to map using the new MAC address key
         _earbuds[tempMacAddress] = HeadphoneCalib(
@@ -218,10 +211,9 @@ class _DeviceScreenState extends State<DeviceScreen> {
       _persistDevices();
 
       if (result.openCalibration) {
-        await _openCalibrationForEarbud(newIndex);
+        await _openCalibrationForEarbud(tempMacAddress);
       }
     } else {
-      final newIndex = _belts.length;
       setState(() {
         // Add to map using the new MAC address key
         _belts[tempMacAddress] = BeltCalib(
@@ -234,7 +226,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
       // NOTE: Belts open their setup here as well. The dialog used to ask for
       // this only for earbuds, so a newly added belt was never set up.
       if (result.openCalibration) {
-        await _openBeltSetup(newIndex);
+        await _openBeltSetup(tempMacAddress);
       }
     }
   }
@@ -293,17 +285,19 @@ class _DeviceScreenState extends State<DeviceScreen> {
         const SizedBox(height: 18),
         ..._buildDeviceGroup(
           type: DeviceType.earbuds,
-          count: _earbuds.length,
-          nameAt: (i) => _earbuds.values.elementAt(i).modelId,
-          isConnectedAt: (i) => _earbuds.values.elementAt(i).isConnected,
+          devices: {
+            for (final e in _earbuds.entries)
+              e.key: (name: e.value.modelId, isConnected: e.value.isConnected),
+          },
           onOpen: _openCalibrationForEarbud,
         ),
         const SizedBox(height: 18),
         ..._buildDeviceGroup(
           type: DeviceType.belt,
-          count: _belts.length,
-          nameAt: (i) => _belts.values.elementAt(i).modelId,
-          isConnectedAt: (i) => _belts.values.elementAt(i).isConnected,
+          devices: {
+            for (final e in _belts.entries)
+              e.key: (name: e.value.modelId, isConnected: e.value.isConnected),
+          },
           onOpen: _openBeltSetup,
         ),
         const SizedBox(height: 20),
@@ -315,12 +309,12 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   /// One group of the list: its heading and either the device cards or a hint
   /// that the group is still empty.
+  ///
+  /// [devices] maps each device key (BD_ADDR) to what its card shows.
   List<Widget> _buildDeviceGroup({
     required DeviceType type,
-    required int count,
-    required String Function(int index) nameAt,
-    required bool Function(int index) isConnectedAt,
-    required Future<void> Function(int index) onOpen,
+    required Map<String, ({String name, bool isConnected})> devices,
+    required Future<void> Function(String key) onOpen,
   }) {
     return [
       Semantics(
@@ -336,7 +330,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
         ),
       ),
       const SizedBox(height: 10),
-      if (count == 0)
+      if (devices.isEmpty)
         Text(
           type.emptyList,
           style: GoogleFonts.plusJakartaSans(
@@ -347,18 +341,18 @@ class _DeviceScreenState extends State<DeviceScreen> {
           ),
         )
       else
-        ...List.generate(count, (index) {
-          return Padding(
+        for (final MapEntry(:key, :value) in devices.entries)
+          Padding(
+            key: ValueKey(key),
             padding: const EdgeInsets.only(bottom: 10),
             child: DeviceCard(
-              name: nameAt(index),
+              name: value.name,
               type: type,
-              isConnected: isConnectedAt(index),
-              onDelete: () => _removeDevice(type, index),
-              onTap: () => onOpen(index),
+              isConnected: value.isConnected,
+              onDelete: () => _removeDevice(type, key),
+              onTap: () => onOpen(key),
             ),
-          );
-        }),
+          ),
     ];
   }
 

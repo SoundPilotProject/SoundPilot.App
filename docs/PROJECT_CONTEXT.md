@@ -104,7 +104,6 @@ core/
   services/
     device_storage_service.dart  local persistence of devices + calibration
     guest_mode_service.dart      guest mode flag (ValueNotifier + stored)
-    calibration_service.dart     Volume L/R as int (0–100)
     audio_device_service.dart    MethodChannel com.soundpilot/audio_devices
 features/
   auth/auth_service.dart
@@ -272,7 +271,10 @@ SharedPreferences (`DeviceStorageService`):
   data to the user key — only if the user has no data there yet.
   The guest data is not deleted.
 - There is **no synchronization with Firestore**.
-  `CalibrationService.migrateLocalToFirestoreIfNeeded()` is an empty stub.
+- The earbud volumes are part of this map (`HeadphoneCalib.volumeLeft` /
+  `volumeRight`, one pair per device). `CalibrationScreen` gets the earbud and
+  saves through a callback; its wheel shows them as 1–100
+  (`volumeToWheel` / `wheelToVolume` in `calibration.dart`).
 
 The Firestore schema below is the target schema that the Cloud Function already
 creates and that the Dart models map.
@@ -446,10 +448,6 @@ Not backed by evidence — check in the code instead of assuming:
 - **Firestore integration is missing in the client.** Devices and calibration
   are stored only locally (see §4). Whether and when to switch to Firestore is
   open.
-- **Two parallel calibration stores:** `CalibrationService` (int 0–100, own
-  SharedPreferences keys) and `HeadphoneCalib` (double 0.0–1.0 via
-  `DeviceStorageService`). Which one is actually used where has not been
-  clarified (`calibration.dart` was not checked).
 - **Real Bluetooth integration is missing.** The scan is simulated.
   `AudioDeviceService` (Android MethodChannel) exists in Dart but is not called
   by `DeviceScreen`. Whether the native Android side is implemented was not
@@ -515,11 +513,12 @@ Not backed by evidence — check in the code instead of assuming:
   `test/accessibility_layout_test.dart` renders the screens on a 360x720 phone
   in both themes at text scale 1.0/1.6/2.0 and checks the add-device dialog
   and the password reset flow;
-  `test/color_contrast_test.dart` checks the palette; `test/widget_test.dart`
-  is still a placeholder. `DeviceScreen` and `CalibrationScreen` are not
-  covered because they read `FirebaseAuth.instance` (the latter through
-  `CalibrationService`) and need a Firebase test double. The other services
-  and the security rules are not tested in CI.
+  `test/color_contrast_test.dart` checks the palette;
+  `test/features/device/calibration_screen_test.dart` checks that the
+  calibration starts at and saves the volumes of its earbud;
+  `test/widget_test.dart` is still a placeholder. `DeviceScreen` is not
+  covered because it reads `FirebaseAuth.instance` and needs a Firebase test
+  double. The other services and the security rules are not tested in CI.
 - **Firestore language default:** The function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
 
@@ -552,8 +551,7 @@ Not backed by evidence — check in the code instead of assuming:
 
 ### Comment convention
 
-- **Language:** Code comments in English. UI texts are German; the log messages
-  in `CalibrationService` are still German.
+- **Language:** Code comments in English. UI texts are German.
 - **File header:** first line `// lib/<path>`, followed by one or two lines on
   the file's purpose.
 - **Doc comments (`///`)** for classes, fields with non-obvious meaning and
