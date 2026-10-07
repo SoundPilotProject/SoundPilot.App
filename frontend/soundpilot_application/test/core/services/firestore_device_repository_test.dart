@@ -2,7 +2,8 @@
 //
 // Tests of FirestoreDeviceRepository against an in-memory Firestore: reading
 // through the snapshot listener, one write per device, waiting for a document
-// the cloud function creates late, and the one-off upload of local devices.
+// the cloud function creates late, and the one-off upload of the user's own
+// old local devices (never the guest's).
 
 import 'dart:async';
 
@@ -144,18 +145,18 @@ void main() {
     expect(uncaught, isEmpty);
   });
 
-  test('uploads local devices once, keeps the account ones, clears local',
+  test("uploads the user's own old local devices once; the account wins",
       () async {
-    await DeviceStorageService.save(
-      DeviceStorageService.guestOwner,
-      DeviceData(headphones: {
-        'aa': HeadphoneCalib(modelId: 'Guest Pods', volumeLeft: 0.1),
-        'ee': HeadphoneCalib(modelId: 'New Pods', volumeLeft: 0.4),
-      }),
-    );
+    // Stored by the app before the Firestore sync, under the user's key.
     await DeviceStorageService.save(
       _uid,
-      DeviceData(belts: {'bb': BeltCalib(modelId: 'Old Belt')}),
+      DeviceData(
+        headphones: {
+          'aa': HeadphoneCalib(modelId: 'Old Pods', volumeLeft: 0.1),
+          'ee': HeadphoneCalib(modelId: 'New Pods', volumeLeft: 0.4),
+        },
+        belts: {'bb': BeltCalib(modelId: 'Old Belt')},
+      ),
     );
 
     await startWith({
@@ -170,10 +171,57 @@ void main() {
     // Only local before: uploaded.
     expect(stored['headphones']['ee']['volLeft'], 0.4);
     expect(stored['belts']['bb'], {'modelId': 'Old Belt'});
-    // And removed locally, so the next account on this phone does not get it.
-    final guest = await DeviceStorageService.load(DeviceStorageService.guestOwner);
+    // And removed locally.
     final user = await DeviceStorageService.load(_uid);
-    expect(guest.headphones, isEmpty);
+    expect(user.headphones, isEmpty);
     expect(user.belts, isEmpty);
+  });
+
+  test('guest devices are never uploaded and stay on the phone', () async {
+    await DeviceStorageService.save(
+      DeviceStorageService.guestOwner,
+      DeviceData(headphones: {'gg': HeadphoneCalib(modelId: 'Guest Pods')}),
+    );
+
+    await startWith({
+      'headphones': <String, dynamic>{},
+      'belts': <String, dynamic>{},
+    });
+    await _settle();
+
+    final stored = await calibration();
+    expect(stored!['headphones'], isEmpty);
+    // Deleting them is GuestModeService.end's job, not the repository's.
+    final guest =
+        await DeviceStorageService.load(DeviceStorageService.guestOwner);
+    expect(guest.headphones.keys, ['gg']);
+  });
+
+  test('addMissingDevices adds only new devices and waits for the document',
+      () async {
+    // Right after registration: the document does not exist yet.
+    var done = false;
+    final adding = repository
+        .addMissingDevices(DeviceData(
+          headphones: {
+            'aa': HeadphoneCalib(modelId: 'Guest Pods', volumeLeft: 0.1),
+            'gg': HeadphoneCalib(modelId: 'New Pods', volumeLeft: 0.4),
+          },
+          belts: {'bb': BeltCalib(modelId: 'Guest Belt')},
+        ))
+        .then((_) => done = true);
+    await _settle();
+    expect(done, isFalse);
+
+    await db.collection('users').doc(_uid).set(_userDoc({
+      'headphones': {'aa': {'modelId': 'Cloud Pods', 'volLeft': 0.9}},
+      'belts': <String, dynamic>{},
+    }));
+    await adding;
+
+    final stored = await calibration();
+    expect(stored!['headphones']['aa']['modelId'], 'Cloud Pods');
+    expect(stored['headphones']['gg']['volLeft'], 0.4);
+    expect(stored['belts']['bb'], {'modelId': 'Guest Belt'});
   });
 }

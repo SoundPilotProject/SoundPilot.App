@@ -18,6 +18,7 @@ import 'package:soundpilot_application/core/widgets/auth_text_field.dart';
 import 'package:soundpilot_application/core/widgets/google_logo.dart';
 import 'package:soundpilot_application/core/widgets/loading_screen.dart';
 import 'package:soundpilot_application/features/auth/auth_service.dart';
+import 'package:soundpilot_application/features/auth/guest_devices_offer.dart';
 import 'package:soundpilot_application/features/auth/screens/login_screen.dart';
 import 'package:soundpilot_application/features/auth/screens/password_reset_screen.dart';
 import 'package:soundpilot_application/features/auth/screens/register_screen.dart';
@@ -90,6 +91,7 @@ void main() {
       'BeltVibrationScreen': () => const BeltVibrationScreen(),
       'TestPage': () => const TestPage(leftVolume: 40, rightVolume: 80),
       'UnsyncedLogoutDialog': () => const UnsyncedLogoutDialog(),
+      'GuestDevicesDialog': () => const GuestDevicesDialog(count: 2),
       'CalibrationScreen': () => CalibrationScreen(
             calib: HeadphoneCalib(modelId: 'Pods'),
             onSave: (_) async {},

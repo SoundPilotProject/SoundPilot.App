@@ -88,9 +88,8 @@ class AuthService {
 
       logger.d("AuthService: Email login successful");
 
-      // NOTE: The locally saved guest devices are uploaded to the user's
-      // Firestore document by FirestoreDeviceRepository once the document
-      // exists, not here (devices already in the account win).
+      // NOTE: Whether the locally saved guest devices are taken over is asked
+      // after the sign-in (offerGuestDevices in auth_flow.dart).
 
       return await _resultFor(result.user);
     } on FirebaseAuthException catch (e) {
@@ -236,7 +235,7 @@ class AuthService {
   /// that have not reached the server yet are lost with it; ask
   /// [hasUnsavedChanges] first.
   Future<void> logout() async {
-    await GuestModeService.set(false);
+    await GuestModeService.end();
 
     // Read before the sign-out, currentUser is null afterwards.
     final usedGoogle = _auth.currentUser?.providerData
@@ -402,6 +401,8 @@ class AuthService {
     if (model == null) return AuthResult.failure(messageForCode(null));
 
     // A signed-in user is no guest, also not on the next app start.
+    // NOTE: Only the flag; the guest's devices stay until the user decided
+    // what happens with them (offerGuestDevices in auth_flow.dart).
     await GuestModeService.set(false);
     return AuthResult.success(model);
   }

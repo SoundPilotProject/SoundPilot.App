@@ -27,9 +27,11 @@ import 'device_storage_service.dart';
 /// - Offline, Firestore applies writes to its local cache at once (so [watch]
 ///   shows them) and sends them later; the returned futures only complete
 ///   then. Callers should therefore not wait for them in the UI.
-/// - On the first snapshot from the server, devices that are still stored
-///   locally (guest, or this user before the Firestore sync) are uploaded once
-///   and removed locally (see [_importLocalDevices]).
+/// - On the first snapshot from the server, devices this user still has
+///   stored locally from before the Firestore sync are uploaded once and
+///   removed locally (see [_importLocalDevices]). Guest devices are only
+///   uploaded if the user agrees after signing in ([addMissingDevices], see
+///   offerGuestDevices).
 class FirestoreDeviceRepository implements DeviceRepository {
   FirestoreDeviceRepository({required this.uid, FirebaseFirestore? firestore})
       : _db = firestore ?? FirebaseFirestore.instance;
@@ -98,28 +100,16 @@ class FirestoreDeviceRepository implements DeviceRepository {
     ));
   }
 
-  /// Uploads the devices stored locally (guest and this user) that are not in
-  /// [cloud] yet, then removes them locally.
+  /// Uploads the devices this user stored locally before the Firestore sync
+  /// (`user_calibration_<uid>`) that are not in [cloud] yet, then removes
+  /// them locally.
   ///
   /// A device that is already in the account wins over the local one. If the
   /// upload fails, the local data stays and is tried again on the next start.
   Future<void> _importLocalDevices(DeviceData cloud) async {
-    final owners = [DeviceStorageService.guestOwner, uid];
     try {
-      final updates = <Object, Object?>{};
-      for (final owner in owners) {
-        final local = await DeviceStorageService.load(owner);
-        local.headphones.forEach((key, calib) {
-          if (!cloud.headphones.containsKey(key)) {
-            updates[_path('headphones', key)] = calib.toMap();
-          }
-        });
-        local.belts.forEach((key, calib) {
-          if (!cloud.belts.containsKey(key)) {
-            updates[_path('belts', key)] = calib.toMap();
-          }
-        });
-      }
+      final local = await DeviceStorageService.load(uid);
+      final updates = _missingDevices(cloud, local);
 
       if (updates.isNotEmpty) {
         await _doc.update(updates);
@@ -127,13 +117,46 @@ class FirestoreDeviceRepository implements DeviceRepository {
             'device(s) uploaded for $uid.');
       }
 
-      for (final owner in owners) {
-        await DeviceStorageService.clear(owner);
-      }
+      await DeviceStorageService.clear(uid);
     } catch (e) {
       logger.e('FirestoreDeviceRepository: Upload of local devices failed',
           error: e);
     }
+  }
+
+  /// Adds the devices of [local] that are not in the account yet, in one
+  /// update; a device that is already in the account wins.
+  ///
+  /// Waits until the user document exists (right after registration the cloud
+  /// function may not have written it yet), so callers should put a timeout
+  /// on it. Does not need [watch].
+  Future<void> addMissingDevices(DeviceData local) async {
+    final snapshot = await _doc.snapshots().firstWhere((s) => s.exists);
+    final cloud = DeviceData.fromMap(snapshot.data()?['calibration']);
+    final updates = _missingDevices(cloud, local);
+    if (updates.isEmpty) return;
+    await _doc.update(updates);
+    logger.i('FirestoreDeviceRepository: ${updates.length} device(s) added '
+        'for $uid.');
+  }
+
+  /// Field-path updates for the devices of [local] that are not in [cloud].
+  static Map<Object, Object?> _missingDevices(
+    DeviceData cloud,
+    DeviceData local,
+  ) {
+    final updates = <Object, Object?>{};
+    local.headphones.forEach((key, calib) {
+      if (!cloud.headphones.containsKey(key)) {
+        updates[_path('headphones', key)] = calib.toMap();
+      }
+    });
+    local.belts.forEach((key, calib) {
+      if (!cloud.belts.containsKey(key)) {
+        updates[_path('belts', key)] = calib.toMap();
+      }
+    });
+    return updates;
   }
 
   /// Sets the field [path] once the document exists.

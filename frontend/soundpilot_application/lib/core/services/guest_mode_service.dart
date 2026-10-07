@@ -6,9 +6,12 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_logger.dart';
+import 'device_storage_service.dart';
 
 /// Guest mode: set when the user chooses "Als Gast fortfahren" on the
-/// StartScreen, cleared on sign-in and on logout.
+/// StartScreen, turned off on sign-in and registration (the guest's devices
+/// are then offered for take-over, see offerGuestDevices) and ended ([end])
+/// on logout.
 ///
 /// The value is stored in SharedPreferences, so a guest goes straight to the
 /// DeviceScreen on the next app start. AppEntryPoint listens to [active] and
@@ -35,5 +38,12 @@ class GuestModeService {
     active.value = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_key, value);
+  }
+
+  /// Ends guest mode and deletes the guest's devices from this phone, so the
+  /// next guest starts with an empty list.
+  static Future<void> end() async {
+    await set(false);
+    await DeviceStorageService.clear(DeviceStorageService.guestOwner);
   }
 }
