@@ -1,4 +1,4 @@
-// lib/features/device/screens/TestPage.dart
+// lib/features/device/screens/test_page.dart
 //
 // Test exercise: plays a sound with the calibrated left/right volume.
 
@@ -10,15 +10,12 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
-import '../../../core/widgets/loading_screen.dart';
 
 /// Test exercise after the calibration: plays `assets/audio/Marschieren.mp3` in
 /// a loop with the volume and balance derived from the calibrated values.
 ///
 /// Pops with `true` when the user taps 'Abschließen'; the back arrow pops
 /// without a result.
-///
-/// TODO(improve): Rename the file to `test_page.dart` (Dart `file_names` lint).
 class TestPage extends StatefulWidget {
   /// Calibrated volume of the left side (1–100).
   final int leftVolume;
@@ -47,21 +44,15 @@ class _TestPageState extends State<TestPage> {
     return value.clamp(0.0, 1.0);
   }
 
-  /// Player volume (0.0–1.0): the louder of the two sides.
-  double _calculateOverallVolume() {
-    final left = _clamp01(widget.leftVolume / 100.0);
-    final right = _clamp01(widget.rightVolume / 100.0);
+  /// Player volume (0.0–1.0): the louder of the two sides [left] and [right]
+  /// (each 0.0–1.0).
+  double _calculateOverallVolume(double left, double right) {
     return math.max(left, right);
   }
 
   /// Player balance from -1.0 (only left) to 1.0 (only right), relative to the
   /// louder side. 0.0 if both sides are 0.
-  ///
-  /// TODO(improve): The conversion of both sides to 0.0–1.0 is repeated in
-  /// [_calculateOverallVolume]; compute it once.
-  double _calculateBalance() {
-    final left = _clamp01(widget.leftVolume / 100.0);
-    final right = _clamp01(widget.rightVolume / 100.0);
+  double _calculateBalance(double left, double right) {
     final maxSide = math.max(left, right);
 
     if (maxSide == 0) return 0.0;
@@ -74,8 +65,10 @@ class _TestPageState extends State<TestPage> {
   Future<void> _startAudio() async {
     if (_isPlaying) return;
 
-    final overallVolume = _calculateOverallVolume();
-    final balance = _calculateBalance();
+    final left = _clamp01(widget.leftVolume / 100.0);
+    final right = _clamp01(widget.rightVolume / 100.0);
+    final overallVolume = _calculateOverallVolume(left, right);
+    final balance = _calculateBalance(left, right);
 
     await _audioPlayer.stop();
     await _audioPlayer.setReleaseMode(ReleaseMode.loop);
@@ -104,31 +97,12 @@ class _TestPageState extends State<TestPage> {
     super.dispose();
   }
 
-  /// Stops the audio, shows a short loading screen and pops back to the
-  /// calibration screen with `true`.
-  ///
-  /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
-  /// visible for a moment and slows the UI down on purpose (see
-  /// StartScreen._continueAsGuest).
+  /// Stops the audio and pops back to the calibration screen with `true`.
   Future<void> _finishExercise() async {
     await _stopAudio();
 
     if (!mounted) return;
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const LoadingScreen(
-          text: 'Übung wird abgeschlossen...',
-        ),
-      ),
-    );
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    Navigator.pop(context);
     Navigator.pop(context, true);
   }
 

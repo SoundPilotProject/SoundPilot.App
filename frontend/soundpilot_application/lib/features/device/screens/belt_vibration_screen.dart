@@ -7,7 +7,6 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
-import '../../../core/widgets/loading_screen.dart';
 import '../widgets/belt_setup_fields.dart';
 
 /// Second step of the belt setup (after `BeltWarningDistanceScreen`): the user
@@ -17,7 +16,7 @@ import '../widgets/belt_setup_fields.dart';
 /// Pops with `true` when the setup is finished.
 ///
 /// TODO(improve): The entered strength and the selected side are neither
-/// validated nor saved. `_finishSetup` only waits and pops `true`. The
+/// validated nor saved. `_finishSetup` only pops `true`. The
 /// strength should be checked (0–100) and stored with the belt entry.
 ///
 /// NOTE: The heading above the side buttons used to read 'SUCHE GURT...'
@@ -50,26 +49,8 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
     super.dispose();
   }
 
-  /// Shows a short loading screen and pops back with `true` (setup done).
-  ///
-  /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
-  /// visible for a moment and slows the UI down on purpose (see
-  /// StartScreen._continueAsGuest).
-  Future<void> _finishSetup() async {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const LoadingScreen(
-          text: 'Gürtel wird eingerichtet...',
-        ),
-      ),
-    );
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    Navigator.pop(context);
+  /// Pops back with `true` (setup done).
+  void _finishSetup() {
     Navigator.pop(context, true);
   }
 

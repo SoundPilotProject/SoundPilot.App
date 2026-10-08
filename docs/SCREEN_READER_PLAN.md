@@ -40,7 +40,7 @@ Already in place:
 - Live regions on loading texts, the password reset result, the add-device
   scan status and `TestPage`.
 - The calibration wheel exposes its value and increase/decrease actions
-  (`calibration.dart`, `_VolumeSection`), so the standard swipe up/down works.
+  (`calibration_screen.dart`, `_VolumeSection`), so the standard swipe up/down works.
 - App locale fixed to German (`core/app_locale.dart`).
 
 Not done:

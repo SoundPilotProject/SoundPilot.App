@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:soundpilot_application/core/app_locale.dart';
-import 'package:soundpilot_application/features/device/screens/calibration.dart';
+import 'package:soundpilot_application/features/device/screens/calibration_screen.dart';
 import 'package:soundpilot_application/models/user_model.dart';
 
 /// Pumps a [CalibrationScreen] for [calib] on a phone-sized view; every saved

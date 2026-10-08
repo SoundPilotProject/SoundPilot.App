@@ -34,7 +34,10 @@ class _LoginScreenState extends State<LoginScreen> {
   late final AuthService _authService = AuthService();
 
   bool _obscurePassword = true;
-  bool _isLoading = false;
+
+  /// True while a sign-in runs. Only disables the buttons against a second
+  /// tap; the progress itself is shown by the LoadingScreen of [runSignIn].
+  bool _isSigningIn = false;
 
   @override
   void dispose() {
@@ -45,10 +48,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// Validates the input and signs in with e-mail and password. [runSignIn]
   /// does the rest: loading screen, error message and closing this screen.
-  ///
-  /// TODO(improve): `_isLoading` (spinner in the button) is redundant because
-  /// [runSignIn] pushes a full-screen LoadingScreen as well; use only one of
-  /// them.
   Future<void> _finishLogin() async {
     final email = _emailController.text.trim();
     // NOTE: The password is not trimmed; spaces are valid password characters.
@@ -59,13 +58,13 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() => _isSigningIn = true);
     await runSignIn(
       context,
       loadingText: 'Wird eingeloggt...',
       signIn: () => _authService.loginWithEmail(email, password),
     );
-    if (mounted) setState(() => _isLoading = false);
+    if (mounted) setState(() => _isSigningIn = false);
   }
 
   /// Signs in with a Google account.
@@ -74,13 +73,13 @@ class _LoginScreenState extends State<LoginScreen> {
   /// dialog. The Firestore document is created by the `createUserDoc` cloud
   /// function on the first sign-in, exactly as for an e-mail registration.
   Future<void> _loginWithGoogle() async {
-    setState(() => _isLoading = true);
+    setState(() => _isSigningIn = true);
     await runSignIn(
       context,
       loadingText: 'Mit Google anmelden...',
       signIn: () => _authService.signInWithGoogle(),
     );
-    if (mounted) setState(() => _isLoading = false);
+    if (mounted) setState(() => _isSigningIn = false);
   }
 
   /// Opens the password reset as its own step, with the address typed here
@@ -216,11 +215,11 @@ class _LoginScreenState extends State<LoginScreen> {
                               const Spacer(),
                               GoogleSignInButton(
                                 onPressed:
-                                    _isLoading ? null : _loginWithGoogle,
+                                    _isSigningIn ? null : _loginWithGoogle,
                               ),
                               const SizedBox(height: 14),
                               ElevatedButton(
-                                onPressed: _isLoading ? null : _finishLogin,
+                                onPressed: _isSigningIn ? null : _finishLogin,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.primary(context),
                                   foregroundColor: AppColors.onPrimary(context),
@@ -238,26 +237,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                     borderRadius: BorderRadius.circular(50),
                                   ),
                                 ),
-                                child: _isLoading
-                                    ? SizedBox(
-                                        width: 26,
-                                        height: 26,
-                                        child: CircularProgressIndicator(
-                                          color: AppColors.onPrimary(context),
-                                          strokeWidth: 3,
-                                        ),
-                                      )
-                                    : Text(
-                                        'Anmelden',
-                                        textAlign: TextAlign.center,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 29,
-                                          fontWeight: FontWeight.w800,
-                                          color: AppColors.onPrimary(context),
-                                        ),
-                                      ),
+                                child: Text(
+                                  'Anmelden',
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 29,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.onPrimary(context),
+                                  ),
+                                ),
                               ),
                               const SizedBox(height: 14),
                               Text(

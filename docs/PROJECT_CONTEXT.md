@@ -115,9 +115,9 @@ features/
   auth/guest_devices_offer.dart  after sign-in: take over or delete the
                                  guest devices (GuestDevicesDialog)
   auth/screens/                  start, login, register, password_reset
-  device/screens/                device_screen, calibration,
+  device/screens/                device_screen, calibration_screen,
                                  belt_vibration_screen,
-                                 belt_warning_distance_screen, TestPage
+                                 belt_warning_distance_screen, test_page
   device/widgets/                device_type (DeviceType + device scan),
                                  add_device_dialog, device_card,
                                  belt_setup_fields, unsynced_logout_dialog
@@ -332,7 +332,7 @@ device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
 - The earbud volumes are part of this map (`HeadphoneCalib.volumeLeft` /
   `volumeRight`, one pair per device). `CalibrationScreen` gets the earbud and
   saves through a callback; its wheel shows them as 1–100
-  (`volumeToWheel` / `wheelToVolume` in `calibration.dart`).
+  (`volumeToWheel` / `wheelToVolume` in `calibration_screen.dart`).
 - The connection state is runtime only: `DeviceScreen` keeps the connected
   keys itself; nothing is stored.
 
