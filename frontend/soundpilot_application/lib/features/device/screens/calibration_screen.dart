@@ -1,4 +1,4 @@
-// lib/features/device/screens/calibration.dart
+// lib/features/device/screens/calibration_screen.dart
 //
 // Left/right volume calibration of one earbud (two scroll wheels).
 
@@ -9,7 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../models/user_model.dart';
-import 'TestPage.dart';
+import 'test_page.dart';
 
 /// Converts a stored volume (0.0–1.0, see [HeadphoneCalib]) to the wheel
 /// value 1–100.
@@ -23,9 +23,6 @@ double wheelToVolume(int value) => value / 100;
 /// The wheels start at the volumes of [calib]. Before the [TestPage] opens,
 /// the chosen values are handed to [onSave] as a copy of [calib]. The screen
 /// pops with `true` once the test exercise was finished.
-///
-/// TODO(improve): Rename the file to `calibration_screen.dart` so it matches
-/// the class name (same for `TestPage.dart` -> `test_page.dart`).
 class CalibrationScreen extends StatefulWidget {
   /// The earbud being calibrated; its volumes are the starting values.
   final HeadphoneCalib calib;

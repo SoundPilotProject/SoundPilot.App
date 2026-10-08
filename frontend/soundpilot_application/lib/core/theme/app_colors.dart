@@ -16,10 +16,10 @@ import 'package:flutter/material.dart';
 /// NOTE: SoundPilotApp builds the ColorScheme and the TextTheme of both themes
 /// from this palette, so Material widgets that are not styled by hand follow it
 /// as well.
-///
-/// TODO(improve): The class only has static members, so a private constructor
-/// (`AppColors._()`) would prevent accidental instances.
 class AppColors {
+  /// Only static members; the private constructor prevents instances.
+  AppColors._();
+
   // ── Light mode ─────────────────────────────────────────────────────────────
 
   /// Soft pastel grey, deliberately not pure white: it lowers the glare for

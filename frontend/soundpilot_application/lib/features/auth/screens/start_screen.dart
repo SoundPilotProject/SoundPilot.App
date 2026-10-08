@@ -28,8 +28,8 @@ class StartScreen extends StatelessWidget {
   /// `Future.delayed(2 s)`. Original comment: "It slows the UI down on
   /// purpose and can be removed (same in DeviceScreen._logout,
   /// TestPage._finishExercise and BeltVibrationScreen._finishSetup)." Removed
-  /// here; the other three call sites still have it. The loading screen is
-  /// gone as well, because switching to guest mode is instant.
+  /// in all four places. The loading screen is gone here as well, because
+  /// switching to guest mode is instant.
   Future<void> _continueAsGuest() async {
     await GuestModeService.set(true);
   }

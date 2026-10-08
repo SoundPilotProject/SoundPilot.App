@@ -18,9 +18,6 @@ import 'soundpilot_logo.dart';
 ///
 /// The status text is a live region, so screen readers announce it instead of
 /// leaving blind users with a silent screen.
-///
-/// NOTE: Several callers combine it with an artificial `Future.delayed` so the
-/// screen stays visible for a moment (see the TODOs there).
 class LoadingScreen extends StatelessWidget {
   /// Status message shown below the spinner (e.g. 'Wird abgemeldet...').
   final String text;

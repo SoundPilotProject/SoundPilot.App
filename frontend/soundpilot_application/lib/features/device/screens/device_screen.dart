@@ -13,7 +13,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../models/user_model.dart';
 import '../../auth/auth_service.dart';
-import 'calibration.dart';
+import 'calibration_screen.dart';
 import 'belt_warning_distance_screen.dart';
 import '../../../core/app_logger.dart';
 import '../../../core/theme/app_colors.dart';
@@ -147,11 +147,6 @@ class _DeviceScreenState extends State<DeviceScreen> {
   /// The logout deletes the local Firestore cache, and with it changes that
   /// have not reached the server yet (offline). If there are any, the user is
   /// asked first ([UnsyncedLogoutDialog]) and can stay signed in.
-  ///
-  /// TODO(improve): The `Future.delayed(2 s)` only keeps the loading screen
-  /// visible for a moment and slows the UI down on purpose (same in
-  /// TestPage._finishExercise and BeltVibrationScreen._finishSetup;
-  /// StartScreen._continueAsGuest no longer has it, see there).
   Future<void> _logout() async {
     final auth = widget.authService ?? AuthService();
 
@@ -187,7 +182,6 @@ class _DeviceScreenState extends State<DeviceScreen> {
       _devices = null;
 
       await auth.logout();
-      await Future.delayed(const Duration(seconds: 2));
     } finally {
       navigator.popUntil((route) => route.isFirst);
     }

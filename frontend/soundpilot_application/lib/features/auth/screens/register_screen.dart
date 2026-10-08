@@ -40,7 +40,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   late final AuthService _authService = AuthService();
 
   bool _obscurePassword = true;
-  bool _isLoading = false;
+
+  /// True while a sign-in runs. Only disables the buttons against a second
+  /// tap; the progress itself is shown by the LoadingScreen of [runSignIn].
+  bool _isSigningIn = false;
 
   /// Answer to the 'Gürtel' (belt) question of the form: 'NEIN' or 'JA'.
   /// Not used yet, see the note at the name controllers.
@@ -62,10 +65,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// loading screen, error message and closing this screen.
   ///
   /// The minimum password length of 6 matches the Firebase Auth minimum.
-  ///
-  /// TODO(improve): `_isLoading` (spinner in the button) is redundant because
-  /// [runSignIn] pushes a full-screen LoadingScreen as well; use only one of
-  /// them.
   Future<void> _finishRegister() async {
     final email = _emailController.text.trim();
     // NOTE: The password is not trimmed; spaces are valid password characters.
@@ -81,13 +80,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() => _isSigningIn = true);
     await runSignIn(
       context,
       loadingText: 'Konto wird erstellt...',
       signIn: () => _authService.registerWithEmail(email, password),
     );
-    if (mounted) setState(() => _isLoading = false);
+    if (mounted) setState(() => _isSigningIn = false);
   }
 
   /// Creates the account with a Google account instead of the form.
@@ -97,13 +96,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// function then creates the Firestore document. The form fields stay empty
   /// — name and e-mail come from the Google account.
   Future<void> _registerWithGoogle() async {
-    setState(() => _isLoading = true);
+    setState(() => _isSigningIn = true);
     await runSignIn(
       context,
       loadingText: 'Mit Google registrieren...',
       signIn: () => _authService.signInWithGoogle(),
     );
-    if (mounted) setState(() => _isLoading = false);
+    if (mounted) setState(() => _isSigningIn = false);
   }
 
   /// Shows [message] in a SnackBar.
@@ -241,12 +240,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         const SizedBox(height: _gapBeforeSubmit),
         GoogleSignInButton(
           label: 'Mit Google registrieren',
-          onPressed: _isLoading ? null : _registerWithGoogle,
+          onPressed: _isSigningIn ? null : _registerWithGoogle,
         ),
 
         const SizedBox(height: 14),
         ElevatedButton(
-          onPressed: _isLoading ? null : _finishRegister,
+          onPressed: _isSigningIn ? null : _finishRegister,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary(context),
             foregroundColor: AppColors.onPrimary(context),
@@ -259,26 +258,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
               borderRadius: BorderRadius.circular(50),
             ),
           ),
-          child: _isLoading
-              ? SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    color: AppColors.onPrimary(context),
-                    strokeWidth: 3,
-                  ),
-                )
-              : Text(
-                  'Registrieren',
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.onPrimary(context),
-                  ),
-                ),
+          child: Text(
+            'Registrieren',
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: AppColors.onPrimary(context),
+            ),
+          ),
         ),
         const SizedBox(height: _gapBeforeLabel),
         // Plain label: not a control, so it stays in the normal text colour and
