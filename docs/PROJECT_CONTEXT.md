@@ -535,7 +535,9 @@ Not backed by evidence — check in the code instead of assuming:
   (whether TalkBack/VoiceOver then pick a German voice is not verified).
   Still open: localisation (texts are hardcoded German; a second language
   would need `gen-l10n` with ARB files), haptics only in the calibration
-  wheel, nothing verified with TalkBack or VoiceOver on real hardware.
+  wheel, nothing verified with TalkBack or VoiceOver on real hardware. The plan
+  for screen reader support (CI checks, device test protocol, open gaps) is
+  `docs/SCREEN_READER_PLAN.md`.
 - **The registration form scrolls; do not try to fit it on one screen again.**
   It was built without a scroll view for a while, because a form that needs no
   scrolling had been asked for. Holding that promise cost a text-scale cap
