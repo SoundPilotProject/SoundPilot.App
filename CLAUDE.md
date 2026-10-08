@@ -235,6 +235,12 @@ with "Connection closed before test suite loaded". That is a crash of the local
 test runner, not a failing test: rerun those files with
 `flutter test --concurrency=1 <files>`.
 
+If a build or test run behaves strangely after switching branches, Flutter
+versions or native/plugin dependencies (stale errors, changes not picked up),
+run `flutter clean` and then `flutter pub get`. Do not run it routinely: it
+deletes `build/` and `.dart_tool/`, so the next build starts from scratch and
+takes minutes.
+
 ### CI/CD (`.github/workflows/ci-cd.yml`)
 
 Runs on every pull request to `main` and every push to `main`:
