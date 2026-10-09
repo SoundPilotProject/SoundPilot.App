@@ -112,7 +112,11 @@ void main() {
           (tester, brightness, scale) async {
         final repository = FakeDeviceRepository();
         await tester.pumpWidget(_wrap(
-          DeviceScreen(repository: repository, isSignedIn: isSignedIn),
+          DeviceScreen(
+            repository: repository,
+            isSignedIn: isSignedIn,
+            headphoneChanges: () => const Stream.empty(),
+          ),
           brightness,
           scale,
         ));

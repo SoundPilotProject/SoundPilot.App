@@ -9,6 +9,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../models/user_model.dart';
@@ -16,6 +17,7 @@ import '../../auth/auth_service.dart';
 import 'calibration_screen.dart';
 import 'belt_warning_distance_screen.dart';
 import '../../../core/app_logger.dart';
+import '../../../core/services/audio_device_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/loading_screen.dart';
 import '../../../core/services/device_repository.dart';
@@ -33,6 +35,9 @@ import '../widgets/unsynced_logout_dialog.dart';
 /// 'Registrieren', signed-in users see 'Abmelden'. Tapping a device opens its
 /// calibration ([CalibrationScreen]) or belt setup
 /// ([BeltWarningDistanceScreen]).
+///
+/// Headphones show their real connection state ([headphoneChanges]); belts
+/// count as connected once their setup was finished in this session.
 class DeviceScreen extends StatefulWidget {
   /// Where the devices are read and written.
   ///
@@ -51,12 +56,17 @@ class DeviceScreen extends StatefulWidget {
   /// [scanForDevices].
   final DeviceScanner scanner;
 
+  /// The connected headphones, again on every change; tests pass a fake.
+  /// Defaults to [AudioDeviceService.headphoneChanges].
+  final Stream<List<HeadphoneDevice>> Function() headphoneChanges;
+
   const DeviceScreen({
     super.key,
     required this.repository,
     required this.isSignedIn,
     this.authService,
     this.scanner = scanForDevices,
+    this.headphoneChanges = AudioDeviceService.headphoneChanges,
   });
 
   @override
@@ -71,11 +81,20 @@ class _DeviceScreenState extends State<DeviceScreen> {
   /// Belts, same structure as [_earbuds].
   Map<String, BeltCalib> _belts = {};
 
-  /// Keys of the devices that count as connected in this session.
+  /// Addresses (upper case) of the headphones that are connected right now,
+  /// from [DeviceScreen.headphoneChanges].
   ///
   /// NOTE: Runtime only, like `isConnected` in the model; kept here because
   /// every update from the repository brings new objects, all not connected.
-  final Set<String> _connected = {};
+  Set<String> _connectedHeadphones = {};
+
+  /// Whether the next headphone list is the first one, which only reports
+  /// the state at the start and is not announced.
+  bool _firstHeadphoneList = true;
+
+  /// Keys of the belts that count as connected in this session: their setup
+  /// was finished. Belts have no real connection yet.
+  final Set<String> _connectedBelts = {};
 
   /// True until the repository has delivered the devices for the first time.
   bool _isLoadingDevices = true;
@@ -87,10 +106,19 @@ class _DeviceScreenState extends State<DeviceScreen> {
   late final DeviceRepository _repository = widget.repository;
 
   StreamSubscription<DeviceData>? _devices;
+  StreamSubscription<List<HeadphoneDevice>>? _headphones;
 
   @override
   void initState() {
     super.initState();
+    _headphones = widget.headphoneChanges().listen(
+      _onHeadphonesChanged,
+      onError: (Object e) {
+        // E.g. no native side; the headphones then show as not connected.
+        logger.w('DeviceScreen: Headphone connection state unavailable',
+            error: e);
+      },
+    );
     _devices = _repository.watch().listen(
       (data) {
         setState(() {
@@ -113,6 +141,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
   @override
   void dispose() {
     _devices?.cancel();
+    _headphones?.cancel();
     _repository.dispose();
     super.dispose();
   }
@@ -185,6 +214,8 @@ class _DeviceScreenState extends State<DeviceScreen> {
       // future never completes under the fake clock of widget tests.
       unawaited(_devices?.cancel());
       _devices = null;
+      unawaited(_headphones?.cancel());
+      _headphones = null;
 
       await auth.logout();
     } finally {
@@ -196,17 +227,54 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   /// Removes the device with the map key [key] (BD_ADDR) of the given [type].
   void _removeDevice(DeviceType type, String key) {
-    _connected.remove(key);
+    _connectedBelts.remove(key);
     _save(type == DeviceType.earbuds
         ? _repository.removeHeadphone(key)
         : _repository.removeBelt(key));
   }
 
+  // ── Headphone connection ───────────────────────────────────────────────────
+
+  /// Takes over the connected headphones and tells screen reader users which
+  /// of their headphones connected or disconnected.
+  ///
+  /// NOTE: Only headphones in the device list are announced, and not for the
+  /// first list ([_firstHeadphoneList]).
+  void _onHeadphonesChanged(List<HeadphoneDevice> headphones) {
+    final connected = {
+      for (final h in headphones)
+        if (h.isConnected && h.address.isNotEmpty) h.address.toUpperCase(),
+    };
+
+    if (!_firstHeadphoneList) {
+      for (final MapEntry(:key, :value) in _earbuds.entries) {
+        final address = key.toUpperCase();
+        final now = connected.contains(address);
+        if (_connectedHeadphones.contains(address) != now) {
+          final state = now ? 'ist jetzt verbunden' : 'ist jetzt getrennt';
+          SemanticsService.sendAnnouncement(
+            View.of(context),
+            '${value.modelId} $state',
+            TextDirection.ltr,
+          );
+        }
+      }
+    }
+
+    setState(() {
+      _connectedHeadphones = connected;
+      _firstHeadphoneList = false;
+    });
+  }
+
+  /// Whether the headphones with the map key [key] are connected.
+  bool _isHeadphoneConnected(String key) =>
+      _connectedHeadphones.contains(key.toUpperCase());
+
   // ── Calibration / Setup ────────────────────────────────────────────────────
 
   /// Opens the [CalibrationScreen] for the earbud [calib] with the map key
-  /// [key]. The screen saves its volumes into this earbud; if it returns
-  /// `true`, the earbud is also marked as connected.
+  /// [key]. The screen saves its volumes into this earbud.
   ///
   /// NOTE: [calib] is passed in instead of read from [_earbuds], because a
   /// newly added earbud is only in the list once the repository reports it.
@@ -214,7 +282,9 @@ class _DeviceScreenState extends State<DeviceScreen> {
     String key,
     HeadphoneCalib calib,
   ) async {
-    final result = await Navigator.push<bool>(
+    // NOTE: Finishing the calibration does not mark the earbud as connected;
+    // that is the real Bluetooth state (_connectedHeadphones).
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => CalibrationScreen(
@@ -224,11 +294,6 @@ class _DeviceScreenState extends State<DeviceScreen> {
         ),
       ),
     );
-
-    if (!mounted) return;
-    if (result == true) {
-      setState(() => _connected.add(key));
-    }
   }
 
   /// Opens the belt setup ([BeltWarningDistanceScreen]) for the belt with the
@@ -243,7 +308,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
     if (!mounted) return;
     if (result == true) {
-      setState(() => _connected.add(key));
+      setState(() => _connectedBelts.add(key));
     }
   }
 
@@ -356,7 +421,10 @@ class _DeviceScreenState extends State<DeviceScreen> {
           type: DeviceType.earbuds,
           devices: {
             for (final e in _earbuds.entries)
-              e.key: (name: e.value.modelId, isConnected: _connected.contains(e.key)),
+              e.key: (
+                name: e.value.modelId,
+                isConnected: _isHeadphoneConnected(e.key),
+              ),
           },
           onOpen: (key) => _openCalibrationForEarbud(key, _earbuds[key]!),
         ),
@@ -365,7 +433,10 @@ class _DeviceScreenState extends State<DeviceScreen> {
           type: DeviceType.belt,
           devices: {
             for (final e in _belts.entries)
-              e.key: (name: e.value.modelId, isConnected: _connected.contains(e.key)),
+              e.key: (
+                name: e.value.modelId,
+                isConnected: _connectedBelts.contains(e.key),
+              ),
           },
           onOpen: _openBeltSetup,
         ),
