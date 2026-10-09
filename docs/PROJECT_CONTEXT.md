@@ -632,7 +632,9 @@ Not backed by evidence — check in the code instead of assuming:
   tap targets; state is no longer carried by colour alone (connection dot, type
   selector and side buttons all carry an icon too); the whole palette measured
   against WCAG AA in `test/color_contrast_test.dart`; the system back button
-  works again on login/register (`PopScope(canPop: true)`, back just pops);
+  works again on login/register (`PopScope(canPop: true)`, back just pops),
+  and Android 13+ predictive back is on (`enableOnBackInvokedCallback` in the
+  manifest; not tried on a phone yet);
   the app locale is fixed to German (`core/app_locale.dart`), so Flutter's
   built-in labels are German and the app reports German to the platform
   (whether TalkBack/VoiceOver then pick a German voice is not verified).
@@ -672,9 +674,11 @@ Not backed by evidence — check in the code instead of assuming:
   same account. The other way round, a Google sign-in with the Gmail address of
   an e-mail/password account whose address is not verified replaces the
   password, and the reset is then the way back. The app never sends a
-  verification e-mail; whether it should is open. Whether e-mail enumeration
-  protection is on and which language the reset e-mail template uses (console:
-  Authentication → Templates) has not been checked.
+  verification e-mail; whether it should is open. `main.dart` sets
+  Firebase's language to German (`FirebaseAuth.setLanguageCode`), so the
+  reset e-mail comes from Firebase's German template, unless the template was
+  customised in the console (Authentication → Templates); that, and whether
+  e-mail enumeration protection is on, has not been checked.
 - **Leaving guest mode:** a guest can only leave guest mode by signing in;
   there is no button to go back to the `StartScreen`.
 - **Two device-type enums:** `DeviceCategory` (`models/user_model.dart`, label

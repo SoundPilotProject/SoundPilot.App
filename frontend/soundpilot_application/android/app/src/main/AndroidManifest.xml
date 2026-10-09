@@ -18,10 +18,14 @@
         android:name="android.hardware.bluetooth"
         android:required="false" />
 
+    <!-- enableOnBackInvokedCallback: Android 13+ predictive back. The back
+         gesture previews the screen it returns to; PopScope (login,
+         register, GuestDevicesDialog) still decides whether it may pop. -->
     <application
         android:label="soundpilot_application"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
