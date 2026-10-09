@@ -1,6 +1,8 @@
 # Miscellaneous
 *.class
 *.log
+# Logs of tool/run_with_log.mjs
+/logs/
 *.pyc
 *.swp
 .DS_Store

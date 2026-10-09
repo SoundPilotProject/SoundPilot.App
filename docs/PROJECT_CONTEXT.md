@@ -79,6 +79,8 @@ Cloud Functions are written in **TypeScript (Node.js 22)**.
 
 ```
 frontend/soundpilot_application/   Flutter app
+  tool/run_with_log.mjs            `flutter run` with a log file (see §3)
+  logs/                            its log files, git-ignored
 firebase/                          Firestore rules, Cloud Functions
   firestore.rules
   functions/src/index.ts
@@ -198,6 +200,28 @@ confirmation on the phone) is asked again. That is a debug-only effect; a
 normal browser keeps the login. To keep it while developing, give Chrome a
 fixed profile outside the repo, e.g. as additional run args:
 `--web-browser-flag=--user-data-dir=C:\Users\<you>\.flutter-chrome-profile`.
+
+To keep what `flutter run` prints (build output, app logs, errors), start it
+through the log script instead, with the same arguments:
+
+```cmd
+cd frontend/soundpilot_application
+node tool/run_with_log.mjs -d <device>
+```
+
+Every start writes a new file `logs/run-<date>_<time>.log` (header with the
+arguments, branch and commit; a time in front of every line; colour codes
+removed) and deletes all but the newest 5. The keys of `flutter run` (`r`,
+`R`, `q`) still work. The file is written on the PC, not by the app, so an
+installed APK never creates one. The logs can contain e-mail addresses and
+device names; do not share them carelessly.
+
+In Android Studio (with the repo root opened as the project), pick the shared
+run configuration **"flutter run with Log"** (`.run/` in the repo root)
+instead of the normal one. It starts the script in Android Studio's terminal,
+so the keys work there too. The device dropdown does not apply to it: with more than one device
+connected, `flutter run` asks in the terminal which one to use. It needs the
+bundled *Shell Script* plugin and `node` on the `PATH`.
 
 Cloud Functions:
 
