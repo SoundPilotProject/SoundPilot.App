@@ -289,8 +289,10 @@ class _DeviceScreenState extends State<DeviceScreen> {
       MaterialPageRoute(
         builder: (_) => CalibrationScreen(
           calib: calib,
+          address: key,
           onSave: (updated) async =>
               _save(_repository.putHeadphone(key, updated)),
+          headphoneChanges: widget.headphoneChanges,
         ),
       ),
     );

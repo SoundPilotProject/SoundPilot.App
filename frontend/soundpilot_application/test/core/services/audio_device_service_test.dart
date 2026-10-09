@@ -281,26 +281,34 @@ void main() {
   });
 
   group('test tone', () {
-    test('sends the volumes (clamped to 1-100) and the output device',
-        () async {
+    test('sends the gains (limited to 0-1) and the output device', () async {
       mockNative({});
 
       await AudioDeviceService.playTestTone(
-          leftVolume: 0, rightVolume: 140, outputDeviceId: 4);
+          leftGain: -0.5, rightGain: 1.4, outputDeviceId: 4);
       await AudioDeviceService.stopTestTone();
 
       expect(calls.first.method, 'playTestTone');
       expect(calls.first.arguments,
-          {'leftVolume': 1, 'rightVolume': 100, 'deviceId': 4});
+          {'leftGain': 0.0, 'rightGain': 1.0, 'deviceId': 4});
       expect(calls.last.method, 'stopTestTone');
     });
 
     test('leaves the device out if none is given', () async {
       mockNative({});
 
-      await AudioDeviceService.playTestTone(leftVolume: 50, rightVolume: 60);
+      await AudioDeviceService.playTestTone(leftGain: 0.5, rightGain: 0.6);
 
-      expect(calls.single.arguments, {'leftVolume': 50, 'rightVolume': 60});
+      expect(calls.single.arguments, {'leftGain': 0.5, 'rightGain': 0.6});
+    });
+
+    test('changes the gains of the playing tone', () async {
+      mockNative({});
+
+      await AudioDeviceService.setTestToneGain(leftGain: 0.2, rightGain: 0.9);
+
+      expect(calls.single.method, 'setTestToneGain');
+      expect(calls.single.arguments, {'leftGain': 0.2, 'rightGain': 0.9});
     });
   });
 }

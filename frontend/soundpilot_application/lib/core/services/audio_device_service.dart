@@ -307,21 +307,34 @@ class AudioDeviceService {
   // ── Test tone ──────────────────────────────────────────────────────────────
 
   /// Plays a 440 Hz test tone until [stopTestTone], with the left and right
-  /// volume as on the calibration wheel (1–100).
+  /// gain (0.0–1.0, see `wheelToGain`). It fades in and out instead of
+  /// clicking.
   ///
   /// With [outputDeviceId] ([HeadphoneDevice.outputDeviceId]) the tone only
   /// plays on those headphones: if they are not connected it throws a
   /// [PlatformException] with code `DEVICE_NOT_CONNECTED` instead of using
   /// the speaker, and it stops by itself when they disconnect.
   static Future<void> playTestTone({
-    required int leftVolume,
-    required int rightVolume,
+    required double leftGain,
+    required double rightGain,
     int? outputDeviceId,
   }) async {
     await _channel.invokeMethod('playTestTone', {
-      'leftVolume': leftVolume.clamp(1, 100),
-      'rightVolume': rightVolume.clamp(1, 100),
+      'leftGain': leftGain.clamp(0.0, 1.0),
+      'rightGain': rightGain.clamp(0.0, 1.0),
       'deviceId': ?outputDeviceId,
+    });
+  }
+
+  /// Changes the gains of the playing test tone; it glides to them without
+  /// restarting.
+  static Future<void> setTestToneGain({
+    required double leftGain,
+    required double rightGain,
+  }) async {
+    await _channel.invokeMethod('setTestToneGain', {
+      'leftGain': leftGain.clamp(0.0, 1.0),
+      'rightGain': rightGain.clamp(0.0, 1.0),
     });
   }
 

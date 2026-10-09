@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
+import '../volume_scale.dart';
 
 /// Test exercise after the calibration: plays `assets/audio/Marschieren.mp3` in
 /// a loop with the volume and balance derived from the calibrated values.
@@ -65,8 +66,9 @@ class _TestPageState extends State<TestPage> {
   Future<void> _startAudio() async {
     if (_isPlaying) return;
 
-    final left = _clamp01(widget.leftVolume / 100.0);
-    final right = _clamp01(widget.rightVolume / 100.0);
+    // Same hearing curve as the test tone of the calibration.
+    final left = _clamp01(wheelToGain(widget.leftVolume));
+    final right = _clamp01(wheelToGain(widget.rightVolume));
     final overallVolume = _calculateOverallVolume(left, right);
     final balance = _calculateBalance(left, right);
 

@@ -14,6 +14,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:soundpilot_application/core/app_locale.dart';
+import 'package:soundpilot_application/core/services/audio_device_service.dart';
 import 'package:soundpilot_application/core/widgets/auth_text_field.dart';
 import 'package:soundpilot_application/core/widgets/google_logo.dart';
 import 'package:soundpilot_application/core/widgets/loading_screen.dart';
@@ -92,9 +93,27 @@ void main() {
       'TestPage': () => const TestPage(leftVolume: 40, rightVolume: 80),
       'UnsyncedLogoutDialog': () => const UnsyncedLogoutDialog(),
       'GuestDevicesDialog': () => const GuestDevicesDialog(count: 2),
+      // Connected, so the tone section shows its text and button.
       'CalibrationScreen': () => CalibrationScreen(
             calib: HeadphoneCalib(modelId: 'Pods'),
+            address: 'AA',
             onSave: (_) async {},
+            headphoneChanges: () => Stream.value(const [
+              HeadphoneDevice(
+                name: 'Pods',
+                address: 'AA',
+                isConnected: true,
+                outputDeviceId: 1,
+              ),
+            ]),
+            toneSupported: true,
+          ),
+      'CalibrationScreen (nicht verbunden)': () => CalibrationScreen(
+            calib: HeadphoneCalib(modelId: 'Pods'),
+            address: 'AA',
+            onSave: (_) async {},
+            headphoneChanges: () => Stream.value(const []),
+            toneSupported: true,
           ),
     };
 

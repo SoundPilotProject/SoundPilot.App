@@ -1,49 +1,87 @@
 // lib/features/device/screens/calibration_screen.dart
 //
-// Left/right volume calibration of one earbud (two scroll wheels).
+// Left/right volume calibration of one earbud (two scroll wheels and a test
+// tone on the earbud).
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/app_logger.dart';
+import '../../../core/services/audio_device_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../models/user_model.dart';
+import '../volume_scale.dart';
 import 'test_page.dart';
-
-/// Converts a stored volume (0.0–1.0, see [HeadphoneCalib]) to the wheel
-/// value 1–100.
-int volumeToWheel(double volume) => (volume * 100).round().clamp(1, 100);
-
-/// Converts a wheel value 1–100 to the stored volume (0.01–1.0).
-double wheelToVolume(int value) => value / 100;
 
 /// Screen where the user sets the left and right volume (1–100) of one earbud.
 ///
-/// The wheels start at the volumes of [calib]. Before the [TestPage] opens,
-/// the chosen values are handed to [onSave] as a copy of [calib]. The screen
-/// pops with `true` once the test exercise was finished.
+/// The wheels start at the volumes of [calib]. While the earbud is connected,
+/// a test tone can be played on it; turning a wheel changes its side at once
+/// ([wheelToGain]). The tone only starts on the user's request (a screen
+/// reader speaks through the same headphones) and stops when the screen is
+/// left, the app goes to the background or the earbud disconnects.
+///
+/// Before the [TestPage] opens, the chosen values are handed to [onSave] as a
+/// copy of [calib]. The screen pops with `true` once the test exercise was
+/// finished.
 class CalibrationScreen extends StatefulWidget {
   /// The earbud being calibrated; its volumes are the starting values.
   final HeadphoneCalib calib;
 
+  /// Map key of the earbud (its BD_ADDR), to find it among the connected
+  /// headphones.
+  final String address;
+
   /// Stores the new calibration of this earbud.
   final Future<void> Function(HeadphoneCalib calib) onSave;
+
+  /// The connected headphones, again on every change; tests pass a fake.
+  /// Defaults to [AudioDeviceService.headphoneChanges].
+  final Stream<List<HeadphoneDevice>> Function() headphoneChanges;
+
+  /// Whether the test tone exists here (only the Android app has it).
+  /// Defaults to [AudioDeviceService.isSupported].
+  final bool? toneSupported;
 
   const CalibrationScreen({
     super.key,
     required this.calib,
+    required this.address,
     required this.onSave,
+    this.headphoneChanges = AudioDeviceService.headphoneChanges,
+    this.toneSupported,
   });
 
   @override
   State<CalibrationScreen> createState() => _CalibrationScreenState();
 }
 
-class _CalibrationScreenState extends State<CalibrationScreen> {
+class _CalibrationScreenState extends State<CalibrationScreen>
+    with WidgetsBindingObserver {
   /// Currently selected volumes, starting at the earbud's saved values.
   late int _leftVolume;
   late int _rightVolume;
+
+  late final bool _toneSupported =
+      widget.toneSupported ?? AudioDeviceService.isSupported;
+
+  StreamSubscription<List<HeadphoneDevice>>? _headphones;
+
+  /// False until the connection state of the earbud is known.
+  bool _connectionKnown = false;
+
+  /// The earbud while it is connected, otherwise null.
+  HeadphoneDevice? _connected;
+
+  /// Whether the test tone is playing.
+  bool _toneOn = false;
+
+  /// Shown below the tone button if the tone could not be started.
+  String? _toneError;
 
   late final FixedExtentScrollController _leftController;
   late final FixedExtentScrollController _rightController;
@@ -60,18 +98,115 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
         FixedExtentScrollController(initialItem: _leftVolume - 1);
     _rightController =
         FixedExtentScrollController(initialItem: _rightVolume - 1);
+    WidgetsBinding.instance.addObserver(this);
+    if (_toneSupported) {
+      _headphones = widget.headphoneChanges().listen(
+        _onHeadphonesChanged,
+        onError: (Object e) {
+          logger.w('CalibrationScreen: Connection state unavailable',
+              error: e);
+          setState(() => _connectionKnown = true);
+        },
+      );
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _headphones?.cancel();
+    if (_toneOn) unawaited(_stopToneQuietly());
     _leftController.dispose();
     _rightController.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // NOTE: No tone in the background, where the user cannot stop it.
+    if (state != AppLifecycleState.resumed && _toneOn) _stopTone();
+  }
+
+  // ── Test tone ──────────────────────────────────────────────────────────────
+
+  /// Finds this earbud among the connected headphones. If it disconnected
+  /// while the tone played, the native side has stopped the tone already.
+  void _onHeadphonesChanged(List<HeadphoneDevice> headphones) {
+    final address = widget.address.toUpperCase();
+    HeadphoneDevice? connected;
+    for (final h in headphones) {
+      if (h.isConnected && h.address.toUpperCase() == address) connected = h;
+    }
+
+    setState(() {
+      _connectionKnown = true;
+      _connected = connected;
+      if (connected == null) _toneOn = false;
+    });
+  }
+
+  Future<void> _toggleTone() => _toneOn ? _stopTone() : _startTone();
+
+  Future<void> _startTone() async {
+    final headphone = _connected;
+    if (headphone == null) return;
+
+    setState(() => _toneError = null);
+    try {
+      await AudioDeviceService.playTestTone(
+        leftGain: wheelToGain(_leftVolume),
+        rightGain: wheelToGain(_rightVolume),
+        outputDeviceId: headphone.outputDeviceId,
+      );
+      if (!mounted) {
+        unawaited(_stopToneQuietly());
+        return;
+      }
+      setState(() => _toneOn = true);
+    } on PlatformException catch (e) {
+      logger.e('CalibrationScreen: Test tone failed', error: e);
+      if (!mounted) return;
+      setState(() {
+        _toneOn = false;
+        _toneError = e.code == 'DEVICE_NOT_CONNECTED'
+            ? 'Die Kopfhörer sind nicht mehr verbunden.'
+            : 'Der Testton konnte nicht abgespielt werden. Bitte versuche es '
+                'noch einmal.';
+      });
+    }
+  }
+
+  Future<void> _stopTone() async {
+    setState(() => _toneOn = false);
+    await _stopToneQuietly();
+  }
+
+  /// Stops the tone without touching the state (also used in [dispose]).
+  Future<void> _stopToneQuietly() async {
+    try {
+      await AudioDeviceService.stopTestTone();
+    } on PlatformException catch (e) {
+      logger.e('CalibrationScreen: Stopping the test tone failed', error: e);
+    }
+  }
+
+  /// Applies a wheel change to the playing tone.
+  void _updateToneGain() {
+    if (!_toneOn) return;
+    unawaited(AudioDeviceService.setTestToneGain(
+      leftGain: wheelToGain(_leftVolume),
+      rightGain: wheelToGain(_rightVolume),
+    ).catchError((Object e) {
+      logger.e('CalibrationScreen: Changing the test tone failed', error: e);
+    }));
+  }
+
   /// Saves the current values and opens the [TestPage]. If the test was
   /// finished (`true`), this screen pops with `true` as well.
   Future<void> _openTestPage() async {
+    // The test page plays its own sound.
+    if (_toneOn) await _stopTone();
+
     // Save current values before opening the test page, so they are kept
     // even if the test is left without finishing it.
     await widget.onSave(widget.calib.copyWith(
@@ -115,6 +250,15 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    _ToneSection(
+                      supported: _toneSupported,
+                      connectionKnown: _connectionKnown,
+                      connected: _connected != null,
+                      toneOn: _toneOn,
+                      error: _toneError,
+                      onToggle: _toggleTone,
+                    ),
+                    const SizedBox(height: 24),
                     _VolumeSection(
                       title: 'Linke Seite',
                       semanticSide: 'Linke Seite',
@@ -125,6 +269,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                         setState(() {
                           _leftVolume = _values[index];
                         });
+                        _updateToneGain();
                       },
                     ),
                     const SizedBox(height: 24),
@@ -138,6 +283,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                         setState(() {
                           _rightVolume = _values[index];
                         });
+                        _updateToneGain();
                       },
                     ),
                     const SizedBox(height: 28),
@@ -174,6 +320,147 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Test tone ────────────────────────────────────────────────────────────────
+
+/// Explanation and the button that starts or stops the test tone, or why
+/// there is none (not in the Android app, earbud not connected).
+///
+/// The state is written out and announced by screen readers, not shown by
+/// the button colour alone.
+class _ToneSection extends StatelessWidget {
+  final bool supported;
+  final bool connectionKnown;
+  final bool connected;
+  final bool toneOn;
+  final String? error;
+  final VoidCallback onToggle;
+
+  const _ToneSection({
+    required this.supported,
+    required this.connectionKnown,
+    required this.connected,
+    required this.toneOn,
+    required this.error,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (supported && !connectionKnown) return const SizedBox.shrink();
+
+    final String text;
+    if (!supported) {
+      text = 'Den Testton gibt es nur in der Android-App.';
+    } else if (!connected) {
+      text = 'Verbinde zuerst deine Kopfhörer, dann kannst du den Testton '
+          'hören.';
+    } else if (toneOn) {
+      text = 'Der Testton läuft. Stelle jede Seite so ein, dass du sie gut '
+          'hörst.';
+    } else {
+      text = 'Spiele den Testton ab und stelle dann jede Seite so ein, dass '
+          'du sie gut hörst.';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          liveRegion: true,
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.text(context),
+              height: 1.35,
+            ),
+          ),
+        ),
+        if (supported) ...[
+          const SizedBox(height: 12),
+          if (connected)
+            _SecondaryButton(
+              icon: toneOn ? Icons.stop_rounded : Icons.play_arrow_rounded,
+              label: toneOn ? 'Testton stoppen' : 'Testton abspielen',
+              onPressed: onToggle,
+            )
+          else
+            const _SecondaryButton(
+              icon: Icons.settings_rounded,
+              label: 'Bluetooth-Einstellungen öffnen',
+              onPressed: AudioDeviceService.openBluetoothSettings,
+            ),
+        ],
+        if (error != null) ...[
+          const SizedBox(height: 10),
+          Semantics(
+            liveRegion: true,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.error_outline_rounded,
+                    color: AppColors.text(context), size: 24),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    error!,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.text(context),
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Outlined button below the main action's weight, with an icon.
+class _SecondaryButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  const _SecondaryButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 28),
+      label: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.primary(context),
+        minimumSize: const Size(double.infinity, 56),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        side: BorderSide(color: AppColors.primary(context), width: 2),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(40),
         ),
       ),
     );

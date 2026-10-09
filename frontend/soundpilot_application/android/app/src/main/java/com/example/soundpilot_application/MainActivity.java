@@ -56,6 +56,14 @@ public class MainActivity extends FlutterActivity {
     private Thread toneThread = null;
     private volatile boolean isPlayingTone = false;
 
+    // Set to end the tone; the tone thread fades out and then stops.
+    private volatile boolean stopToneRequested = false;
+
+    // Gains (0.0–1.0) the tone glides to; changed by setTestToneGain while it
+    // plays.
+    private volatile float toneLeftGain = 0f;
+    private volatile float toneRightGain = 0f;
+
     // Id of the output device the test tone is routed to, or -1 if the tone
     // plays on the default output.
     private int toneDeviceId = -1;
@@ -87,10 +95,16 @@ public class MainActivity extends FlutterActivity {
                     break;
 
                 case "playTestTone":
-                    int leftVol  = call.argument("leftVolume")  != null ? (int) call.argument("leftVolume")  : 50;
-                    int rightVol = call.argument("rightVolume") != null ? (int) call.argument("rightVolume") : 50;
                     Integer deviceId = call.argument("deviceId");
-                    handlePlayTone(leftVol, rightVol, deviceId, result);
+                    handlePlayTone(gainArgument(call.argument("leftGain")),
+                            gainArgument(call.argument("rightGain")),
+                            deviceId, result);
+                    break;
+
+                case "setTestToneGain":
+                    toneLeftGain  = gainArgument(call.argument("leftGain"));
+                    toneRightGain = gainArgument(call.argument("rightGain"));
+                    result.success(null);
                     break;
 
                 case "stopTestTone":
@@ -222,15 +236,27 @@ public class MainActivity extends FlutterActivity {
 
     // ── Play stereo test tone ─────────────────────────────────────────────────
     //
-    // Generates a 440 Hz sine wave. Left and right gains are derived from
-    // the calibration values (1–100  →  0.01–1.0).
+    // Generates a 440 Hz sine wave with separate left and right gains
+    // (0.0–1.0, already on a hearing curve, see wheelToGain in Dart).
+    //
+    // The tone is written in short chunks (CHUNK_FRAMES, ~23 ms). Within a
+    // chunk the gains glide from the previous to the current value, so a gain
+    // change (setTestToneGain), the start and the stop do not click.
     //
     // With a deviceId the tone is routed to that output (e.g. the headphones
     // being calibrated) and fails with DEVICE_NOT_CONNECTED if it is not
     // connected, instead of falling back to the speaker. Without a deviceId
     // it plays on the default output.
 
-    private void handlePlayTone(int leftVolume, int rightVolume, Integer deviceId,
+    private static final int CHUNK_FRAMES = 1024;
+
+    // Gain from a channel argument (a Dart double), limited to 0.0–1.0.
+    private static float gainArgument(Object value) {
+        float gain = value instanceof Number ? ((Number) value).floatValue() : 0.5f;
+        return Math.max(0f, Math.min(1f, gain));
+    }
+
+    private void handlePlayTone(float leftGain, float rightGain, Integer deviceId,
                                 MethodChannel.Result result) {
         // Stop any currently playing tone first
         stopToneInternal();
@@ -245,8 +271,9 @@ public class MainActivity extends FlutterActivity {
             }
         }
 
-        final float leftGain  = leftVolume  / 100.0f;
-        final float rightGain = rightVolume / 100.0f;
+        toneLeftGain  = leftGain;
+        toneRightGain = rightGain;
+        stopToneRequested = false;
 
         final int sampleRate = 44100;
         final int frequency  = 440; // Hz – standard A4 tone
@@ -267,7 +294,7 @@ public class MainActivity extends FlutterActivity {
                             .setSampleRate(sampleRate)
                             .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                             .build())
-                    .setBufferSizeInBytes(minBufSize * 2)
+                    .setBufferSizeInBytes(Math.max(minBufSize, CHUNK_FRAMES * 4) * 2)
                     .setTransferMode(AudioTrack.MODE_STREAM)
                     .build();
 
@@ -282,19 +309,32 @@ public class MainActivity extends FlutterActivity {
             final AudioTrack track = audioTrack;
 
             toneThread = new Thread(() -> {
-                // Generate one full second of the sine wave as a looping buffer
-                int bufSamples = sampleRate; // 1 second per loop
-                short[] buffer = new short[bufSamples * 2]; // *2 for stereo
+                final short[] buffer = new short[CHUNK_FRAMES * 2]; // stereo
+                final double step = 2.0 * Math.PI * frequency / sampleRate;
+                double phase = 0;
+                // Start silent: the first chunk fades in.
+                float left = 0f;
+                float right = 0f;
 
-                for (int i = 0; i < bufSamples; i++) {
-                    double angle = 2.0 * Math.PI * frequency * i / sampleRate;
-                    short sample = (short) (Math.sin(angle) * Short.MAX_VALUE);
-                    buffer[i * 2]     = (short) (sample * leftGain);  // L
-                    buffer[i * 2 + 1] = (short) (sample * rightGain); // R
-                }
+                while (true) {
+                    final boolean stopping = stopToneRequested;
+                    // The last chunk fades out to silence.
+                    final float targetLeft  = stopping ? 0f : toneLeftGain;
+                    final float targetRight = stopping ? 0f : toneRightGain;
 
-                while (isPlayingTone) {
+                    for (int i = 0; i < CHUNK_FRAMES; i++) {
+                        final float t = (i + 1) / (float) CHUNK_FRAMES;
+                        final double sample = Math.sin(phase) * Short.MAX_VALUE;
+                        buffer[i * 2]     = (short) (sample * (left  + (targetLeft  - left)  * t)); // L
+                        buffer[i * 2 + 1] = (short) (sample * (right + (targetRight - right) * t)); // R
+                        phase += step;
+                        if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI;
+                    }
+                    left = targetLeft;
+                    right = targetRight;
+
                     track.write(buffer, 0, buffer.length);
+                    if (stopping) break;
                 }
             });
 
@@ -323,7 +363,9 @@ public class MainActivity extends FlutterActivity {
         result.success(null);
     }
 
+    // Fades the tone out (one chunk) and releases it.
     private void stopToneInternal() {
+        stopToneRequested = true;
         isPlayingTone = false;
         toneDeviceId = -1;
 

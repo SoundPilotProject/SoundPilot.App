@@ -120,6 +120,7 @@ features/
   device/screens/                device_screen, calibration_screen,
                                  belt_vibration_screen,
                                  belt_warning_distance_screen, test_page
+  device/volume_scale.dart       wheel value <-> stored volume <-> played gain
   device/widgets/                device_type (DeviceType + device scan),
                                  add_device_dialog, device_card,
                                  belt_setup_fields, unsynced_logout_dialog
@@ -381,7 +382,20 @@ device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
 - The earbud volumes are part of this map (`HeadphoneCalib.volumeLeft` /
   `volumeRight`, one pair per device). `CalibrationScreen` gets the earbud and
   saves through a callback; its wheel shows them as 1–100
-  (`volumeToWheel` / `wheelToVolume` in `calibration_screen.dart`).
+  (`volumeToWheel` / `wheelToVolume` in `features/device/volume_scale.dart`).
+  The stored value is the wheel position (`0.01`–`1.0`), not a gain: what is
+  played is `wheelToGain`, which runs evenly in decibels from −40 dB at 1 to
+  0 dB at 100, because the ear hears loudness logarithmically. The test tone
+  of the calibration and the sound of the `TestPage` both use it. (Until
+  2026-10 playback used the value linearly, so older calibrations sound
+  quieter in the middle range now.)
+- While the earbud is connected, `CalibrationScreen` offers a test tone
+  ("Testton abspielen" / "Testton stoppen") routed to that earbud; turning a
+  wheel changes its side at once without restarting the tone. It never starts
+  by itself, because a screen reader speaks through the same headphones. It
+  stops when the screen is left, the app goes to the background, the earbud
+  disconnects or the `TestPage` opens. Not connected: a note and a button to
+  the Bluetooth settings. Outside the Android app there is no tone.
 - The connection state is runtime only; nothing is stored. Headphones show
   the real Bluetooth state: `DeviceScreen` listens to
   `AudioDeviceService.headphoneChanges()` and a card counts as connected while
@@ -586,8 +600,8 @@ Not backed by evidence — check in the code instead of assuming:
   Bluetooth is on and asks for the permission ("Geräte in der Nähe"); each
   case has its own German text and, where it helps, a button to the
   Bluetooth or app settings. The device cards show the real connection of
-  the headphones (see §4); the calibration tone does not use the headphones
-  yet. The native Android
+  the headphones, and the calibration plays its test tone on them (see §4).
+  The native Android
   side is in `MainActivity.java`:
   connected output devices (with the Bluetooth address from Android 9),
   a live device event stream (`com.soundpilot/audio_device_events`), paired
