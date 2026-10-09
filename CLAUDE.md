@@ -520,8 +520,15 @@ Not backed by evidence — check in the code instead of assuming:
   purpose; the take-over has not been tried on a real phone yet.
 - **Real Bluetooth integration is missing.** The scan is simulated.
   `AudioDeviceService` (Android MethodChannel) exists in Dart but is not called
-  by `DeviceScreen`. Whether the native Android side is implemented was not
-  checked.
+  by `DeviceScreen`. The native Android side is in `MainActivity.java`:
+  connected output devices (with the Bluetooth address from Android 9),
+  a live device event stream (`com.soundpilot/audio_device_events`), paired
+  audio devices, a stereo test tone that can be routed to one device (and
+  stops when it disconnects), the `BLUETOOTH_CONNECT` permission (Android
+  12+, declared in the manifest) and the Bluetooth state. The app never pairs
+  or connects headphones itself; the user does that in the Android settings.
+  None of it has been tried on a real phone yet, and whether Android 12+
+  anonymises the address without the permission is not checked.
 - **Accessibility: partly fixed, never tested on a device.** The full list of
   findings is still `docs/ACCESSIBILITY_AUDIT.md` (static code review). Done so
   far: every screen scrolls and survives text scale 2.0 (exception below);
