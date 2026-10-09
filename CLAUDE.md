@@ -213,9 +213,15 @@ Every start writes a new file `logs/run-<date>_<time>.log` (header with the
 arguments, branch and commit; a time in front of every line; colour codes
 removed) and deletes all but the newest 5. The keys of `flutter run` (`r`,
 `R`, `q`) still work. The file is written on the PC, not by the app, so an
-installed APK never creates one. The run button in Android Studio does not
-use the script. The logs can contain e-mail addresses and device names; do
-not share them carelessly.
+installed APK never creates one. The logs can contain e-mail addresses and
+device names; do not share them carelessly.
+
+In Android Studio (project `frontend/soundpilot_application`), pick the shared
+run configuration **"flutter run mit Log"** (`.run/`) instead of the normal
+one. It starts the script in Android Studio's terminal, so the keys work there
+too. The device dropdown does not apply to it: with more than one device
+connected, `flutter run` asks in the terminal which one to use. It needs the
+bundled *Shell Script* plugin and `node` on the `PATH`.
 
 Cloud Functions:
 
