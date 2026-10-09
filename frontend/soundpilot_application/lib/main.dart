@@ -11,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'features/auth/screens/start_screen.dart';
 import 'features/device/screens/device_screen.dart';
 import 'core/app_locale.dart';
+import 'core/app_logger.dart';
 import 'core/services/device_repository.dart';
 import 'core/services/firestore_device_repository.dart';
 import 'core/services/guest_mode_service.dart';
@@ -27,6 +28,17 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Firebase's own texts in German: the password reset e-mail (unless the
+  // template is customised in the console), the reCAPTCHA and the Google
+  // sign-in pages. Without it Firebase logs "Ignoring header
+  // X-Firebase-Locale because its value was null".
+  try {
+    await FirebaseAuth.instance.setLanguageCode(appLocale.languageCode);
+  } catch (e) {
+    // Not worth stopping the start for; Firebase then uses its default.
+    logger.w('main: Setting the Firebase language failed', error: e);
+  }
 
   // NOTE: Android and iOS keep a Firestore cache on disk by default (devices
   // work offline); AuthService.logout deletes it. The browser keeps its cache
