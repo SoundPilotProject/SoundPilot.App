@@ -411,9 +411,15 @@ await FirebaseFirestore.instance.collection('users').doc(uid).update({
 No read-modify-write of the entire `calibration` map — that creates race
 conditions between multiple devices.
 
-The device keys are currently placeholders (`dummy_mac_<timestamp>`) because
-the Bluetooth scan in `device_screen.dart` is simulated (fixed list,
-1.5 s delay).
+Headphones picked from the scan are stored under their real `BD_ADDR`
+(upper case, e.g. `AA:BB:CC:DD:EE:FF`). Belts (their scan is still simulated:
+fixed list, 1.5 s delay), names typed in by hand and headphones whose address
+Android does not report (Android 7–8) get a placeholder key
+(`dummy_mac_<timestamp>`). Without Bluetooth (browser, desktop, emulator) the
+simulated headphones have the keys `simulated_1` … `simulated_5`. The scan
+does not offer headphones that are already in the list, so adding them again
+cannot reset their calibration. Devices stored under `dummy_mac_…` before the
+real scan cannot be matched to real headphones; what to do with them is open.
 
 ### Dart models (`models/user_model.dart`)
 
@@ -543,9 +549,14 @@ Not backed by evidence — check in the code instead of assuming:
   guest devices stay on the phone. They are offered again on the next
   sign-in, and a new guest session would show them meanwhile. Accepted on
   purpose; the take-over has not been tried on a real phone yet.
-- **Real Bluetooth integration is missing.** The scan is simulated.
-  `AudioDeviceService` (Android MethodChannel) exists in Dart but is not called
-  by `DeviceScreen`. The native Android side is in `MainActivity.java`:
+- **Bluetooth: headphones only, on Android only.** The add dialog's scan
+  (`scanForDevices` in `device_type.dart`) lists the real headphones; the
+  belt scan is still simulated. Before the headphone scan it checks that
+  Bluetooth is on and asks for the permission ("Geräte in der Nähe"); each
+  case has its own German text and, where it helps, a button to the
+  Bluetooth or app settings. The connection state on the device cards and the
+  calibration tone do not use the real headphones yet. The native Android
+  side is in `MainActivity.java`:
   connected output devices (with the Bluetooth address from Android 9),
   a live device event stream (`com.soundpilot/audio_device_events`), paired
   audio devices, a stereo test tone that can be routed to one device (and
@@ -557,8 +568,9 @@ Not backed by evidence — check in the code instead of assuming:
   simulated list where there is no Bluetooth (browser, desktop, Android
   without Bluetooth such as most emulators); Bluetooth that is only
   switched off is not simulated.
-  None of it has been tried on a real phone yet, and whether Android 12+
-  anonymises the address without the permission is not checked.
+  The app builds and runs on a phone, but the headphone scan has not been
+  tried there yet, and whether Android 12+ anonymises the address without
+  the permission is not checked.
 - **Accessibility: partly fixed, never tested on a device.** The full list of
   findings is still `docs/ACCESSIBILITY_AUDIT.md` (static code review). Done so
   far: every screen scrolls and survives text scale 2.0 (exception below);
@@ -627,10 +639,15 @@ Not backed by evidence — check in the code instead of assuming:
   calibration starts at and saves the volumes of its earbud;
   `test/features/device/device_screen_test.dart` checks the `DeviceScreen`
   with a fake repository (`test/helpers/`), which the layout test uses too;
+  `test/features/device/add_device_dialog_test.dart` checks the headphone
+  scan states with a fake scanner;
+  `test/core/services/audio_device_service_test.dart` checks
+  `AudioDeviceService` against a mocked native channel;
   `test/core/services/` tests both repositories (Firestore with
   `fake_cloud_firestore`);
-  `test/widget_test.dart` is still a placeholder. `AuthService`,
-  `AudioDeviceService` and the security rules are not tested in CI.
+  `test/widget_test.dart` is still a placeholder. `AuthService`, the native
+  Android side (`MainActivity.java`) and the security rules are not tested in
+  CI.
 - **Firestore language default:** The function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
 

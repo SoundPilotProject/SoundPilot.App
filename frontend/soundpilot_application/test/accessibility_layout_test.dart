@@ -532,6 +532,46 @@ void main() {
     });
   });
 
+  group('AddDeviceDialog headphone scan states', () {
+    const outcomes = <String, ScanOutcome>{
+      'Liste': ScanFound([
+        ScannedDevice(
+          name: 'Sennheiser Momentum True Wireless 4',
+          address: 'AA:BB:CC:DD:EE:FF',
+          isConnected: true,
+        ),
+        ScannedDevice(
+          name: 'Bose QC45',
+          address: '11:22:33:44:55:66',
+          isConnected: false,
+        ),
+      ]),
+      'Bluetooth aus': ScanBluetoothOff(),
+      'Berechtigung abgelehnt': ScanPermissionMissing(permanently: true),
+      'Nichts gefunden': ScanFound([]),
+    };
+
+    for (final entry in outcomes.entries) {
+      _forEveryScale(entry.key, (tester, brightness, scale) async {
+        await tester.pumpWidget(_wrap(
+          Scaffold(
+            body: AddDeviceDialog(
+              scanner: (type) async => entry.value,
+              existingAddresses: const {'AA:BB:CC:DD:EE:FF'},
+            ),
+          ),
+          brightness,
+          scale,
+        ));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Kopfhörer suchen'));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
+
   group('AddDeviceResult', () {
     testWidgets('a belt also requests its setup', (tester) async {
       tester.view.physicalSize = _phone;

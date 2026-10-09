@@ -128,10 +128,6 @@ enum BluetoothState {
 /// throws a [MissingPluginException]. Only [findHeadphones] and
 /// [headphoneChanges] fall back to a simulated list there, and on Android
 /// without Bluetooth ([usesSimulatedHeadphones]).
-///
-/// TODO(improve): This service is not used by any screen yet. DeviceScreen
-/// still uses a simulated scan (`scanForSystemDevices`). It should be
-/// connected there and the result should provide real BD_ADDR keys.
 class AudioDeviceService {
   static const MethodChannel _channel =
       MethodChannel('com.soundpilot/audio_devices');

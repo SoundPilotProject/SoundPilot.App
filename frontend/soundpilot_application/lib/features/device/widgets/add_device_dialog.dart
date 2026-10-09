@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/services/audio_device_service.dart';
 import '../../../core/theme/app_colors.dart';
 import 'device_type.dart';
 
@@ -16,25 +17,43 @@ class AddDeviceResult {
   /// Device name (typed in or chosen from the scan).
   final String name;
 
+  /// Bluetooth address (BD_ADDR) from the scan; null for a typed-in name or a
+  /// device without a known address (the caller then makes a temporary key).
+  final String? address;
+
   /// Whether the calibration/setup should start right after adding.
   final bool openCalibration;
 
   const AddDeviceResult({
     required this.type,
     required this.name,
+    this.address,
     this.openCalibration = false,
   });
 }
 
 /// Dialog to add a device: choose the type, then either pick a device from the
-/// (currently simulated) system scan or type a name manually.
+/// system scan ([scanForDevices]: real headphones on Android, simulated belts)
+/// or type a name manually.
 ///
 /// Every label follows the selected [DeviceType], so choosing 'Gürtel' really
 /// offers a belt search instead of the headphone texts.
 ///
 /// Pops with an [AddDeviceResult], or `null` if cancelled.
 class AddDeviceDialog extends StatefulWidget {
-  const AddDeviceDialog({super.key});
+  /// The scan; tests pass a fake. Defaults to [scanForDevices].
+  final DeviceScanner scanner;
+
+  /// Addresses of the devices that are already in the list. Found devices
+  /// with one of them are shown as already added and cannot be picked, so
+  /// adding them again cannot overwrite their calibration.
+  final Set<String> existingAddresses;
+
+  const AddDeviceDialog({
+    super.key,
+    this.scanner = scanForDevices,
+    this.existingAddresses = const {},
+  });
 
   @override
   State<AddDeviceDialog> createState() => _AddDeviceDialogState();
@@ -52,9 +71,10 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
 
   // System-scan tab state
   bool _isScanning = false;
-  List<String> _scannedDevices = [];
-  String? _selectedScannedDevice;
-  bool _scanDone = false;
+
+  /// Result of the last scan; null before the first scan.
+  ScanOutcome? _outcome;
+  ScannedDevice? _selectedScannedDevice;
 
   @override
   void initState() {
@@ -78,35 +98,40 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
 
     setState(() {
       _selectedType = type;
-      _scannedDevices = [];
+      _outcome = null;
       _selectedScannedDevice = null;
-      _scanDone = false;
     });
   }
 
-  /// Runs the (simulated) scan for the selected type and shows the result.
+  /// Runs the scan for the selected type and shows the result.
   Future<void> _startScan() async {
     final type = _selectedType;
 
     setState(() {
       _isScanning = true;
-      _scannedDevices = [];
+      _outcome = null;
       _selectedScannedDevice = null;
-      _scanDone = false;
     });
 
-    final devices = await scanForSystemDevices(type);
+    final outcome = await widget.scanner(type);
 
     if (!mounted) return;
     // The user may have switched the type while the scan was running.
-    if (type != _selectedType) return;
+    if (type != _selectedType) {
+      setState(() => _isScanning = false);
+      return;
+    }
 
     setState(() {
-      _scannedDevices = devices;
+      _outcome = outcome;
       _isScanning = false;
-      _scanDone = true;
     });
   }
+
+  /// Whether [device] is already in the device list.
+  bool _isAlreadyAdded(ScannedDevice device) =>
+      device.address != null &&
+      widget.existingAddresses.contains(device.address);
 
   /// Confirms the manually typed name (ignored if empty).
   ///
@@ -129,7 +154,8 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
 
     Navigator.of(context).pop(AddDeviceResult(
       type: _selectedType,
-      name: _selectedScannedDevice!,
+      name: _selectedScannedDevice!.name,
+      address: _selectedScannedDevice!.address,
       openCalibration: true,
     ));
   }
@@ -296,7 +322,8 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
     );
   }
 
-  /// Placeholder, empty state or the list of found devices.
+  /// Placeholder, scan state (Bluetooth off, permission missing, nothing
+  /// found, error) or the list of found devices.
   Widget _buildScanResults(DeviceType type) {
     if (_isScanning) {
       return Center(
@@ -307,35 +334,77 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
       );
     }
 
-    if (!_scanDone) {
-      return Center(
-        child: _HintText(
+    return switch (_outcome) {
+      null => _ScanMessage(
           text: 'Tippe auf „${type.scanButton}“,\n'
               'um verbundene Geräte zu finden.',
         ),
-      );
-    }
+      ScanBluetoothOff() => const _ScanMessage(
+          text: 'Bluetooth ist ausgeschaltet. Schalte es ein und suche dann '
+              'noch einmal.',
+          actionLabel: 'Bluetooth-Einstellungen öffnen',
+          onAction: AudioDeviceService.openBluetoothSettings,
+        ),
+      ScanPermissionMissing(permanently: false) => _ScanMessage(
+          text: 'SoundPilot braucht die Berechtigung „Geräte in der Nähe“, '
+              'um deine Kopfhörer zu finden. Tippe noch einmal auf '
+              '„${type.scanButton}“ und erlaube sie.',
+        ),
+      ScanPermissionMissing(permanently: true) => const _ScanMessage(
+          text: 'Die Berechtigung „Geräte in der Nähe“ ist abgelehnt. Erlaube '
+              'sie in den App-Einstellungen unter „Berechtigungen“.',
+          actionLabel: 'App-Einstellungen öffnen',
+          onAction: AudioDeviceService.openAppSettings,
+        ),
+      ScanFailed() => const _ScanMessage(
+          text: 'Die Suche hat nicht funktioniert. Bitte versuche es noch '
+              'einmal.',
+        ),
+      ScanFound(devices: final devices) when devices.isEmpty =>
+        type == DeviceType.earbuds
+            ? const _ScanMessage(
+                text: 'Keine Kopfhörer gefunden. Kopple deine Kopfhörer '
+                    'zuerst in den Bluetooth-Einstellungen.',
+                actionLabel: 'Bluetooth-Einstellungen öffnen',
+                onAction: AudioDeviceService.openBluetoothSettings,
+              )
+            : _ScanMessage(text: 'Keine ${type.singular} gefunden.'),
+      ScanFound(devices: final devices) => _buildDeviceList(type, devices),
+    };
+  }
 
-    if (_scannedDevices.isEmpty) {
-      return Center(
-        child: _HintText(text: 'Keine ${type.singular} gefunden.'),
-      );
-    }
-
+  Widget _buildDeviceList(DeviceType type, List<ScannedDevice> devices) {
     return ListView.separated(
       padding: EdgeInsets.zero,
-      itemCount: _scannedDevices.length,
+      itemCount: devices.length,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
-        final name = _scannedDevices[i];
-        final selected = _selectedScannedDevice == name;
+        final device = devices[i];
+        final alreadyAdded = _isAlreadyAdded(device);
+        final selected = identical(_selectedScannedDevice, device);
+        // Status as text, so it is not carried by colour alone.
+        final status = alreadyAdded
+            ? 'Bereits hinzugefügt'
+            : switch (device.isConnected) {
+                true => 'Verbunden',
+                false => 'Gekoppelt, nicht verbunden',
+                null => null,
+              };
+        final foreground =
+            selected ? AppColors.onPrimary(context) : AppColors.text(context);
+        final secondary = selected
+            ? AppColors.onPrimary(context)
+            : AppColors.mutedText(context);
 
         return Semantics(
           selected: selected,
           button: true,
+          enabled: !alreadyAdded,
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
-            onTap: () => setState(() => _selectedScannedDevice = name),
+            onTap: alreadyAdded
+                ? null
+                : () => setState(() => _selectedScannedDevice = device),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               constraints: const BoxConstraints(minHeight: 56),
@@ -358,23 +427,33 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
               child: Row(
                 children: [
                   Icon(
-                    type.icon,
+                    alreadyAdded ? Icons.check_rounded : type.icon,
                     size: 24,
-                    color: selected
-                        ? AppColors.onPrimary(context)
-                        : AppColors.mutedText(context),
+                    color: secondary,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      name,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: selected
-                            ? AppColors.onPrimary(context)
-                            : AppColors.text(context),
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          device.name,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: foreground,
+                          ),
+                        ),
+                        if (status != null)
+                          Text(
+                            status,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: secondary,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   // Check mark, so the selection is not shown by colour alone.
@@ -522,6 +601,68 @@ class _HintText extends StatelessWidget {
         fontWeight: FontWeight.w700,
         color: AppColors.mutedText(context),
         height: 1.35,
+      ),
+    );
+  }
+}
+
+/// A scan state: a text and an optional button (e.g. to the Bluetooth
+/// settings).
+///
+/// Scrolls, so a long text at a large system font size does not overflow the
+/// fixed-height tab. Announced by screen readers when it appears.
+///
+/// NOTE: No icon on purpose: at normal font size the tab only has room for
+/// the text and the button, and an icon pushed the button out of view.
+class _ScanMessage extends StatelessWidget {
+  final String text;
+  final String? actionLabel;
+  final Future<Object?> Function()? onAction;
+
+  const _ScanMessage({
+    required this.text,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Semantics(liveRegion: true, child: _HintText(text: text)),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.settings_rounded),
+                label: Text(
+                  actionLabel!,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary(context),
+                  minimumSize: const Size(double.infinity, 48),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  side: BorderSide(color: AppColors.primary(context), width: 2),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

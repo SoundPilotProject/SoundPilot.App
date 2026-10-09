@@ -47,11 +47,16 @@ class DeviceScreen extends StatefulWidget {
   /// Used for the logout; tests pass a double. Defaults to [AuthService].
   final AuthService? authService;
 
+  /// Device scan of the add dialog; tests pass a fake. Defaults to
+  /// [scanForDevices].
+  final DeviceScanner scanner;
+
   const DeviceScreen({
     super.key,
     required this.repository,
     required this.isSignedIn,
     this.authService,
+    this.scanner = scanForDevices,
   });
 
   @override
@@ -250,18 +255,29 @@ class _DeviceScreenState extends State<DeviceScreen> {
     final result = await showDialog<AddDeviceResult>(
       context: context,
       barrierDismissible: true,
-      builder: (dialogContext) => const AddDeviceDialog(),
+      builder: (dialogContext) => AddDeviceDialog(
+        scanner: widget.scanner,
+        existingAddresses: {..._earbuds.keys, ..._belts.keys},
+      ),
     );
 
     if (!mounted || result == null) return;
 
-    // Generate a temporary unique ID since we don't have real MAC addresses yet
-    // (TODO: real BD_ADDR from the Bluetooth scan, see scanForSystemDevices)
-    final tempMacAddress = 'dummy_mac_${DateTime.now().millisecondsSinceEpoch}';
+    // Headphones from the scan are stored under their real BD_ADDR. A typed-in
+    // name and belts (still simulated) have no address yet, so they get a
+    // temporary unique ID.
+    final tempMacAddress =
+        result.address ?? 'dummy_mac_${DateTime.now().millisecondsSinceEpoch}';
 
     if (result.type == DeviceType.earbuds) {
-      final calib = HeadphoneCalib(modelId: result.name);
-      _save(_repository.putHeadphone(tempMacAddress, calib));
+      // NOTE: The dialog does not offer headphones that are already in the
+      // list; this guard only keeps an existing calibration if one slips
+      // through (e.g. added on another phone meanwhile).
+      final existing = _earbuds[tempMacAddress];
+      final calib = existing ?? HeadphoneCalib(modelId: result.name);
+      if (existing == null) {
+        _save(_repository.putHeadphone(tempMacAddress, calib));
+      }
 
       if (result.openCalibration) {
         await _openCalibrationForEarbud(tempMacAddress, calib);
