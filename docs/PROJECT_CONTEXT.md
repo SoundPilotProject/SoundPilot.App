@@ -216,10 +216,10 @@ removed) and deletes all but the newest 5. The keys of `flutter run` (`r`,
 installed APK never creates one. The logs can contain e-mail addresses and
 device names; do not share them carelessly.
 
-In Android Studio (project `frontend/soundpilot_application`), pick the shared
-run configuration **"flutter run mit Log"** (`.run/`) instead of the normal
-one. It starts the script in Android Studio's terminal, so the keys work there
-too. The device dropdown does not apply to it: with more than one device
+In Android Studio (with the repo root opened as the project), pick the shared
+run configuration **"flutter run with Log"** (`.run/` in the repo root)
+instead of the normal one. It starts the script in Android Studio's terminal,
+so the keys work there too. The device dropdown does not apply to it: with more than one device
 connected, `flutter run` asks in the terminal which one to use. It needs the
 bundled *Shell Script* plugin and `node` on the `PATH`.
 
