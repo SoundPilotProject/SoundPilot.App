@@ -237,6 +237,11 @@ below Gradle 8.14, Android Gradle plugin 8.11.1 and Kotlin 2.2.20
 the app, so it would not notice. Raise these together with Flutter. The
 `android.builtInKotlin` / `android.newDsl` lines in `android/gradle.properties`
 are written by Flutter's migrator on every Android build; keep them.
+Flutter 3.47.6 already warns that support for these versions "will soon be
+dropped" and names Gradle 9.1, AGP 9.0.1 and Kotlin 2.3.20. These are only
+warnings, the build works. Moving to AGP 9 is a migration of its own (new
+build DSL and built-in Kotlin, which the two flags above opt out of); do it
+as a separate task, ideally with the next Flutter upgrade.
 
 This Gradle needs Java 17–24 and fails on Java 25 ("incompatible with Gradle"),
 which recent Android Studio versions bundle and Flutter uses by default. Point
