@@ -261,16 +261,57 @@ void main() {
       MockStreamHandler.inline(onListen: (arguments, sink) {
         sink.success([output(4, 'Sony', 'AA:BB:CC:DD:EE:FF')]);
         sink.success(<Object>[]);
-        sink.endOfStream();
       }),
     );
 
-    final updates = await AudioDeviceService.headphoneChanges().toList();
+    final updates =
+        await AudioDeviceService.headphoneChanges().take(2).toList();
 
     expect(updates.map((list) => list.map((h) => h.name).toList()), [
       ['Sony'],
       <String>[],
     ]);
+  });
+
+  test('all listeners share one native stream', () async {
+    var nativeListens = 0;
+    var nativeCancels = 0;
+    MockStreamHandlerEventSink? native;
+    messenger.setMockStreamHandler(
+      events,
+      MockStreamHandler.inline(
+        onListen: (arguments, sink) {
+          nativeListens++;
+          native = sink;
+          sink.success([output(4, 'Sony', 'AA:BB:CC:DD:EE:FF')]);
+        },
+        onCancel: (arguments) => nativeCancels++,
+      ),
+    );
+
+    final first = <List<AudioDeviceInfo>>[];
+    final firstSub = AudioDeviceService.outputDeviceChanges().listen(first.add);
+    await pumpEventQueue();
+
+    // A second listener (e.g. the calibration) gets the latest list at once
+    // and does not open the native stream again.
+    final second = <List<AudioDeviceInfo>>[];
+    final secondSub =
+        AudioDeviceService.outputDeviceChanges().listen(second.add);
+    await pumpEventQueue();
+    expect(nativeListens, 1);
+    expect(second.single.single.productName, 'Sony');
+
+    // Closing the second one keeps the first one informed.
+    await secondSub.cancel();
+    native!.success(<Object>[]);
+    await pumpEventQueue();
+    expect(nativeCancels, 0);
+    expect(first.map((l) => l.length), [1, 0]);
+
+    await firstSub.cancel();
+    await pumpEventQueue();
+    expect(nativeCancels, 1);
   });
 
   test('headphoneChanges is simulated without Bluetooth', () async {

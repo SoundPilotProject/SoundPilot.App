@@ -3,6 +3,8 @@
 // Dart side of the native Android audio device query (MethodChannel) and the
 // Bluetooth headphones found through it.
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -157,11 +159,60 @@ class AudioDeviceService {
 
   /// Every change of the connected output devices, as the full list; the
   /// first event is the current list.
+  ///
+  /// NOTE: The native event channel has room for one listener only: a second
+  /// `receiveBroadcastStream()` took it over, and cancelling one closed it for
+  /// all (device list, calibration and test page listen at the same time).
+  /// So the channel is opened once ([_deviceEvents]) and shared here; a new
+  /// listener first gets the latest list.
   static Stream<List<AudioDeviceInfo>> outputDeviceChanges() {
-    return _events.receiveBroadcastStream().map((event) => (event as List)
-        .cast<Map<dynamic, dynamic>>()
-        .map(AudioDeviceInfo.fromMap)
-        .toList());
+    late final StreamController<List<AudioDeviceInfo>> controller;
+    StreamSubscription<List<AudioDeviceInfo>>? subscription;
+    controller = StreamController<List<AudioDeviceInfo>>(
+      onListen: () {
+        final latest = _latestDevices;
+        if (latest != null) controller.add(latest);
+        subscription = _deviceEvents.stream
+            .listen(controller.add, onError: controller.addError);
+      },
+      onCancel: () => subscription?.cancel(),
+    );
+    return controller.stream;
+  }
+
+  /// All listeners of [outputDeviceChanges]; the native channel is open
+  /// while it has any.
+  static final StreamController<List<AudioDeviceInfo>> _deviceEvents =
+      StreamController<List<AudioDeviceInfo>>.broadcast(
+    onListen: _openDeviceEvents,
+    onCancel: _closeDeviceEvents,
+  );
+
+  static StreamSubscription<dynamic>? _nativeDeviceEvents;
+
+  /// The last list from the native side while the channel is open.
+  static List<AudioDeviceInfo>? _latestDevices;
+
+  static void _openDeviceEvents() {
+    _nativeDeviceEvents = _events.receiveBroadcastStream().listen(
+      (event) {
+        final devices = (event as List)
+            .cast<Map<dynamic, dynamic>>()
+            .map(AudioDeviceInfo.fromMap)
+            .toList();
+        _latestDevices = devices;
+        _deviceEvents.add(devices);
+      },
+      onError: _deviceEvents.addError,
+    );
+  }
+
+  static void _closeDeviceEvents() {
+    _nativeDeviceEvents?.cancel();
+    _nativeDeviceEvents = null;
+    // Stale once nobody listens; the native side sends the current list
+    // again when the channel opens.
+    _latestDevices = null;
   }
 
   /// Headphones paired in the Android settings (connected or not), as name
