@@ -90,7 +90,28 @@ void main() {
           const PasswordResetScreen(initialEmail: 'max@example.com'),
       'BeltWarningDistanceScreen': () => const BeltWarningDistanceScreen(),
       'BeltVibrationScreen': () => const BeltVibrationScreen(),
-      'TestPage': () => const TestPage(leftVolume: 40, rightVolume: 80),
+      // Connected, so 'Start' is enabled; not connected adds a note.
+      'TestPage': () => TestPage(
+            leftVolume: 40,
+            rightVolume: 80,
+            address: 'AA',
+            headphoneChanges: () => Stream.value(const [
+              HeadphoneDevice(
+                name: 'Pods',
+                address: 'AA',
+                isConnected: true,
+                outputDeviceId: 1,
+              ),
+            ]),
+            soundSupported: true,
+          ),
+      'TestPage (nicht verbunden)': () => TestPage(
+            leftVolume: 40,
+            rightVolume: 80,
+            address: 'AA',
+            headphoneChanges: () => Stream.value(const []),
+            soundSupported: true,
+          ),
       'UnsyncedLogoutDialog': () => const UnsyncedLogoutDialog(),
       'GuestDevicesDialog': () => const GuestDevicesDialog(count: 2),
       // Connected, so the tone section shows its text and button.
@@ -164,7 +185,13 @@ void main() {
       addTearDown(tester.view.reset);
 
       await tester.pumpWidget(_wrap(
-        const TestPage(leftVolume: 40, rightVolume: 80),
+        TestPage(
+          leftVolume: 40,
+          rightVolume: 80,
+          address: 'AA',
+          headphoneChanges: () => Stream.value(const []),
+          soundSupported: true,
+        ),
         Brightness.light,
         1.0,
       ));

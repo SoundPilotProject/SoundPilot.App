@@ -286,12 +286,12 @@ void main() {
 
       await AudioDeviceService.playTestTone(
           leftGain: -0.5, rightGain: 1.4, outputDeviceId: 4);
-      await AudioDeviceService.stopTestTone();
+      await AudioDeviceService.stopPlayback();
 
       expect(calls.first.method, 'playTestTone');
       expect(calls.first.arguments,
           {'leftGain': 0.0, 'rightGain': 1.0, 'deviceId': 4});
-      expect(calls.last.method, 'stopTestTone');
+      expect(calls.last.method, 'stopPlayback');
     });
 
     test('leaves the device out if none is given', () async {
@@ -302,12 +302,31 @@ void main() {
       expect(calls.single.arguments, {'leftGain': 0.5, 'rightGain': 0.6});
     });
 
-    test('changes the gains of the playing tone', () async {
+    test('plays an asset with the gains on the output device', () async {
       mockNative({});
 
-      await AudioDeviceService.setTestToneGain(leftGain: 0.2, rightGain: 0.9);
+      await AudioDeviceService.playTestSound(
+        asset: 'assets/audio/Marschieren.mp3',
+        leftGain: 0.3,
+        rightGain: 1.0,
+        outputDeviceId: 4,
+      );
 
-      expect(calls.single.method, 'setTestToneGain');
+      expect(calls.single.method, 'playTestSound');
+      expect(calls.single.arguments, {
+        'asset': 'assets/audio/Marschieren.mp3',
+        'leftGain': 0.3,
+        'rightGain': 1.0,
+        'deviceId': 4,
+      });
+    });
+
+    test('changes the gains of the playing sound', () async {
+      mockNative({});
+
+      await AudioDeviceService.setPlaybackGain(leftGain: 0.2, rightGain: 0.9);
+
+      expect(calls.single.method, 'setPlaybackGain');
       expect(calls.single.arguments, {'leftGain': 0.2, 'rightGain': 0.9});
     });
   });

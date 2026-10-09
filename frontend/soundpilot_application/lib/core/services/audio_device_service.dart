@@ -306,7 +306,7 @@ class AudioDeviceService {
 
   // ── Test tone ──────────────────────────────────────────────────────────────
 
-  /// Plays a 440 Hz test tone until [stopTestTone], with the left and right
+  /// Plays a 440 Hz test tone until [stopPlayback], with the left and right
   /// gain (0.0–1.0, see `wheelToGain`). It fades in and out instead of
   /// clicking.
   ///
@@ -326,20 +326,40 @@ class AudioDeviceService {
     });
   }
 
-  /// Changes the gains of the playing test tone; it glides to them without
-  /// restarting.
-  static Future<void> setTestToneGain({
+  /// Plays the audio file [asset] (a Flutter asset path, e.g.
+  /// `assets/audio/Marschieren.mp3`) in a loop until [stopPlayback], with the
+  /// left and right gain like [playTestTone].
+  ///
+  /// NOTE: The file is mixed down to mono, so both ears get the same signal
+  /// and only the gain differs, which is what a calibration test needs.
+  static Future<void> playTestSound({
+    required String asset,
+    required double leftGain,
+    required double rightGain,
+    int? outputDeviceId,
+  }) async {
+    await _channel.invokeMethod('playTestSound', {
+      'asset': asset,
+      'leftGain': leftGain.clamp(0.0, 1.0),
+      'rightGain': rightGain.clamp(0.0, 1.0),
+      'deviceId': ?outputDeviceId,
+    });
+  }
+
+  /// Changes the gains of the playing test tone or test sound; it glides to
+  /// them without restarting.
+  static Future<void> setPlaybackGain({
     required double leftGain,
     required double rightGain,
   }) async {
-    await _channel.invokeMethod('setTestToneGain', {
+    await _channel.invokeMethod('setPlaybackGain', {
       'leftGain': leftGain.clamp(0.0, 1.0),
       'rightGain': rightGain.clamp(0.0, 1.0),
     });
   }
 
-  /// Stops the test tone; does nothing if none is playing.
-  static Future<void> stopTestTone() => _channel.invokeMethod('stopTestTone');
+  /// Stops the test tone or test sound; does nothing if none is playing.
+  static Future<void> stopPlayback() => _channel.invokeMethod('stopPlayback');
 
   // ── Bluetooth permission and state ─────────────────────────────────────────
 

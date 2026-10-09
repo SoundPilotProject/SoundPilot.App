@@ -67,7 +67,6 @@ When in doubt, choose the more accessible option and mention the trade-off.
 | `shared_preferences` | local persistence (guest devices, guest mode) |
 | `flutter_localizations` | German labels for Flutter's built-in widgets (see §7) |
 | `google_fonts` | Plus Jakarta Sans font |
-| `audioplayers` | Audio playback (calibration) |
 | `logger` | global `logger` in `core/app_logger.dart` |
 | `fake_cloud_firestore` (dev) | in-memory Firestore for the repository tests; pinned to 4.1.0, newer versions need newer Firebase packages |
 
@@ -121,6 +120,7 @@ features/
                                  belt_vibration_screen,
                                  belt_warning_distance_screen, test_page
   device/volume_scale.dart       wheel value <-> stored volume <-> played gain
+  device/headphone_connection.dart  whether one earbud is connected
   device/widgets/                device_type (DeviceType + device scan),
                                  add_device_dialog, device_card,
                                  belt_setup_fields, unsynced_logout_dialog
@@ -396,6 +396,14 @@ device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
   stops when the screen is left, the app goes to the background, the earbud
   disconnects or the `TestPage` opens. Not connected: a note and a button to
   the Bluetooth settings. Outside the Android app there is no tone.
+- The `TestPage` ("Testübung") plays `assets/audio/Marschieren.mp3` the same
+  way, on the calibrated earbud with the calibrated gain per side, and only
+  while it is connected. Both sounds go through `GainPlayer.java`: the file
+  is decoded with `MediaCodec`, mixed down to mono (the file is mono anyway)
+  and each sample gets its side's gain. It used to play through
+  `audioplayers` (`MediaPlayer`) with a balance, which did not audibly change
+  this mono file, so the test did not reflect the calibration; the package
+  was removed.
 - The connection state is runtime only; nothing is stored. Headphones show
   the real Bluetooth state: `DeviceScreen` listens to
   `AudioDeviceService.headphoneChanges()` and a card counts as connected while
@@ -682,7 +690,10 @@ Not backed by evidence — check in the code instead of assuming:
   and the password reset flow;
   `test/color_contrast_test.dart` checks the palette;
   `test/features/device/calibration_screen_test.dart` checks that the
-  calibration starts at and saves the volumes of its earbud;
+  calibration starts at and saves the volumes of its earbud, the decibel
+  curve and when the test tone plays and stops;
+  `test/features/device/test_page_test.dart` checks the same for the sound
+  of the test exercise;
   `test/features/device/device_screen_test.dart` checks the `DeviceScreen`
   with a fake repository (`test/helpers/`), which the layout test uses too;
   `test/features/device/add_device_dialog_test.dart` checks the headphone

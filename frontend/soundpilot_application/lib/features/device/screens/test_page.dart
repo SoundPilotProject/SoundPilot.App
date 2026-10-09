@@ -2,18 +2,30 @@
 //
 // Test exercise: plays a sound with the calibrated left/right volume.
 
+import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/app_logger.dart';
+import '../../../core/services/audio_device_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
+import '../headphone_connection.dart';
 import '../volume_scale.dart';
 
-/// Test exercise after the calibration: plays `assets/audio/Marschieren.mp3` in
-/// a loop with the volume and balance derived from the calibrated values.
+/// Sound of the test exercise.
+const String testSoundAsset = 'assets/audio/Marschieren.mp3';
+
+/// Test exercise after the calibration: plays [testSoundAsset] in a loop on
+/// the calibrated earbud, each side with its calibrated volume
+/// ([wheelToGain]).
+///
+/// Like the test tone of the calibration, it only plays while the earbud is
+/// connected, and stops when the page is left, the app goes to the
+/// background or the earbud disconnects.
 ///
 /// Pops with `true` when the user taps 'Abschließen'; the back arrow pops
 /// without a result.
@@ -24,79 +36,120 @@ class TestPage extends StatefulWidget {
   /// Calibrated volume of the right side (1–100).
   final int rightVolume;
 
+  /// Map key of the earbud (its BD_ADDR), to play on it.
+  final String address;
+
+  /// The connected headphones, again on every change; tests pass a fake.
+  /// Defaults to [AudioDeviceService.headphoneChanges].
+  final Stream<List<HeadphoneDevice>> Function() headphoneChanges;
+
+  /// Whether the sound can play here (only the Android app can). Defaults to
+  /// [AudioDeviceService.isSupported].
+  final bool? soundSupported;
+
   const TestPage({
     super.key,
     required this.leftVolume,
     required this.rightVolume,
+    required this.address,
+    this.headphoneChanges = AudioDeviceService.headphoneChanges,
+    this.soundSupported,
   });
 
   @override
   State<TestPage> createState() => _TestPageState();
 }
 
-class _TestPageState extends State<TestPage> {
-  final AudioPlayer _audioPlayer = AudioPlayer();
+class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
+  late final bool _soundSupported =
+      widget.soundSupported ?? AudioDeviceService.isSupported;
+
+  /// Whether the earbud is connected; null without sound support.
+  HeadphoneConnection? _connection;
 
   /// True while the sound is playing.
   bool _isPlaying = false;
 
-  /// Limits [value] to the range 0.0–1.0.
-  double _clamp01(double value) {
-    return value.clamp(0.0, 1.0);
+  /// Shown if the sound could not be started.
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (_soundSupported) {
+      _connection = HeadphoneConnection(
+        address: widget.address,
+        changes: widget.headphoneChanges,
+        onChanged: () => setState(() {
+          // The native side stops the sound itself when the earbud goes.
+          if (_connection?.connected == null) _isPlaying = false;
+        }),
+      );
+    }
   }
 
-  /// Player volume (0.0–1.0): the louder of the two sides [left] and [right]
-  /// (each 0.0–1.0).
-  double _calculateOverallVolume(double left, double right) {
-    return math.max(left, right);
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _connection?.dispose();
+    if (_isPlaying) unawaited(_stopQuietly());
+    super.dispose();
   }
 
-  /// Player balance from -1.0 (only left) to 1.0 (only right), relative to the
-  /// louder side. 0.0 if both sides are 0.
-  double _calculateBalance(double left, double right) {
-    final maxSide = math.max(left, right);
-
-    if (maxSide == 0) return 0.0;
-
-    final balance = (right - left) / maxSide;
-    return balance.clamp(-1.0, 1.0);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // NOTE: No sound in the background, where the user cannot stop it.
+    if (state != AppLifecycleState.resumed && _isPlaying) _stopAudio();
   }
 
-  /// Starts the looping playback with the calculated volume and balance.
+  /// Whether 'Start' can be used: the earbud is connected.
+  bool get _canPlay => _connection?.connected != null;
+
+  /// Starts the looping playback on the earbud with the calibrated gains.
   Future<void> _startAudio() async {
-    if (_isPlaying) return;
+    final headphone = _connection?.connected;
+    if (_isPlaying || headphone == null) return;
 
-    // Same hearing curve as the test tone of the calibration.
-    final left = _clamp01(wheelToGain(widget.leftVolume));
-    final right = _clamp01(wheelToGain(widget.rightVolume));
-    final overallVolume = _calculateOverallVolume(left, right);
-    final balance = _calculateBalance(left, right);
-
-    await _audioPlayer.stop();
-    await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-    await _audioPlayer.setSource(AssetSource('audio/Marschieren.mp3'));
-    await _audioPlayer.setVolume(overallVolume);
-    await _audioPlayer.setBalance(balance);
-    await _audioPlayer.resume();
-
-    if (!mounted) return;
-    setState(() => _isPlaying = true);
+    setState(() => _error = null);
+    try {
+      await AudioDeviceService.playTestSound(
+        asset: testSoundAsset,
+        leftGain: wheelToGain(widget.leftVolume),
+        rightGain: wheelToGain(widget.rightVolume),
+        outputDeviceId: headphone.outputDeviceId,
+      );
+      if (!mounted) {
+        unawaited(_stopQuietly());
+        return;
+      }
+      setState(() => _isPlaying = true);
+    } on PlatformException catch (e) {
+      logger.e('TestPage: Playback failed', error: e);
+      if (!mounted) return;
+      setState(() {
+        _error = e.code == 'DEVICE_NOT_CONNECTED'
+            ? 'Die Kopfhörer sind nicht mehr verbunden.'
+            : 'Die Aufnahme konnte nicht abgespielt werden. Bitte versuche es '
+                'noch einmal.';
+      });
+    }
   }
 
   /// Stops the playback (no-op if nothing is playing).
   Future<void> _stopAudio() async {
     if (!_isPlaying) return;
-
-    await _audioPlayer.stop();
-
-    if (!mounted) return;
     setState(() => _isPlaying = false);
+    await _stopQuietly();
   }
 
-  @override
-  void dispose() {
-    _audioPlayer.dispose();
-    super.dispose();
+  /// Stops the sound without touching the state (also used in [dispose]).
+  Future<void> _stopQuietly() async {
+    try {
+      await AudioDeviceService.stopPlayback();
+    } on PlatformException catch (e) {
+      logger.e('TestPage: Stopping the playback failed', error: e);
+    }
   }
 
   /// Stops the audio and pops back to the calibration screen with `true`.
@@ -106,6 +159,17 @@ class _TestPageState extends State<TestPage> {
     if (!mounted) return;
 
     Navigator.pop(context, true);
+  }
+
+  /// Why 'Start' cannot be used, or the playback error; null if neither.
+  String? get _note {
+    if (_error != null) return _error;
+    if (!_soundSupported) return 'Die Aufnahme gibt es nur in der Android-App.';
+    if (_connection?.known == true && !_canPlay) {
+      return 'Verbinde zuerst deine Kopfhörer, dann kannst du die Aufnahme '
+          'hören.';
+    }
+    return null;
   }
 
   @override
@@ -160,10 +224,26 @@ class _TestPageState extends State<TestPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    if (_note != null) ...[
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          _note!,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.text(context),
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     _PlaybackButton(
                       label: 'Start',
                       icon: Icons.play_arrow_rounded,
-                      enabled: !_isPlaying,
+                      enabled: !_isPlaying && _canPlay,
                       activeColor: AppColors.primary(context),
                       activeTextColor: AppColors.onPrimary(context),
                       onPressed: _startAudio,

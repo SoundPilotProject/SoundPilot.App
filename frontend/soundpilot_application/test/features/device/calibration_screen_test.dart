@@ -212,7 +212,7 @@ void main() {
 
       await tester.tap(find.text('Testton stoppen'));
       await tester.pump();
-      expect(methods().last, 'stopTestTone');
+      expect(methods().last, 'stopPlayback');
       expect(find.text('Testton abspielen'), findsOneWidget);
     });
 
@@ -227,7 +227,7 @@ void main() {
       _wheel(tester, 1).jumpToItem(79); // right: 80
       await tester.pump();
 
-      expect(calls.last.method, 'setTestToneGain');
+      expect(calls.last.method, 'setPlaybackGain');
       expect(calls.last.arguments,
           {'leftGain': wheelToGain(50), 'rightGain': wheelToGain(80)});
     });
@@ -261,7 +261,7 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await tester.pump();
 
-      expect(methods().last, 'stopTestTone');
+      expect(methods().last, 'stopPlayback');
       expect(find.text('Testton abspielen'), findsOneWidget);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     });
@@ -276,7 +276,7 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
 
-      expect(methods().last, 'stopTestTone');
+      expect(methods().last, 'stopPlayback');
     });
 
     testWidgets('says so if the earbud was gone when the tone started',

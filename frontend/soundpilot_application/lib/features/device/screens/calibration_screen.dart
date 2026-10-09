@@ -14,6 +14,7 @@ import '../../../core/services/audio_device_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../models/user_model.dart';
+import '../headphone_connection.dart';
 import '../volume_scale.dart';
 import 'test_page.dart';
 
@@ -69,13 +70,8 @@ class _CalibrationScreenState extends State<CalibrationScreen>
   late final bool _toneSupported =
       widget.toneSupported ?? AudioDeviceService.isSupported;
 
-  StreamSubscription<List<HeadphoneDevice>>? _headphones;
-
-  /// False until the connection state of the earbud is known.
-  bool _connectionKnown = false;
-
-  /// The earbud while it is connected, otherwise null.
-  HeadphoneDevice? _connected;
+  /// Whether the earbud is connected; null without tone support.
+  HeadphoneConnection? _connection;
 
   /// Whether the test tone is playing.
   bool _toneOn = false;
@@ -100,13 +96,10 @@ class _CalibrationScreenState extends State<CalibrationScreen>
         FixedExtentScrollController(initialItem: _rightVolume - 1);
     WidgetsBinding.instance.addObserver(this);
     if (_toneSupported) {
-      _headphones = widget.headphoneChanges().listen(
-        _onHeadphonesChanged,
-        onError: (Object e) {
-          logger.w('CalibrationScreen: Connection state unavailable',
-              error: e);
-          setState(() => _connectionKnown = true);
-        },
+      _connection = HeadphoneConnection(
+        address: widget.address,
+        changes: widget.headphoneChanges,
+        onChanged: _onConnectionChanged,
       );
     }
   }
@@ -114,7 +107,7 @@ class _CalibrationScreenState extends State<CalibrationScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _headphones?.cancel();
+    _connection?.dispose();
     if (_toneOn) unawaited(_stopToneQuietly());
     _leftController.dispose();
     _rightController.dispose();
@@ -129,26 +122,18 @@ class _CalibrationScreenState extends State<CalibrationScreen>
 
   // ── Test tone ──────────────────────────────────────────────────────────────
 
-  /// Finds this earbud among the connected headphones. If it disconnected
-  /// while the tone played, the native side has stopped the tone already.
-  void _onHeadphonesChanged(List<HeadphoneDevice> headphones) {
-    final address = widget.address.toUpperCase();
-    HeadphoneDevice? connected;
-    for (final h in headphones) {
-      if (h.isConnected && h.address.toUpperCase() == address) connected = h;
-    }
-
+  /// If the earbud disconnected while the tone played, the native side has
+  /// stopped the tone already; the button follows.
+  void _onConnectionChanged() {
     setState(() {
-      _connectionKnown = true;
-      _connected = connected;
-      if (connected == null) _toneOn = false;
+      if (_connection?.connected == null) _toneOn = false;
     });
   }
 
   Future<void> _toggleTone() => _toneOn ? _stopTone() : _startTone();
 
   Future<void> _startTone() async {
-    final headphone = _connected;
+    final headphone = _connection?.connected;
     if (headphone == null) return;
 
     setState(() => _toneError = null);
@@ -184,7 +169,7 @@ class _CalibrationScreenState extends State<CalibrationScreen>
   /// Stops the tone without touching the state (also used in [dispose]).
   Future<void> _stopToneQuietly() async {
     try {
-      await AudioDeviceService.stopTestTone();
+      await AudioDeviceService.stopPlayback();
     } on PlatformException catch (e) {
       logger.e('CalibrationScreen: Stopping the test tone failed', error: e);
     }
@@ -193,7 +178,7 @@ class _CalibrationScreenState extends State<CalibrationScreen>
   /// Applies a wheel change to the playing tone.
   void _updateToneGain() {
     if (!_toneOn) return;
-    unawaited(AudioDeviceService.setTestToneGain(
+    unawaited(AudioDeviceService.setPlaybackGain(
       leftGain: wheelToGain(_leftVolume),
       rightGain: wheelToGain(_rightVolume),
     ).catchError((Object e) {
@@ -222,6 +207,9 @@ class _CalibrationScreenState extends State<CalibrationScreen>
         builder: (_) => TestPage(
           leftVolume: _leftVolume,
           rightVolume: _rightVolume,
+          address: widget.address,
+          headphoneChanges: widget.headphoneChanges,
+          soundSupported: widget.toneSupported,
         ),
       ),
     );
@@ -252,8 +240,8 @@ class _CalibrationScreenState extends State<CalibrationScreen>
                   children: [
                     _ToneSection(
                       supported: _toneSupported,
-                      connectionKnown: _connectionKnown,
-                      connected: _connected != null,
+                      connectionKnown: _connection?.known ?? false,
+                      connected: _connection?.connected != null,
                       toneOn: _toneOn,
                       error: _toneError,
                       onToggle: _toggleTone,
