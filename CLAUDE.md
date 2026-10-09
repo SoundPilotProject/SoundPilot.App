@@ -67,7 +67,6 @@ When in doubt, choose the more accessible option and mention the trade-off.
 | `shared_preferences` | local persistence (guest devices, guest mode) |
 | `flutter_localizations` | German labels for Flutter's built-in widgets (see §7) |
 | `google_fonts` | Plus Jakarta Sans font |
-| `audioplayers` | Audio playback (calibration) |
 | `logger` | global `logger` in `core/app_logger.dart` |
 | `fake_cloud_firestore` (dev) | in-memory Firestore for the repository tests; pinned to 4.1.0, newer versions need newer Firebase packages |
 
@@ -120,6 +119,8 @@ features/
   device/screens/                device_screen, calibration_screen,
                                  belt_vibration_screen,
                                  belt_warning_distance_screen, test_page
+  device/volume_scale.dart       wheel value <-> stored volume <-> played gain
+  device/headphone_connection.dart  whether one earbud is connected
   device/widgets/                device_type (DeviceType + device scan),
                                  add_device_dialog, device_card,
                                  belt_setup_fields, unsynced_logout_dialog
@@ -381,7 +382,28 @@ device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
 - The earbud volumes are part of this map (`HeadphoneCalib.volumeLeft` /
   `volumeRight`, one pair per device). `CalibrationScreen` gets the earbud and
   saves through a callback; its wheel shows them as 1–100
-  (`volumeToWheel` / `wheelToVolume` in `calibration_screen.dart`).
+  (`volumeToWheel` / `wheelToVolume` in `features/device/volume_scale.dart`).
+  The stored value is the wheel position (`0.01`–`1.0`), not a gain: what is
+  played is `wheelToGain`, which runs evenly in decibels from −40 dB at 1 to
+  0 dB at 100, because the ear hears loudness logarithmically. The test tone
+  of the calibration and the sound of the `TestPage` both use it. (Until
+  2026-10 playback used the value linearly, so older calibrations sound
+  quieter in the middle range now.)
+- While the earbud is connected, `CalibrationScreen` offers a test tone
+  ("Testton abspielen" / "Testton stoppen") routed to that earbud; turning a
+  wheel changes its side at once without restarting the tone. It never starts
+  by itself, because a screen reader speaks through the same headphones. It
+  stops when the screen is left, the app goes to the background, the earbud
+  disconnects or the `TestPage` opens. Not connected: a note and a button to
+  the Bluetooth settings. Outside the Android app there is no tone.
+- The `TestPage` ("Testübung") plays `assets/audio/Marschieren.mp3` the same
+  way, on the calibrated earbud with the calibrated gain per side, and only
+  while it is connected. Both sounds go through `GainPlayer.java`: the file
+  is decoded with `MediaCodec`, mixed down to mono (the file is mono anyway)
+  and each sample gets its side's gain. It used to play through
+  `audioplayers` (`MediaPlayer`) with a balance, which did not audibly change
+  this mono file, so the test did not reflect the calibration; the package
+  was removed.
 - The connection state is runtime only; nothing is stored. Headphones show
   the real Bluetooth state: `DeviceScreen` listens to
   `AudioDeviceService.headphoneChanges()` and a card counts as connected while
@@ -586,8 +608,8 @@ Not backed by evidence — check in the code instead of assuming:
   Bluetooth is on and asks for the permission ("Geräte in der Nähe"); each
   case has its own German text and, where it helps, a button to the
   Bluetooth or app settings. The device cards show the real connection of
-  the headphones (see §4); the calibration tone does not use the headphones
-  yet. The native Android
+  the headphones, and the calibration plays its test tone on them (see §4).
+  The native Android
   side is in `MainActivity.java`:
   connected output devices (with the Bluetooth address from Android 9),
   a live device event stream (`com.soundpilot/audio_device_events`), paired
@@ -668,7 +690,10 @@ Not backed by evidence — check in the code instead of assuming:
   and the password reset flow;
   `test/color_contrast_test.dart` checks the palette;
   `test/features/device/calibration_screen_test.dart` checks that the
-  calibration starts at and saves the volumes of its earbud;
+  calibration starts at and saves the volumes of its earbud, the decibel
+  curve and when the test tone plays and stops;
+  `test/features/device/test_page_test.dart` checks the same for the sound
+  of the test exercise;
   `test/features/device/device_screen_test.dart` checks the `DeviceScreen`
   with a fake repository (`test/helpers/`), which the layout test uses too;
   `test/features/device/add_device_dialog_test.dart` checks the headphone

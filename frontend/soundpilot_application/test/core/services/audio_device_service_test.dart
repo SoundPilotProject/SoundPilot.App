@@ -261,16 +261,57 @@ void main() {
       MockStreamHandler.inline(onListen: (arguments, sink) {
         sink.success([output(4, 'Sony', 'AA:BB:CC:DD:EE:FF')]);
         sink.success(<Object>[]);
-        sink.endOfStream();
       }),
     );
 
-    final updates = await AudioDeviceService.headphoneChanges().toList();
+    final updates =
+        await AudioDeviceService.headphoneChanges().take(2).toList();
 
     expect(updates.map((list) => list.map((h) => h.name).toList()), [
       ['Sony'],
       <String>[],
     ]);
+  });
+
+  test('all listeners share one native stream', () async {
+    var nativeListens = 0;
+    var nativeCancels = 0;
+    MockStreamHandlerEventSink? native;
+    messenger.setMockStreamHandler(
+      events,
+      MockStreamHandler.inline(
+        onListen: (arguments, sink) {
+          nativeListens++;
+          native = sink;
+          sink.success([output(4, 'Sony', 'AA:BB:CC:DD:EE:FF')]);
+        },
+        onCancel: (arguments) => nativeCancels++,
+      ),
+    );
+
+    final first = <List<AudioDeviceInfo>>[];
+    final firstSub = AudioDeviceService.outputDeviceChanges().listen(first.add);
+    await pumpEventQueue();
+
+    // A second listener (e.g. the calibration) gets the latest list at once
+    // and does not open the native stream again.
+    final second = <List<AudioDeviceInfo>>[];
+    final secondSub =
+        AudioDeviceService.outputDeviceChanges().listen(second.add);
+    await pumpEventQueue();
+    expect(nativeListens, 1);
+    expect(second.single.single.productName, 'Sony');
+
+    // Closing the second one keeps the first one informed.
+    await secondSub.cancel();
+    native!.success(<Object>[]);
+    await pumpEventQueue();
+    expect(nativeCancels, 0);
+    expect(first.map((l) => l.length), [1, 0]);
+
+    await firstSub.cancel();
+    await pumpEventQueue();
+    expect(nativeCancels, 1);
   });
 
   test('headphoneChanges is simulated without Bluetooth', () async {
@@ -281,26 +322,53 @@ void main() {
   });
 
   group('test tone', () {
-    test('sends the volumes (clamped to 1-100) and the output device',
-        () async {
+    test('sends the gains (limited to 0-1) and the output device', () async {
       mockNative({});
 
       await AudioDeviceService.playTestTone(
-          leftVolume: 0, rightVolume: 140, outputDeviceId: 4);
-      await AudioDeviceService.stopTestTone();
+          leftGain: -0.5, rightGain: 1.4, outputDeviceId: 4);
+      await AudioDeviceService.stopPlayback();
 
       expect(calls.first.method, 'playTestTone');
       expect(calls.first.arguments,
-          {'leftVolume': 1, 'rightVolume': 100, 'deviceId': 4});
-      expect(calls.last.method, 'stopTestTone');
+          {'leftGain': 0.0, 'rightGain': 1.0, 'deviceId': 4});
+      expect(calls.last.method, 'stopPlayback');
     });
 
     test('leaves the device out if none is given', () async {
       mockNative({});
 
-      await AudioDeviceService.playTestTone(leftVolume: 50, rightVolume: 60);
+      await AudioDeviceService.playTestTone(leftGain: 0.5, rightGain: 0.6);
 
-      expect(calls.single.arguments, {'leftVolume': 50, 'rightVolume': 60});
+      expect(calls.single.arguments, {'leftGain': 0.5, 'rightGain': 0.6});
+    });
+
+    test('plays an asset with the gains on the output device', () async {
+      mockNative({});
+
+      await AudioDeviceService.playTestSound(
+        asset: 'assets/audio/Marschieren.mp3',
+        leftGain: 0.3,
+        rightGain: 1.0,
+        outputDeviceId: 4,
+      );
+
+      expect(calls.single.method, 'playTestSound');
+      expect(calls.single.arguments, {
+        'asset': 'assets/audio/Marschieren.mp3',
+        'leftGain': 0.3,
+        'rightGain': 1.0,
+        'deviceId': 4,
+      });
+    });
+
+    test('changes the gains of the playing sound', () async {
+      mockNative({});
+
+      await AudioDeviceService.setPlaybackGain(leftGain: 0.2, rightGain: 0.9);
+
+      expect(calls.single.method, 'setPlaybackGain');
+      expect(calls.single.arguments, {'leftGain': 0.2, 'rightGain': 0.9});
     });
   });
 }

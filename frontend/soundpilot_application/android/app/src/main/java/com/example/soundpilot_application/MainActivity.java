@@ -15,12 +15,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.media.AudioAttributes;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
-import android.media.AudioFormat;
 import android.media.AudioManager;
-import android.media.AudioTrack;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -29,12 +26,17 @@ import android.provider.Settings;
 
 import androidx.annotation.NonNull;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import io.flutter.FlutterInjector;
 import io.flutter.embedding.android.FlutterActivity;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.EventChannel;
@@ -51,14 +53,8 @@ public class MainActivity extends FlutterActivity {
     private static final String PREFS = "soundpilot_native";
     private static final String PREF_BT_PERMISSION_ASKED = "bluetoothPermissionAsked";
 
-    // Test tone state
-    private AudioTrack audioTrack = null;
-    private Thread toneThread = null;
-    private volatile boolean isPlayingTone = false;
-
-    // Id of the output device the test tone is routed to, or -1 if the tone
-    // plays on the default output.
-    private int toneDeviceId = -1;
+    // The playing test tone or test sound, or null.
+    private GainPlayer player = null;
 
     // Device events
     private AudioManager audioManager;
@@ -87,14 +83,29 @@ public class MainActivity extends FlutterActivity {
                     break;
 
                 case "playTestTone":
-                    int leftVol  = call.argument("leftVolume")  != null ? (int) call.argument("leftVolume")  : 50;
-                    int rightVol = call.argument("rightVolume") != null ? (int) call.argument("rightVolume") : 50;
-                    Integer deviceId = call.argument("deviceId");
-                    handlePlayTone(leftVol, rightVol, deviceId, result);
+                    handlePlay(GainPlayer.Sine::new, call.argument("leftGain"),
+                            call.argument("rightGain"), call.argument("deviceId"),
+                            result);
                     break;
 
-                case "stopTestTone":
-                    handleStopTone(result);
+                case "playTestSound":
+                    final String asset = call.argument("asset");
+                    handlePlay(() -> new GainPlayer.AudioFile(assetFile(asset)),
+                            call.argument("leftGain"), call.argument("rightGain"),
+                            call.argument("deviceId"), result);
+                    break;
+
+                case "setPlaybackGain":
+                    if (player != null) {
+                        player.setGains(gainArgument(call.argument("leftGain")),
+                                gainArgument(call.argument("rightGain")));
+                    }
+                    result.success(null);
+                    break;
+
+                case "stopPlayback":
+                    stopPlayer();
+                    result.success(null);
                     break;
 
                 case "getBluetoothPermissionStatus":
@@ -203,8 +214,8 @@ public class MainActivity extends FlutterActivity {
             @Override
             public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
                 for (AudioDeviceInfo device : removedDevices) {
-                    if (isPlayingTone && device.getId() == toneDeviceId) {
-                        stopToneInternal();
+                    if (player != null && device.getId() == player.deviceId) {
+                        stopPlayer();
                     }
                 }
                 sendDeviceList();
@@ -220,24 +231,35 @@ public class MainActivity extends FlutterActivity {
         }
     }
 
-    // ── Play stereo test tone ─────────────────────────────────────────────────
+    // ── Test tone and test sound ──────────────────────────────────────────────
     //
-    // Generates a 440 Hz sine wave. Left and right gains are derived from
-    // the calibration values (1–100  →  0.01–1.0).
+    // Both play through GainPlayer with separate left and right gains
+    // (0.0–1.0, already on a hearing curve, see wheelToGain in Dart): the
+    // 440 Hz test tone of the calibration, and an audio file from the Flutter
+    // assets for the test exercise. Only one plays at a time.
     //
-    // With a deviceId the tone is routed to that output (e.g. the headphones
+    // With a deviceId the sound is routed to that output (e.g. the headphones
     // being calibrated) and fails with DEVICE_NOT_CONNECTED if it is not
-    // connected, instead of falling back to the speaker. Without a deviceId
-    // it plays on the default output.
+    // connected, instead of falling back to the speaker; it stops when that
+    // device disconnects. Without a deviceId it plays on the default output.
 
-    private void handlePlayTone(int leftVolume, int rightVolume, Integer deviceId,
-                                MethodChannel.Result result) {
-        // Stop any currently playing tone first
-        stopToneInternal();
+    interface SourceFactory {
+        GainPlayer.Source create() throws Exception;
+    }
+
+    // Gain from a channel argument (a Dart double), limited to 0.0–1.0.
+    private static float gainArgument(Object value) {
+        float gain = value instanceof Number ? ((Number) value).floatValue() : 0.5f;
+        return Math.max(0f, Math.min(1f, gain));
+    }
+
+    private void handlePlay(SourceFactory factory, Object leftGain, Object rightGain,
+                            Object deviceId, MethodChannel.Result result) {
+        stopPlayer();
 
         AudioDeviceInfo target = null;
-        if (deviceId != null) {
-            target = findOutputDevice(deviceId);
+        if (deviceId instanceof Integer) {
+            target = findOutputDevice((Integer) deviceId);
             if (target == null) {
                 result.error("DEVICE_NOT_CONNECTED",
                         "Die Kopfhörer sind nicht verbunden.", null);
@@ -245,67 +267,37 @@ public class MainActivity extends FlutterActivity {
             }
         }
 
-        final float leftGain  = leftVolume  / 100.0f;
-        final float rightGain = rightVolume / 100.0f;
-
-        final int sampleRate = 44100;
-        final int frequency  = 440; // Hz – standard A4 tone
-
-        final int minBufSize = AudioTrack.getMinBufferSize(
-                sampleRate,
-                AudioFormat.CHANNEL_OUT_STEREO,
-                AudioFormat.ENCODING_PCM_16BIT);
-
+        GainPlayer.Source source = null;
         try {
-            audioTrack = new AudioTrack.Builder()
-                    .setAudioAttributes(new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .build())
-                    .setAudioFormat(new AudioFormat.Builder()
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .setSampleRate(sampleRate)
-                            .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
-                            .build())
-                    .setBufferSizeInBytes(minBufSize * 2)
-                    .setTransferMode(AudioTrack.MODE_STREAM)
-                    .build();
-
-            if (target != null) {
-                audioTrack.setPreferredDevice(target);
-                toneDeviceId = target.getId();
-            }
-
-            audioTrack.play();
-            isPlayingTone = true;
-
-            final AudioTrack track = audioTrack;
-
-            toneThread = new Thread(() -> {
-                // Generate one full second of the sine wave as a looping buffer
-                int bufSamples = sampleRate; // 1 second per loop
-                short[] buffer = new short[bufSamples * 2]; // *2 for stereo
-
-                for (int i = 0; i < bufSamples; i++) {
-                    double angle = 2.0 * Math.PI * frequency * i / sampleRate;
-                    short sample = (short) (Math.sin(angle) * Short.MAX_VALUE);
-                    buffer[i * 2]     = (short) (sample * leftGain);  // L
-                    buffer[i * 2 + 1] = (short) (sample * rightGain); // R
-                }
-
-                while (isPlayingTone) {
-                    track.write(buffer, 0, buffer.length);
-                }
-            });
-
-            toneThread.start();
+            source = factory.create();
+            player = new GainPlayer(source, gainArgument(leftGain),
+                    gainArgument(rightGain), target);
             result.success(null);
-
         } catch (Exception e) {
-            stopToneInternal();
-            result.error("TONE_ERROR",
-                    "Fehler beim Abspielen des Testtons: " + e.getMessage(), null);
+            if (source != null) source.release();
+            player = null;
+            result.error("PLAYBACK_ERROR",
+                    "Fehler beim Abspielen: " + e.getMessage(), null);
         }
+    }
+
+    // Copies a Flutter asset (e.g. "assets/audio/Marschieren.mp3") into the
+    // cache and returns its path; MediaExtractor needs a file.
+    //
+    // NOTE: Copied on every start (a few ms), so the cache never holds an
+    // outdated file after an app update.
+    private String assetFile(String asset) throws Exception {
+        final String key =
+                FlutterInjector.instance().flutterLoader().getLookupKeyForAsset(asset);
+        final File file = new File(getCacheDir(),
+                "sound_" + asset.replaceAll("[^A-Za-z0-9._-]", "_"));
+        try (InputStream in = getAssets().open(key);
+             OutputStream out = new FileOutputStream(file)) {
+            final byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = in.read(buffer)) > 0) out.write(buffer, 0, read);
+        }
+        return file.getPath();
     }
 
     private AudioDeviceInfo findOutputDevice(int id) {
@@ -316,34 +308,16 @@ public class MainActivity extends FlutterActivity {
         return null;
     }
 
-    // ── Stop tone ─────────────────────────────────────────────────────────────
-
-    private void handleStopTone(MethodChannel.Result result) {
-        stopToneInternal();
-        result.success(null);
-    }
-
-    private void stopToneInternal() {
-        isPlayingTone = false;
-        toneDeviceId = -1;
-
-        if (toneThread != null) {
-            try { toneThread.join(500); } catch (InterruptedException ignored) {}
-            toneThread = null;
-        }
-
-        if (audioTrack != null) {
-            try {
-                audioTrack.stop();
-                audioTrack.release();
-            } catch (Exception ignored) {}
-            audioTrack = null;
-        }
+    // Fades the sound out and releases it; does nothing if none plays.
+    private void stopPlayer() {
+        if (player == null) return;
+        player.stop();
+        player = null;
     }
 
     @Override
     protected void onDestroy() {
-        stopToneInternal();
+        stopPlayer();
         if (deviceCallback != null) {
             audioManager.unregisterAudioDeviceCallback(deviceCallback);
             deviceCallback = null;
