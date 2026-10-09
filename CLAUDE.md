@@ -529,7 +529,9 @@ Not backed by evidence — check in the code instead of assuming:
   or connects headphones itself; the user does that in the Android settings.
   `AudioDeviceService` wraps all of it; `findHeadphones()` merges the
   connected and paired headphones into one list per headset and returns a
-  simulated list outside Android (browser, desktop).
+  simulated list where there is no Bluetooth (browser, desktop, Android
+  without Bluetooth such as most emulators); Bluetooth that is only
+  switched off is not simulated.
   None of it has been tried on a real phone yet, and whether Android 12+
   anonymises the address without the permission is not checked.
 - **Accessibility: partly fixed, never tested on a device.** The full list of

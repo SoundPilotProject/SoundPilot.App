@@ -126,7 +126,8 @@ enum BluetoothState {
 /// NOTE: The native Android side has to handle the channel
 /// `com.soundpilot/audio_devices`. On other platforms (e.g. Windows) the call
 /// throws a [MissingPluginException]. Only [findHeadphones] and
-/// [headphoneChanges] fall back to a simulated list there ([isSupported]).
+/// [headphoneChanges] fall back to a simulated list there, and on Android
+/// without Bluetooth ([usesSimulatedHeadphones]).
 ///
 /// TODO(improve): This service is not used by any screen yet. DeviceScreen
 /// still uses a simulated scan (`scanForSystemDevices`). It should be
@@ -186,14 +187,23 @@ class AudioDeviceService {
 
   // ── Headphones ─────────────────────────────────────────────────────────────
 
+  /// Whether this device has no Bluetooth at all: the browser, desktop, or
+  /// an Android phone/emulator without Bluetooth. The headphone lists are
+  /// simulated there ([simulatedHeadphones]).
+  ///
+  /// NOTE: Bluetooth that is only switched off is not simulated; the user is
+  /// asked to switch it on instead.
+  static Future<bool> usesSimulatedHeadphones() async =>
+      !isSupported || await getBluetoothState() == BluetoothState.unavailable;
+
   /// Bluetooth headphones the user can add: the connected ones first, then
   /// the paired ones that are not connected right now.
   ///
   /// The paired ones are only included with the Bluetooth permission; this
-  /// method never asks for it ([requestBluetoothPermission]). Outside
-  /// Android it returns [simulatedHeadphones].
+  /// method never asks for it ([requestBluetoothPermission]). Without
+  /// Bluetooth it returns [simulatedHeadphones] ([usesSimulatedHeadphones]).
   static Future<List<HeadphoneDevice>> findHeadphones() async {
-    if (!isSupported) return simulatedHeadphones;
+    if (await usesSimulatedHeadphones()) return simulatedHeadphones;
 
     final outputs = await getConnectedOutputDevices();
     final paired = await getBluetoothPermissionStatus() ==
@@ -204,10 +214,13 @@ class AudioDeviceService {
   }
 
   /// The connected headphones, again on every connect and disconnect.
-  /// Outside Android it emits [simulatedHeadphones] once.
-  static Stream<List<HeadphoneDevice>> headphoneChanges() {
-    if (!isSupported) return Stream.value(simulatedHeadphones);
-    return outputDeviceChanges()
+  /// Without Bluetooth it emits [simulatedHeadphones] once.
+  static Stream<List<HeadphoneDevice>> headphoneChanges() async* {
+    if (await usesSimulatedHeadphones()) {
+      yield simulatedHeadphones;
+      return;
+    }
+    yield* outputDeviceChanges()
         .map((outputs) => mergeHeadphones(outputs, const []));
   }
 
@@ -277,11 +290,11 @@ class AudioDeviceService {
         _ => 2,
       };
 
-  /// Headphones shown outside Android (browser, desktop), so the screens
-  /// work without the native side.
+  /// Headphones shown where there is no Bluetooth (browser, desktop, Android
+  /// without Bluetooth), so the screens can be used and tested there.
   ///
-  /// NOTE: The addresses are not real BD_ADDRs. Devices added in the browser
-  /// are stored under them and do not match real headphones on a phone.
+  /// NOTE: The addresses are not real BD_ADDRs. Devices added there are
+  /// stored under them and do not match real headphones on a phone.
   static const List<HeadphoneDevice> simulatedHeadphones = [
     HeadphoneDevice(
         name: 'AirPods Pro', address: 'simulated_1', isConnected: true),

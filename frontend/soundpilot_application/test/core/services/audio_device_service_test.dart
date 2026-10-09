@@ -190,6 +190,7 @@ void main() {
   group('findHeadphones', () {
     test('includes paired headphones with the permission', () async {
       mockNative({
+        'getBluetoothState': 'on',
         'getConnectedOutputDevices': [output(4, 'Sony', 'AA:BB:CC:DD:EE:FF')],
         'getBluetoothPermissionStatus': 'granted',
         'getPairedAudioDevices': [
@@ -205,6 +206,7 @@ void main() {
     test('only connected ones without the permission, and does not ask',
         () async {
       mockNative({
+        'getBluetoothState': 'on',
         'getConnectedOutputDevices': [output(4, 'Sony', 'AA:BB:CC:DD:EE:FF')],
         'getBluetoothPermissionStatus': 'denied',
       });
@@ -226,10 +228,34 @@ void main() {
           AudioDeviceService.simulatedHeadphones);
       expect(calls, isEmpty);
     });
+
+    test('is simulated on Android without Bluetooth (e.g. emulator)',
+        () async {
+      mockNative({'getBluetoothState': 'unavailable'});
+
+      expect(await AudioDeviceService.usesSimulatedHeadphones(), isTrue);
+      expect(await AudioDeviceService.findHeadphones(),
+          AudioDeviceService.simulatedHeadphones);
+      expect(calls.map((c) => c.method),
+          isNot(contains('getConnectedOutputDevices')));
+    });
+
+    test('is not simulated if Bluetooth is only switched off', () async {
+      mockNative({
+        'getBluetoothState': 'off',
+        'getConnectedOutputDevices': <Object>[],
+        'getBluetoothPermissionStatus': 'granted',
+        'getPairedAudioDevices': <Object>[],
+      });
+
+      expect(await AudioDeviceService.usesSimulatedHeadphones(), isFalse);
+      expect(await AudioDeviceService.findHeadphones(), isEmpty);
+    });
   });
 
   test('headphoneChanges reports every change of the connected headphones',
       () async {
+    mockNative({'getBluetoothState': 'on'});
     messenger.setMockStreamHandler(
       events,
       MockStreamHandler.inline(onListen: (arguments, sink) {
@@ -245,6 +271,13 @@ void main() {
       ['Sony'],
       <String>[],
     ]);
+  });
+
+  test('headphoneChanges is simulated without Bluetooth', () async {
+    mockNative({'getBluetoothState': 'unavailable'});
+
+    expect(await AudioDeviceService.headphoneChanges().toList(),
+        [AudioDeviceService.simulatedHeadphones]);
   });
 
   group('test tone', () {
