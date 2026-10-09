@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:soundpilot_application/core/app_locale.dart';
 import 'package:soundpilot_application/features/device/screens/device_screen.dart';
+import 'package:soundpilot_application/features/device/widgets/device_type.dart';
 import 'package:soundpilot_application/models/user_model.dart';
 
 import '../../helpers/fake_auth_service.dart';
@@ -23,6 +24,7 @@ Future<void> _pumpScreen(
   FakeDeviceRepository repository, {
   bool isSignedIn = true,
   FakeAuthService? authService,
+  DeviceScanner? scanner,
 }) async {
   tester.view.physicalSize = const Size(360, 720);
   tester.view.devicePixelRatio = 1.0;
@@ -36,8 +38,34 @@ Future<void> _pumpScreen(
       repository: repository,
       isSignedIn: isSignedIn,
       authService: authService,
+      scanner: scanner ?? scanForDevices,
     ),
   ));
+}
+
+/// Adds the first device of a headphone scan that finds [devices] through
+/// the add dialog.
+Future<void> _addScannedHeadphones(
+  WidgetTester tester,
+  FakeDeviceRepository repository,
+  List<ScannedDevice> devices,
+) async {
+  await _pumpScreen(
+    tester,
+    repository,
+    scanner: (type) async => ScanFound(devices),
+  );
+  repository.devices.add(_devices);
+  await tester.pump();
+
+  await tester.tap(find.byTooltip('Gerät hinzufügen').first);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Kopfhörer suchen'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(devices.first.name));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Hinzufügen'));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -213,5 +241,31 @@ void main() {
 
       expect(auth.logouts, 1);
     });
+  });
+
+  testWidgets('headphones from the scan are stored under their address',
+      (tester) async {
+    final repository = FakeDeviceRepository();
+    await _addScannedHeadphones(tester, repository, const [
+      ScannedDevice(
+        name: 'Bose QC45',
+        address: '11:22:33:44:55:66',
+        isConnected: true,
+      ),
+    ]);
+
+    expect(repository.writes, ['putHeadphone 11:22:33:44:55:66 Bose QC45']);
+  });
+
+  testWidgets('headphones already in the list are not offered again',
+      (tester) async {
+    final repository = FakeDeviceRepository();
+    // 'aa' is the key of 'Pods' in _devices.
+    await _addScannedHeadphones(tester, repository, const [
+      ScannedDevice(name: 'Meine Pods', address: 'aa', isConnected: true),
+    ]);
+
+    expect(find.text('Bereits hinzugefügt'), findsOneWidget);
+    expect(repository.writes, isEmpty);
   });
 }

@@ -1,4 +1,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Bluetooth headphones: the app only works with headphones the user has
+         already paired/connected in the Android settings. It never scans for
+         new devices, so BLUETOOTH_SCAN, BLUETOOTH_ADMIN and location are not
+         needed. -->
+    <!-- Android 11 and older: install-time permission (Bluetooth state, paired
+         devices). -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <!-- Android 12+: runtime permission for paired devices and the real
+         Bluetooth address; requested by MainActivity
+         (requestBluetoothPermission). -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- The app also runs without Bluetooth (e.g. emulator); do not hide it
+         from such devices. -->
+    <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="false" />
+
     <application
         android:label="soundpilot_application"
         android:name="${applicationName}"
