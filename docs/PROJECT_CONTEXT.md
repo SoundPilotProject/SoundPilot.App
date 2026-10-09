@@ -382,8 +382,15 @@ device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
   `volumeRight`, one pair per device). `CalibrationScreen` gets the earbud and
   saves through a callback; its wheel shows them as 1–100
   (`volumeToWheel` / `wheelToVolume` in `calibration_screen.dart`).
-- The connection state is runtime only: `DeviceScreen` keeps the connected
-  keys itself; nothing is stored.
+- The connection state is runtime only; nothing is stored. Headphones show
+  the real Bluetooth state: `DeviceScreen` listens to
+  `AudioDeviceService.headphoneChanges()` and a card counts as connected while
+  headphones with its key (address, case-insensitive) are an active audio
+  output. Changes are announced to screen readers ("… ist jetzt verbunden" /
+  "… getrennt"), except the state at the start. Without Bluetooth only the
+  simulated headphones (`simulated_1` … `simulated_5`) are connected; typed-in
+  and `dummy_mac_…` headphones never are. Belts still count as connected once
+  their setup was finished in this session.
 
 ### Firestore: collection `users`
 
@@ -578,8 +585,9 @@ Not backed by evidence — check in the code instead of assuming:
   belt scan is still simulated. Before the headphone scan it checks that
   Bluetooth is on and asks for the permission ("Geräte in der Nähe"); each
   case has its own German text and, where it helps, a button to the
-  Bluetooth or app settings. The connection state on the device cards and the
-  calibration tone do not use the real headphones yet. The native Android
+  Bluetooth or app settings. The device cards show the real connection of
+  the headphones (see §4); the calibration tone does not use the headphones
+  yet. The native Android
   side is in `MainActivity.java`:
   connected output devices (with the Bluetooth address from Android 9),
   a live device event stream (`com.soundpilot/audio_device_events`), paired

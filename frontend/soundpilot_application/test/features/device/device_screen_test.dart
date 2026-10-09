@@ -3,11 +3,15 @@
 // Tests that the DeviceScreen shows what its repository delivers, writes
 // single devices to it and tells the user when loading or saving fails.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:soundpilot_application/core/app_locale.dart';
+import 'package:soundpilot_application/core/services/audio_device_service.dart';
 import 'package:soundpilot_application/features/device/screens/device_screen.dart';
+import 'package:soundpilot_application/features/device/widgets/device_card.dart';
 import 'package:soundpilot_application/features/device/widgets/device_type.dart';
 import 'package:soundpilot_application/models/user_model.dart';
 
@@ -25,6 +29,7 @@ Future<void> _pumpScreen(
   bool isSignedIn = true,
   FakeAuthService? authService,
   DeviceScanner? scanner,
+  Stream<List<HeadphoneDevice>>? headphones,
 }) async {
   tester.view.physicalSize = const Size(360, 720);
   tester.view.devicePixelRatio = 1.0;
@@ -39,9 +44,25 @@ Future<void> _pumpScreen(
       isSignedIn: isSignedIn,
       authService: authService,
       scanner: scanner ?? scanForDevices,
+      headphoneChanges: () => headphones ?? const Stream.empty(),
     ),
   ));
 }
+
+/// Whether the card of the device [name] shows it as connected.
+bool _isConnected(WidgetTester tester, String name) => tester
+    .widget<DeviceCard>(
+        find.byWidgetPredicate((w) => w is DeviceCard && w.name == name))
+    .isConnected;
+
+/// Connected headphones with the given [address], as the native side reports
+/// them.
+HeadphoneDevice _connected(String address) => HeadphoneDevice(
+      name: 'Kopfhörer',
+      address: address,
+      isConnected: true,
+      outputDeviceId: 1,
+    );
 
 /// Adds the first device of a headphone scan that finds [devices] through
 /// the add dialog.
@@ -267,5 +288,88 @@ void main() {
 
     expect(find.text('Bereits hinzugefügt'), findsOneWidget);
     expect(repository.writes, isEmpty);
+  });
+
+  group('headphone connection state', () {
+    testWidgets('follows the real connection, matched by address',
+        (tester) async {
+      // sync: the event arrives at add(), so one pump() rebuilds the cards.
+      final headphones = StreamController<List<HeadphoneDevice>>(sync: true);
+      addTearDown(headphones.close);
+      final repository = FakeDeviceRepository();
+      await _pumpScreen(tester, repository, headphones: headphones.stream);
+      repository.devices.add(_devices);
+      await tester.pump();
+
+      expect(_isConnected(tester, 'Pods'), isFalse);
+
+      // 'aa' is the key of 'Pods'; Android reports addresses in upper case.
+      headphones.add([_connected('AA')]);
+      await tester.pump();
+      expect(_isConnected(tester, 'Pods'), isTrue);
+
+      headphones.add([]);
+      await tester.pump();
+      expect(_isConnected(tester, 'Pods'), isFalse);
+    });
+
+    testWidgets('paired but not connected headphones are not connected',
+        (tester) async {
+      // sync: the event arrives at add(), so one pump() rebuilds the cards.
+      final headphones = StreamController<List<HeadphoneDevice>>(sync: true);
+      addTearDown(headphones.close);
+      final repository = FakeDeviceRepository();
+      await _pumpScreen(tester, repository, headphones: headphones.stream);
+      repository.devices.add(_devices);
+      await tester.pump();
+
+      headphones.add([
+        const HeadphoneDevice(name: 'Pods', address: 'AA', isConnected: false),
+      ]);
+      await tester.pump();
+
+      expect(_isConnected(tester, 'Pods'), isFalse);
+    });
+
+    testWidgets('announces changes, but not the state at the start',
+        (tester) async {
+      // sync: the event arrives at add(), so one pump() rebuilds the cards.
+      final headphones = StreamController<List<HeadphoneDevice>>(sync: true);
+      addTearDown(headphones.close);
+      final repository = FakeDeviceRepository();
+      await _pumpScreen(tester, repository, headphones: headphones.stream);
+      repository.devices.add(_devices);
+      await tester.pump();
+
+      headphones.add([_connected('AA')]);
+      await tester.pump();
+      expect(tester.takeAnnouncements(), isEmpty);
+
+      headphones.add([]);
+      await tester.pump();
+      headphones.add([_connected('AA'), _connected('CC')]);
+      await tester.pump();
+
+      // 'CC' is not in the list, so only 'Pods' is announced.
+      expect(
+        tester.takeAnnouncements().map((a) => a.message),
+        ['Pods ist jetzt getrennt', 'Pods ist jetzt verbunden'],
+      );
+    });
+
+    testWidgets('without a connection state all headphones are not connected',
+        (tester) async {
+      final repository = FakeDeviceRepository();
+      await _pumpScreen(
+        tester,
+        repository,
+        headphones: Stream.error(Exception('no native side')),
+      );
+      repository.devices.add(_devices);
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(_isConnected(tester, 'Pods'), isFalse);
+    });
   });
 }
