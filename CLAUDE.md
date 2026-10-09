@@ -230,6 +230,31 @@ you changed dependencies on purpose; discard them with
 constraint, the lock and this section in one PR, and the whole team upgrades
 with it.
 
+**Android build versions.** Flutter 3.47.6 refuses to build the Android app
+below Gradle 8.14, Android Gradle plugin 8.11.1 and Kotlin 2.2.20
+(`android/gradle/wrapper/gradle-wrapper.properties`,
+`android/settings.gradle.kts`); the error names the minimum. CI does not build
+the app, so it would not notice. Raise these together with Flutter. The
+`android.builtInKotlin` / `android.newDsl` lines in `android/gradle.properties`
+are written by Flutter's migrator on every Android build; keep them.
+Flutter 3.47.6 already warns that support for these versions "will soon be
+dropped" and names Gradle 9.1, AGP 9.0.1 and Kotlin 2.3.20. These are only
+warnings, the build works. Moving to AGP 9 is a migration of its own (new
+build DSL and built-in Kotlin, which the two flags above opt out of); do it
+as a separate task, ideally with the next Flutter upgrade.
+
+This Gradle needs Java 17–24 and fails on Java 25 ("incompatible with Gradle"),
+which recent Android Studio versions bundle and Flutter uses by default. Point
+Flutter to a JDK 21 once (a setting on your PC, not in the repo):
+`flutter config --jdk-dir=<path to JDK 21>`.
+
+If the first Android build fails with `PKIX path building failed` while
+downloading, Java does not trust the certificate an antivirus or proxy puts in
+front of HTTPS. Let Java use the Windows certificate store for that build:
+`set GRADLE_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT` and the same for
+`JAVA_TOOL_OPTIONS`. Once Gradle and the dependencies are cached, it is
+usually not needed again.
+
 On Windows, a full `flutter test` run sometimes fails to load single test files
 with "Connection closed before test suite loaded". That is a crash of the local
 test runner, not a failing test: rerun those files with
