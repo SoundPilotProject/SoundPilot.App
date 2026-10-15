@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:soundpilot_application/main.dart';
+
 import 'package:soundpilot_application/core/app_locale.dart';
 import 'package:soundpilot_application/core/services/audio_device_service.dart';
 import 'package:soundpilot_application/core/widgets/auth_text_field.dart';
@@ -46,13 +48,16 @@ const List<double> _textScales = [1.0, 1.6, 2.0];
 /// Wraps [child] in a MaterialApp with the given [brightness] and text [scale].
 ///
 /// Uses the app's German locale, so Flutter's built-in labels are measured in
-/// the language the user sees.
+/// the language the user sees, and the app's own theme
+/// ([SoundPilotApp.buildTheme]): with a plain `ThemeData` the screens would be
+/// measured with Material's default colours and font instead of AppColors and
+/// Plus Jakarta Sans, which have different metrics.
 Widget _wrap(Widget child, Brightness brightness, double scale) {
   return MaterialApp(
     locale: appLocale,
     supportedLocales: appSupportedLocales,
     localizationsDelegates: appLocalizationsDelegates,
-    theme: ThemeData(brightness: brightness, useMaterial3: true),
+    theme: SoundPilotApp.buildTheme(brightness),
     home: MediaQuery(
       data: MediaQueryData(textScaler: TextScaler.linear(scale)),
       child: child,
@@ -201,8 +206,12 @@ void main() {
       // is not running while the playback is stopped.
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text('Start'), findsOneWidget);
-      expect(find.text('Stop'), findsOneWidget);
+      // The earbud is not connected here, so the page offers the way to the
+      // Bluetooth settings instead of a greyed-out 'Start' and 'Stop'
+      // (see _buildPlaybackControls in test_page.dart).
+      expect(find.text('Bluetooth-Einstellungen öffnen'), findsOneWidget);
+      expect(find.text('Start'), findsNothing);
+      expect(find.text('Stop'), findsNothing);
     });
   });
 
@@ -302,13 +311,10 @@ void main() {
       await tester.pump(const Duration(seconds: 30));
       expect(find.text(AuthService.passwordResetSentMessage), findsOneWidget);
 
-      // After success the one action is going back.
-      expect(find.widgetWithText(ElevatedButton, 'Zurück zur Anmeldung'),
-          findsOneWidget);
+      // After success the one action is going on to the sign-in.
+      expect(find.widgetWithText(ElevatedButton, 'Weiter'), findsOneWidget);
       expect(
-        tester
-            .getSize(find.widgetWithText(ElevatedButton, 'Zurück zur Anmeldung'))
-            .height,
+        tester.getSize(find.widgetWithText(ElevatedButton, 'Weiter')).height,
         greaterThanOrEqualTo(48.0),
       );
     });
@@ -398,13 +404,44 @@ void main() {
 
       await tester.tap(find.widgetWithText(ElevatedButton, 'Link senden'));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(ElevatedButton, 'Zurück zur Anmeldung'),
-          findsOneWidget);
+      expect(find.widgetWithText(ElevatedButton, 'Weiter'), findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'anna@example.com');
       await tester.pump();
       expect(find.text(AuthService.passwordResetSentMessage), findsNothing);
       expect(find.widgetWithText(ElevatedButton, 'Link senden'), findsOneWidget);
+    });
+
+    testWidgets('"Weiter" leaves the login screens for the StartScreen',
+        (tester) async {
+      tester.view.physicalSize = _phone;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      // The first route stands for AppEntryPoint, which shows the StartScreen
+      // while nobody is signed in; the login screens are pushed on top of it.
+      await tester.pumpWidget(_wrap(const StartScreen(), Brightness.light, 1.0));
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => PasswordResetScreen(
+          initialEmail: 'max@example.com',
+          sendReset: (_) async => null,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Link senden'));
+      await tester.pumpAndSettle();
+
+      // The result box pushes the button below the fold.
+      final next = find.widgetWithText(ElevatedButton, 'Weiter');
+      await tester.ensureVisible(next);
+      await tester.pumpAndSettle();
+      await tester.tap(next);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PasswordResetScreen), findsNothing);
+      expect(find.byType(StartScreen), findsOneWidget);
     });
 
     testWidgets('"Passwort vergessen?" opens it with the typed address',

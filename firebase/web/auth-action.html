@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<!--
+  firebase/web/auth-action.html
+
+  Custom handler for the links Firebase Auth sends by e-mail, so the page the
+  user lands on looks like SoundPilot instead of Firebase's default one.
+  Set as "Action URL" in the Firebase console (Authentication → Templates),
+  see §3 of docs/PROJECT_CONTEXT.md.
+
+  Handles mode=resetPassword (the only mail the app sends today) and, so no
+  link ever ends on a blank page, verifyEmail and recoverEmail.
+
+  The palette and the type are the ones of core/theme/app_colors.dart and the
+  app's Plus Jakarta Sans, in light and dark. Accessibility follows the same
+  rules as the app (§1): labels on every control, 48 px targets, state never
+  by colour alone, results as text in a live region, no time limit.
+-->
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SoundPilot – Passwort</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    /* Light mode of AppColors. */
+    :root {
+      --background: #E4E7EE;
+      --primary: #2F49B7;
+      --on-primary: #FFFFFF;
+      --text: #000000;
+      --surface: #D1D5DB;
+      --input-border: #4F596D;
+      --muted-text: #4C5666;
+      --inactive: #6E7787;
+      --field: #E4E7EE;
+      color-scheme: light dark;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #000000;
+        --primary: #F2E38A;
+        --on-primary: #000000;
+        --text: #FFFFFF;
+        --surface: #1A1A1A;
+        --input-border: #F2E38A;
+        --muted-text: #E6D98A;
+        --inactive: #6B7382;
+        --field: #000000;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      /* Plus Jakarta Sans ends at w800; a heavier weight would be faked. */
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 19px;
+      line-height: 1.35;
+    }
+
+    /* Top bar, like AppTopBar in the app. */
+    header {
+      background: var(--primary);
+      color: var(--on-primary);
+      padding: 18px 20px;
+    }
+
+    header h1 {
+      margin: 0 auto;
+      max-width: 520px;
+      font-size: 24px;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    main {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 24px 28px 48px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 26px;
+      font-weight: 800;
+      text-align: center;
+      line-height: 1.25;
+    }
+
+    p { margin: 0 0 20px; }
+
+    .caption {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .field { margin-bottom: 18px; }
+
+    /* Input with the trailing show/hide button, like AuthTextField. */
+    .input-row { position: relative; }
+
+    input[type="password"], input[type="text"] {
+      width: 100%;
+      padding: 20px 62px 20px 18px;
+      background: var(--field);
+      color: var(--text);
+      border: 2.2px solid var(--input-border);
+      border-radius: 20px;
+      font-family: inherit;
+      font-size: 21px;
+      font-weight: 700;
+    }
+
+    /* The placeholder stays lighter than the typed text on purpose. */
+    input::placeholder {
+      color: var(--muted-text);
+      font-weight: 600;
+    }
+
+    input:focus-visible {
+      outline: none;
+      border: 3.5px solid var(--primary);
+    }
+
+    .toggle {
+      position: absolute;
+      top: 50%;
+      right: 6px;
+      transform: translateY(-50%);
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      border-radius: 24px;
+      color: var(--muted-text);
+      cursor: pointer;
+    }
+
+    .toggle:focus-visible { outline: 3px solid var(--primary); }
+
+    button.primary {
+      width: 100%;
+      min-height: 80px;
+      margin-top: 8px;
+      padding: 14px 20px;
+      background: var(--primary);
+      color: var(--on-primary);
+      border: none;
+      border-radius: 50px;
+      box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+      font-family: inherit;
+      font-size: 26px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button.primary:disabled {
+      background: var(--inactive);
+      color: #FFFFFF;
+      box-shadow: none;
+      cursor: default;
+    }
+
+    button.primary:focus-visible { outline: 3px solid var(--text); }
+
+    /* Result box: icon plus text, never colour alone. */
+    .box {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 20px;
+      padding: 16px;
+      background: var(--surface);
+      border: 2px solid var(--input-border);
+      border-radius: 20px;
+    }
+
+    .box svg { flex: none; }
+
+    .spinner {
+      width: 26px;
+      height: 26px;
+      border: 3px solid var(--inactive);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* The app leaves out its spinner as well where the system asks for it. */
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { display: none; }
+      * { animation: none !important; transition: none !important; }
+    }
+
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SoundPilot</h1>
+  </header>
+
+  <main>
+    <!-- Step 1: the link is being checked. -->
+    <section id="loading">
+      <h2>Einen Moment</h2>
+      <div class="box" role="status" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <p id="loading-text" style="margin: 0">Der Link wird geprüft...</p>
+      </div>
+    </section>
+
+    <!-- Step 2: the new password. -->
+    <section id="form-step" hidden>
+      <h2>Neues Passwort festlegen</h2>
+      <p id="intro">
+        Lege ein neues Passwort fest. Danach meldest du dich in der
+        SoundPilot-App mit dem neuen Passwort an.
+      </p>
+
+      <form id="form" novalidate>
+        <div class="field">
+          <label class="caption" for="new-password">Neues Passwort:</label>
+          <div class="input-row">
+            <input id="new-password" type="password" autocomplete="new-password"
+                   placeholder="Neues Passwort" required>
+            <button type="button" class="toggle" data-for="new-password"
+                    aria-pressed="false" aria-label="Neues Passwort anzeigen">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"
+                   aria-hidden="true">
+                <path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="caption" for="repeat-password">
+            Neues Passwort wiederholen:
+          </label>
+          <div class="input-row">
+            <input id="repeat-password" type="password"
+                   autocomplete="new-password"
+                   placeholder="Neues Passwort wiederholen" required>
+            <button type="button" class="toggle" data-for="repeat-password"
+                    aria-pressed="false"
+                    aria-label="Wiederholtes Passwort anzeigen">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"
+                   aria-hidden="true">
+                <path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="form-error" class="box" role="alert" hidden>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"
+               aria-hidden="true">
+            <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+          </svg>
+          <p id="form-error-text" style="margin: 0"></p>
+        </div>
+
+        <button type="submit" class="primary" id="submit">Passwort speichern</button>
+      </form>
+    </section>
+
+    <!-- Step 3: done, or the link did not work. -->
+    <section id="result" hidden>
+      <h2 id="result-title"></h2>
+      <div class="box" role="status" aria-live="polite">
+        <svg id="result-icon" width="32" height="32" viewBox="0 0 24 24"
+             fill="currentColor" aria-hidden="true"></svg>
+        <p id="result-text" style="margin: 0"></p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js';
+    import {
+      getAuth,
+      applyActionCode,
+      checkActionCode,
+      confirmPasswordReset,
+      verifyPasswordResetCode,
+    } from 'https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js';
+
+    /// Shortest password Firebase accepts.
+    const MIN_LENGTH = 6;
+
+    const ICON_OK =
+      '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.2 14.4L6.6 12.2 8 10.8l2.8 2.8 5.6-5.6 1.4 1.4-7 7z"/>';
+    const ICON_ERROR =
+      '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>';
+
+    const loading = document.getElementById('loading');
+    const loadingText = document.getElementById('loading-text');
+    const formStep = document.getElementById('form-step');
+    const form = document.getElementById('form');
+    const newPassword = document.getElementById('new-password');
+    const repeatPassword = document.getElementById('repeat-password');
+    const formError = document.getElementById('form-error');
+    const formErrorText = document.getElementById('form-error-text');
+    const submit = document.getElementById('submit');
+    const result = document.getElementById('result');
+    const resultTitle = document.getElementById('result-title');
+    const resultIcon = document.getElementById('result-icon');
+    const resultText = document.getElementById('result-text');
+
+    /// German message for a Firebase error code. Unknown codes fall back to
+    /// the general one, like AuthService.messageForCode in the app.
+    function messageFor(code) {
+      switch (code) {
+        case 'auth/expired-action-code':
+          return 'Der Link ist abgelaufen. Fordere in der SoundPilot-App '
+            + 'unter "Passwort vergessen?" einen neuen Link an.';
+        case 'auth/invalid-action-code':
+          return 'Der Link ist ungültig oder wurde schon benutzt. Fordere in '
+            + 'der SoundPilot-App unter "Passwort vergessen?" einen neuen '
+            + 'Link an.';
+        case 'auth/user-disabled':
+          return 'Dieses Konto ist gesperrt.';
+        case 'auth/user-not-found':
+          return 'Zu diesem Link gibt es kein Konto mehr.';
+        case 'auth/weak-password':
+          return 'Das Passwort ist zu schwach. Es braucht mindestens '
+            + MIN_LENGTH + ' Zeichen.';
+        case 'auth/network-request-failed':
+          return 'Keine Internetverbindung. Bitte prüfe deine Verbindung und '
+            + 'versuche es noch einmal.';
+        default:
+          return 'Etwas ist schiefgelaufen. Bitte versuche es noch einmal.';
+      }
+    }
+
+    /// Shows the final state: [ok] decides the icon, the text stays on the
+    /// screen and is announced (live region).
+    function showResult(ok, title, text) {
+      loading.hidden = true;
+      formStep.hidden = true;
+      resultTitle.textContent = title;
+      resultIcon.innerHTML = ok ? ICON_OK : ICON_ERROR;
+      resultText.textContent = text;
+      result.hidden = false;
+    }
+
+    /// Shows a problem with the form and keeps the user where they are.
+    function showFormError(text) {
+      formErrorText.textContent = text;
+      formError.hidden = false;
+    }
+
+    // Show/hide buttons. The state is on the button (aria-pressed) and in its
+    // name, so a screen reader always says which password it belongs to.
+    for (const toggle of document.querySelectorAll('.toggle')) {
+      const input = document.getElementById(toggle.dataset.for);
+      const name = toggle.getAttribute('aria-label').replace(' anzeigen', '');
+      toggle.addEventListener('click', () => {
+        const shown = input.type === 'text';
+        input.type = shown ? 'password' : 'text';
+        toggle.setAttribute('aria-pressed', String(!shown));
+        toggle.setAttribute(
+          'aria-label',
+          shown ? name + ' anzeigen' : name + ' verbergen',
+        );
+      });
+    }
+
+    /// Reads the Firebase config Hosting serves for this project, so no API
+    /// key has to live in the repository (see §8 of the project context).
+    async function firebaseAuth() {
+      const response = await fetch('/__/firebase/init.json');
+      if (!response.ok) throw new Error('init.json: ' + response.status);
+      const auth = getAuth(initializeApp(await response.json()));
+      // Firebase's own messages in German, like main.dart does in the app.
+      auth.languageCode = 'de';
+      return auth;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    const code = params.get('oobCode');
+
+    async function start() {
+      if (!code) {
+        showResult(false, 'Link unvollständig',
+          'Dieser Link ist nicht vollständig. Öffne ihn direkt aus der '
+          + 'E-Mail, oder fordere in der SoundPilot-App einen neuen an.');
+        return;
+      }
+
+      let auth;
+      try {
+        auth = await firebaseAuth();
+      } catch (error) {
+        showResult(false, 'Seite nicht erreichbar',
+          'Die Seite konnte nicht geladen werden. Bitte versuche es später '
+          + 'noch einmal.');
+        return;
+      }
+
+      try {
+        switch (mode) {
+          case 'resetPassword':
+            // Throws if the link is used, expired or wrong; only then is the
+            // form worth showing.
+            await verifyPasswordResetCode(auth, code);
+            loading.hidden = true;
+            formStep.hidden = false;
+            newPassword.focus();
+            form.addEventListener('submit', (event) => {
+              event.preventDefault();
+              save(auth);
+            });
+            return;
+
+          case 'verifyEmail':
+            await applyActionCode(auth, code);
+            showResult(true, 'E-Mail bestätigt',
+              'Deine E-Mail-Adresse ist bestätigt. Du kannst dich jetzt in '
+              + 'der SoundPilot-App anmelden.');
+            return;
+
+          case 'recoverEmail': {
+            const info = await checkActionCode(auth, code);
+            await applyActionCode(auth, code);
+            const address = info.data.email ?? 'deine alte Adresse';
+            showResult(true, 'E-Mail zurückgesetzt',
+              'Dein Konto gehört wieder zu ' + address + '. Setze zur '
+              + 'Sicherheit in der SoundPilot-App unter "Passwort vergessen?" '
+              + 'ein neues Passwort.');
+            return;
+          }
+
+          default:
+            showResult(false, 'Link unbekannt',
+              'Mit diesem Link kann SoundPilot nichts anfangen. Fordere in '
+              + 'der App einen neuen an.');
+        }
+      } catch (error) {
+        showResult(false, 'Link funktioniert nicht', messageFor(error.code));
+      }
+    }
+
+    /// Checks the two fields and sets the new password.
+    async function save(auth) {
+      formError.hidden = true;
+
+      if (newPassword.value.length === 0) {
+        showFormError('Bitte gib dein neues Passwort ein.');
+        newPassword.focus();
+        return;
+      }
+      if (newPassword.value.length < MIN_LENGTH) {
+        showFormError('Das neue Passwort braucht mindestens ' + MIN_LENGTH
+          + ' Zeichen.');
+        newPassword.focus();
+        return;
+      }
+      if (newPassword.value !== repeatPassword.value) {
+        showFormError('Die beiden Passwörter stimmen nicht überein. Bitte gib '
+          + 'sie noch einmal ein.');
+        repeatPassword.focus();
+        return;
+      }
+
+      submit.disabled = true;
+      submit.textContent = 'Wird gespeichert...';
+
+      try {
+        await confirmPasswordReset(auth, code, newPassword.value);
+        showResult(true, 'Passwort geändert',
+          'Dein Passwort ist geändert. Öffne jetzt die SoundPilot-App und '
+          + 'melde dich mit dem neuen Passwort an.');
+      } catch (error) {
+        submit.disabled = false;
+        submit.textContent = 'Passwort speichern';
+        showFormError(messageFor(error.code));
+      }
+    }
+
+    start();
+  </script>
+</body>
+</html>

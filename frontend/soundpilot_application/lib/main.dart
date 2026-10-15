@@ -45,8 +45,8 @@ Future<void> main() async {
   // in memory only (the default there) on purpose: the web plugin cannot
   // delete a disk cache and keep working, see AuthService._clearFirestoreCache.
 
-  // Read before the first frame, so a guest does not see the StartScreen
-  // flash up.
+  // Clears the guest mode flag that earlier app versions stored, so such an
+  // install does not start in guest mode (see GuestModeService).
   await GuestModeService.load();
 
   runApp(const SoundPilotApp());
@@ -54,7 +54,7 @@ Future<void> main() async {
 
 /// Root widget: a Material 3 app with a light and a dark theme.
 ///
-/// Both themes are built by [_buildTheme] from [AppColors], so Material
+/// Both themes are built by [buildTheme] from [AppColors], so Material
 /// widgets that are not styled by hand (SnackBar, Dialog, TabBar, ...) follow
 /// the app palette as well.
 class SoundPilotApp extends StatelessWidget {
@@ -64,7 +64,12 @@ class SoundPilotApp extends StatelessWidget {
   ///
   /// Plus Jakarta Sans is applied here as the app-wide font, so every screen
   /// inherits it and no widget has to name a font family itself.
-  static ThemeData _buildTheme(Brightness brightness) {
+  ///
+  /// NOTE: Public so the widget tests can render the screens with the theme
+  /// the user really sees. They used to build a plain
+  /// `ThemeData(brightness: ...)` instead, which measures sizes and contrast
+  /// with Material's default colours and font, not with ours.
+  static ThemeData buildTheme(Brightness brightness) {
     final base = ThemeData(brightness: brightness, useMaterial3: true);
 
     final background = AppColors.backgroundOf(brightness);
@@ -108,8 +113,8 @@ class SoundPilotApp extends StatelessWidget {
       localizationsDelegates: appLocalizationsDelegates,
       // Follows the light/dark setting of the device.
       themeMode: ThemeMode.system,
-      theme: _buildTheme(Brightness.light),
-      darkTheme: _buildTheme(Brightness.dark),
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
       home: const AppEntryPoint(),
     );
   }
@@ -139,6 +144,14 @@ class AppEntryPoint extends StatelessWidget {
         // NOTE: The keys make sure a new DeviceScreen (and so a fresh load of
         // the devices) is created when switching between user and guest.
         final user = snapshot.data;
+        // NOTE: Says which of the three screens is shown and why. "Signed in"
+        // and "guest" both end on the DeviceScreen, which looks nearly the
+        // same, so without this line a report of "it starts in guest mode"
+        // cannot be told from a session that is simply still signed in.
+        logger.d(
+          'AppEntryPoint: ${user != null ? 'signed in' : 'signed out'}, '
+          'guest mode = ${GuestModeService.active.value}',
+        );
         if (user != null) {
           return DeviceScreen(
             key: ValueKey('user_${user.uid}'),
@@ -152,7 +165,7 @@ class AppEntryPoint extends StatelessWidget {
           builder: (context, isGuest, _) => isGuest
               ? DeviceScreen(
                   key: const ValueKey('guest'),
-                  repository: LocalDeviceRepository(),
+                  repository: GuestDeviceRepository(),
                   isSignedIn: false,
                 )
               : const StartScreen(),

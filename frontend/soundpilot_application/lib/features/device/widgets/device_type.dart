@@ -27,6 +27,7 @@ enum DeviceType {
     // Earbuds are calibrated (volume left/right), belts are set up (warning
     // distance, vibration) — the dialog says which one follows.
     nextStep: 'Nach dem Hinzufügen wird die Kalibrierung gestartet.',
+    openHint: 'Kalibrierung öffnen',
   ),
   belt(
     label: 'Gürtel',
@@ -38,6 +39,7 @@ enum DeviceType {
     manualHint: 'z. B. Mein Gürtel',
     emptyList: 'Noch keine Gürtel hinzugefügt.',
     nextStep: 'Nach dem Hinzufügen wird die Einrichtung gestartet.',
+    openHint: 'Einrichtung öffnen',
   );
 
   const DeviceType({
@@ -50,6 +52,7 @@ enum DeviceType {
     required this.manualHint,
     required this.emptyList,
     required this.nextStep,
+    required this.openHint,
   });
 
   /// Name of the group in the list and on the type selector.
@@ -78,6 +81,10 @@ enum DeviceType {
 
   /// Hint about what happens right after the device was added.
   final String nextStep;
+
+  /// What tapping a device card of this type does, read out by screen readers
+  /// as the card's tap hint ('Kalibrierung öffnen' / 'Einrichtung öffnen').
+  final String openHint;
 }
 
 /// A device found by [scanForDevices].

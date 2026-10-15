@@ -88,7 +88,7 @@ class AuthService {
 
       logger.d("AuthService: Email login successful");
 
-      // NOTE: Whether the locally saved guest devices are taken over is asked
+      // NOTE: Whether the devices added as a guest are taken over is asked
       // after the sign-in (offerGuestDevices in auth_flow.dart).
 
       return await _resultFor(result.user);
@@ -400,7 +400,7 @@ class AuthService {
     final model = _mapFirebaseUser(user);
     if (model == null) return AuthResult.failure(messageForCode(null));
 
-    // A signed-in user is no guest, also not on the next app start.
+    // A signed-in user is no guest.
     // NOTE: Only the flag; the guest's devices stay until the user decided
     // what happens with them (offerGuestDevices in auth_flow.dart).
     await GuestModeService.set(false);

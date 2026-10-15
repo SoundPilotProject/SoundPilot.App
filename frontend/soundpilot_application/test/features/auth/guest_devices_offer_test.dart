@@ -1,7 +1,7 @@
 // test/features/auth/guest_devices_offer_test.dart
 //
-// Tests the question after a sign-in on a phone with guest devices: take
-// them over or delete them, and what happens if the take-over fails.
+// Tests the question after a sign-in with devices added as a guest: take
+// them over or forget them, and what happens if the take-over fails.
 
 import 'dart:async';
 
@@ -10,16 +10,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:soundpilot_application/core/app_locale.dart';
-import 'package:soundpilot_application/core/services/device_storage_service.dart';
+import 'package:soundpilot_application/core/services/device_repository.dart';
 import 'package:soundpilot_application/features/auth/guest_devices_offer.dart';
 import 'package:soundpilot_application/models/user_model.dart';
-
-const _guest = DeviceStorageService.guestOwner;
 
 final _guestDevices = DeviceData(
   headphones: {'aa': HeadphoneCalib(modelId: 'Pods')},
   belts: {'bb': BeltCalib(modelId: 'Gürtel 1')},
 );
+
+/// Adds [data] the way a guest does, through the repository.
+Future<void> _addAsGuest(DeviceData data) async {
+  final repository = GuestDeviceRepository();
+  for (final entry in data.headphones.entries) {
+    await repository.putHeadphone(entry.key, entry.value);
+  }
+  for (final entry in data.belts.entries) {
+    await repository.putBelt(entry.key, entry.value);
+  }
+}
 
 /// Shows a button that runs [offerGuestDevices] with [upload], like the
 /// login screen after a successful sign-in.
@@ -50,11 +59,11 @@ Future<void> _signIn(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<DeviceData> _storedGuestDevices() => DeviceStorageService.load(_guest);
-
 void main() {
-  setUp(() async {
+  setUp(() {
     SharedPreferences.setMockInitialValues({});
+    // The guest's devices are static, so they outlive a single test.
+    GuestDeviceRepository.clear();
   });
 
   testWidgets('no guest devices: nothing is asked', (tester) async {
@@ -67,29 +76,28 @@ void main() {
     expect(uploads, 0);
   });
 
-  testWidgets('"Geräte übernehmen" uploads them, then deletes them here',
+  testWidgets('"Geräte übernehmen" uploads them, then forgets them here',
       (tester) async {
-    await DeviceStorageService.save(_guest, _guestDevices);
+    await _addAsGuest(_guestDevices);
     final uploaded = <DeviceData>[];
     await _pumpHost(tester, (devices) async => uploaded.add(devices));
 
     await _signIn(tester);
     expect(find.text('Gast-Geräte übernehmen?'), findsOneWidget);
-    expect(find.textContaining('2 Geräte gespeichert'), findsOneWidget);
+    expect(find.textContaining('2 Geräte hinzugefügt'), findsOneWidget);
 
     await tester.tap(find.text('Geräte übernehmen'));
     await tester.pumpAndSettle();
 
     expect(uploaded.single.headphones.keys, ['aa']);
     expect(uploaded.single.belts.keys, ['bb']);
-    final left = await tester.runAsync(_storedGuestDevices);
-    expect(left!.headphones, isEmpty);
-    expect(left.belts, isEmpty);
+    expect(GuestDeviceRepository.devices.headphones, isEmpty);
+    expect(GuestDeviceRepository.devices.belts, isEmpty);
   });
 
-  testWidgets('"Geräte löschen" deletes them without uploading',
+  testWidgets('"Geräte löschen" forgets them without uploading',
       (tester) async {
-    await DeviceStorageService.save(_guest, _guestDevices);
+    await _addAsGuest(_guestDevices);
     var uploads = 0;
     await _pumpHost(tester, (_) async => uploads++);
 
@@ -98,13 +106,24 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(uploads, 0);
-    final left = await tester.runAsync(_storedGuestDevices);
-    expect(left!.headphones, isEmpty);
+    expect(GuestDeviceRepository.devices.headphones, isEmpty);
   });
 
-  testWidgets('a failed take-over says so and keeps the devices here',
+  testWidgets('nothing of this is written to the phone', (tester) async {
+    await _addAsGuest(_guestDevices);
+    await _pumpHost(tester, (_) async {});
+
+    await _signIn(tester);
+    await tester.tap(find.text('Geräte übernehmen'));
+    await tester.pumpAndSettle();
+
+    final prefs = await tester.runAsync(SharedPreferences.getInstance);
+    expect(prefs!.getKeys(), isEmpty);
+  });
+
+  testWidgets('a failed take-over says so and keeps the devices',
       (tester) async {
-    await DeviceStorageService.save(_guest, _guestDevices);
+    await _addAsGuest(_guestDevices);
     await _pumpHost(tester, (_) async => throw Exception('offline'));
 
     await _signIn(tester);
@@ -114,13 +133,12 @@ void main() {
     expect(find.textContaining('konnten nicht übernommen werden'),
         findsOneWidget);
     expect(find.text('Geräte werden übernommen...'), findsNothing);
-    final left = await tester.runAsync(_storedGuestDevices);
-    expect(left!.headphones.keys, ['aa']);
+    expect(GuestDeviceRepository.devices.headphones.keys, ['aa']);
   });
 
   testWidgets('a take-over that never finishes fails after the timeout',
       (tester) async {
-    await DeviceStorageService.save(_guest, _guestDevices);
+    await _addAsGuest(_guestDevices);
     // E.g. the cloud function never creates the user document.
     await _pumpHost(tester, (_) => Completer<void>().future);
 
@@ -142,7 +160,7 @@ void main() {
 
   testWidgets('back and tapping outside do not close the question',
       (tester) async {
-    await DeviceStorageService.save(_guest, _guestDevices);
+    await _addAsGuest(_guestDevices);
     await _pumpHost(tester, (_) async {});
 
     await _signIn(tester);
@@ -155,14 +173,13 @@ void main() {
   });
 
   testWidgets('one device is named in the singular', (tester) async {
-    await DeviceStorageService.save(
-      _guest,
+    await _addAsGuest(
       DeviceData(belts: {'bb': BeltCalib(modelId: 'Gürtel 1')}),
     );
     await _pumpHost(tester, (_) async {});
 
     await _signIn(tester);
 
-    expect(find.textContaining('1 Gerät gespeichert'), findsOneWidget);
+    expect(find.textContaining('1 Gerät hinzugefügt'), findsOneWidget);
   });
 }

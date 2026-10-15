@@ -19,6 +19,7 @@ import 'belt_warning_distance_screen.dart';
 import '../../../core/app_logger.dart';
 import '../../../core/services/audio_device_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_snack_bar.dart';
 import '../../../core/widgets/loading_screen.dart';
 import '../../../core/services/device_repository.dart';
 import '../../auth/screens/login_screen.dart';
@@ -31,7 +32,7 @@ import '../widgets/unsynced_logout_dialog.dart';
 /// Main screen after start-up (signed in or guest).
 ///
 /// Shows the earbuds and belts of [repository] (Firestore for a signed-in
-/// user, local for a guest) and stays in sync with it. Guests see 'Login' and
+/// user, memory only for a guest) and stays in sync with it. Guests see 'Login' and
 /// 'Registrieren', signed-in users see 'Abmelden'. Tapping a device opens its
 /// calibration ([CalibrationScreen]) or belt setup
 /// ([BeltWarningDistanceScreen]).
@@ -91,6 +92,14 @@ class _DeviceScreenState extends State<DeviceScreen> {
   /// Whether the next headphone list is the first one, which only reports
   /// the state at the start and is not announced.
   bool _firstHeadphoneList = true;
+
+  /// The last connection change as a sentence, e.g. 'Pods ist jetzt
+  /// verbunden'; null until a device connects or disconnects.
+  ///
+  /// NOTE: Shown as a line above the lists, so the change is visible as well
+  /// as spoken. Where the platform cannot speak announcements it is the only
+  /// way the change reaches a screen reader, see [_onHeadphonesChanged].
+  String? _connectionMessage;
 
   /// Keys of the belts that count as connected in this session: their setup
   /// was finished. Belts have no real connection yet.
@@ -155,21 +164,10 @@ class _DeviceScreenState extends State<DeviceScreen> {
     write.catchError((Object e) {
       logger.e('DeviceScreen: Saving failed', error: e);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.error_outline),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Die Änderung konnte nicht gespeichert werden. '
-                  'Bitte versuche es später noch einmal.',
-                ),
-              ),
-            ],
-          ),
-        ),
+      showAppError(
+        context,
+        'Die Änderung konnte nicht gespeichert werden. '
+        'Bitte versuche es später noch einmal.',
       );
     });
   }
@@ -235,35 +233,52 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   // ── Headphone connection ───────────────────────────────────────────────────
 
-  /// Takes over the connected headphones and tells screen reader users which
-  /// of their headphones connected or disconnected.
+  /// Takes over the connected headphones and tells the user which of their
+  /// headphones connected or disconnected.
   ///
-  /// NOTE: Only headphones in the device list are announced, and not for the
-  /// first list ([_firstHeadphoneList]).
+  /// The change is reported twice over, because neither way works everywhere:
+  /// as a spoken announcement where the platform supports one, and always as
+  /// the visible [_connectionMessage] line, which is a live region exactly
+  /// where it cannot be announced. Android has deprecated announcement events
+  /// (`MediaQuery.supportsAnnounceOf` is false there), so without the line a
+  /// screen reader user would not learn about the change at all; announcing
+  /// *and* making it a live region would say it twice.
+  ///
+  /// NOTE: Only headphones in the device list are reported, and nothing is
+  /// reported for the first list ([_firstHeadphoneList]), which is just the
+  /// state at the start.
   void _onHeadphonesChanged(List<HeadphoneDevice> headphones) {
     final connected = {
       for (final h in headphones)
         if (h.isConnected && h.address.isNotEmpty) h.address.toUpperCase(),
     };
 
+    final changes = <String>[];
     if (!_firstHeadphoneList) {
       for (final MapEntry(:key, :value) in _earbuds.entries) {
         final address = key.toUpperCase();
         final now = connected.contains(address);
         if (_connectedHeadphones.contains(address) != now) {
           final state = now ? 'ist jetzt verbunden' : 'ist jetzt getrennt';
-          SemanticsService.sendAnnouncement(
-            View.of(context),
-            '${value.modelId} $state',
-            TextDirection.ltr,
-          );
+          changes.add('${value.modelId} $state');
         }
+      }
+    }
+
+    if (MediaQuery.supportsAnnounceOf(context)) {
+      for (final change in changes) {
+        SemanticsService.sendAnnouncement(
+          View.of(context),
+          change,
+          TextDirection.ltr,
+        );
       }
     }
 
     setState(() {
       _connectedHeadphones = connected;
       _firstHeadphoneList = false;
+      if (changes.isNotEmpty) _connectionMessage = changes.join('. ');
     });
   }
 
@@ -419,6 +434,10 @@ class _DeviceScreenState extends State<DeviceScreen> {
           _buildLoadError(),
           const SizedBox(height: 18),
         ],
+        if (_connectionMessage != null) ...[
+          _buildConnectionMessage(),
+          const SizedBox(height: 18),
+        ],
         ..._buildDeviceGroup(
           type: DeviceType.earbuds,
           devices: {
@@ -446,6 +465,40 @@ class _DeviceScreenState extends State<DeviceScreen> {
         const Spacer(),
         const LegendBox(),
       ],
+    );
+  }
+
+  /// The last connection change as text ([_connectionMessage]).
+  ///
+  /// A live region only where the platform cannot speak announcements, so the
+  /// change is never said twice (see [_onHeadphonesChanged]).
+  Widget _buildConnectionMessage() {
+    return Semantics(
+      liveRegion: !MediaQuery.supportsAnnounceOf(context),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ExcludeSemantics(
+            child: Icon(
+              Icons.bluetooth_rounded,
+              color: AppColors.text(context),
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _connectionMessage!,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: AppColors.text(context),
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -677,10 +730,17 @@ class _TopActionButton extends StatelessWidget {
 }
 
 /// Square button with an icon (the '+' button next to the top actions).
+///
+/// NOTE: The label sits on the [Icon] *inside* the button, not on a [Tooltip]
+/// around it. `ElevatedButton` wraps itself in `Semantics(container: true)`, so
+/// anything wrapped around it lands on a separate semantics node: the tooltip
+/// never reached the node a screen reader focuses, and the button was
+/// announced without a name (it failed Flutter's `labeledTapTargetGuideline`).
+/// The tooltip itself stays, but only as the visual long-press hint.
 class _IconSquareButton extends StatelessWidget {
   final IconData icon;
 
-  /// Shown on long press and read out by screen readers as the button's name.
+  /// Name of the button: shown on long press and read out by screen readers.
   final String tooltip;
 
   final VoidCallback onPressed;
@@ -695,6 +755,7 @@ class _IconSquareButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
+      excludeFromSemantics: true,
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
@@ -707,7 +768,12 @@ class _IconSquareButton extends StatelessWidget {
           ),
           padding: EdgeInsets.zero,
         ),
-        child: Icon(icon, size: 34, color: AppColors.onPrimary(context)),
+        child: Icon(
+          icon,
+          size: 34,
+          color: AppColors.onPrimary(context),
+          semanticLabel: tooltip,
+        ),
       ),
     );
   }

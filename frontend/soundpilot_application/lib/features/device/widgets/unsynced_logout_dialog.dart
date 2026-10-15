@@ -39,6 +39,9 @@ class UnsyncedLogoutDialog extends StatelessWidget {
             const SizedBox(height: 10),
             Semantics(
               header: true,
+              // Names the dialog's route, so screen readers say what has
+              // just opened.
+              namesRoute: true,
               child: Text(
                 'Nicht gespeicherte Änderungen',
                 textAlign: TextAlign.center,

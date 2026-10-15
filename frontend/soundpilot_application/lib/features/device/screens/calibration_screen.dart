@@ -457,16 +457,43 @@ class _SecondaryButton extends StatelessWidget {
 
 // ── Volume Picker ────────────────────────────────────────────────────────────
 
+/// Style of the 'Linke Seite' / 'Rechte Seite' headings.
+///
+/// NOTE: The only place in the app that does *not* use Plus Jakarta Sans. It
+/// is the platform's own heading font (Roboto on Android, San Francisco on
+/// iOS), asked for by the team because the two headings looked wrong in Plus
+/// Jakarta Sans — that font ends at w800, so the w900 these headings use was
+/// faked by smearing the w800 face. `inherit: false` is what keeps the app
+/// font out: without it the family of the surrounding text theme is merged in.
+/// Both platform fonts have a real w900, so nothing is synthesised here.
+///
+/// Mind this when touching §2 of docs/PROJECT_CONTEXT.md, which otherwise
+/// states that no other font family is used anywhere.
+TextStyle _sideTitleStyle(BuildContext context) {
+  return TextStyle(
+    inherit: false,
+    fontSize: 26,
+    fontWeight: FontWeight.w900,
+    color: AppColors.text(context),
+    height: 1.2,
+  );
+}
+
 /// One side of the calibration: a heading and a scroll wheel for the volume.
 ///
 /// The selected value is drawn transparent inside the wheel and shown in the
 /// highlighted box that is stacked on top of it instead.
 ///
-/// Accessibility note: the wheel is the only visible control, but it is wrapped
-/// in a semantics node that exposes the current value plus an increase and a
-/// decrease action. Screen readers therefore offer the standard
-/// "swipe up / swipe down to adjust" gesture, which a bare
-/// [ListWheelScrollView] does not provide.
+/// Accessibility notes:
+/// - The wheel is the only visible control, but it is wrapped in a semantics
+///   node that exposes the current value plus an increase and a decrease
+///   action. Screen readers therefore offer the standard "swipe up / swipe
+///   down to adjust" gesture, which a bare [ListWheelScrollView] does not
+///   provide.
+/// - Every size here follows the system font size. The item extent and the
+///   highlight box used to be fixed (44 / 72 dp), so from text scale 1.6 the
+///   numbers were taller than their slot and lost their top and bottom. That
+///   throws no overflow exception, so no test could see it.
 class _VolumeSection extends StatelessWidget {
   /// Visible heading, e.g. 'Linke Seite'.
   final String title;
@@ -506,6 +533,15 @@ class _VolumeSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Every size of the wheel is derived from the scaled font size, so the
+    // numbers keep their room at any accessibility font setting.
+    final textScaler = MediaQuery.textScalerOf(context);
+    final itemFontSize = textScaler.scale(26.0);
+    final selectedFontSize = textScaler.scale(32.0);
+    final itemExtent = itemFontSize * 1.7;
+    final highlightHeight = selectedFontSize * 2.2;
+    final wheelHeight = itemExtent * 4;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -514,12 +550,7 @@ class _VolumeSection extends StatelessWidget {
           child: Text(
             title,
             textAlign: TextAlign.center,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 26,
-              fontWeight: FontWeight.w900,
-              color: AppColors.text(context),
-              height: 1.2,
-            ),
+            style: _sideTitleStyle(context),
           ),
         ),
         const SizedBox(height: 6),
@@ -542,14 +573,14 @@ class _VolumeSection extends StatelessWidget {
           onIncrease: () => _step(1),
           onDecrease: () => _step(-1),
           child: SizedBox(
-            height: 180,
+            height: wheelHeight,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 ExcludeSemantics(
                   child: ListWheelScrollView.useDelegate(
                     controller: controller,
-                    itemExtent: 44,
+                    itemExtent: itemExtent,
                     diameterRatio: 10,
                     perspective: 0.003,
                     physics: const FixedExtentScrollPhysics(),
@@ -562,8 +593,11 @@ class _VolumeSection extends StatelessWidget {
                         return Center(
                           child: Text(
                             value.toString(),
+                            // Already scaled into itemFontSize; scaling it
+                            // again would outgrow the item extent.
+                            textScaler: TextScaler.noScaling,
                             style: GoogleFonts.plusJakartaSans(
-                              fontSize: 26,
+                              fontSize: itemFontSize,
                               fontWeight: FontWeight.w800,
                               color: isSelected
                                   ? Colors.transparent
@@ -579,9 +613,12 @@ class _VolumeSection extends StatelessWidget {
                 // wheel draggable through it.
                 IgnorePointer(
                   child: Container(
-                    height: 72,
-                    width: 190,
+                    height: highlightHeight,
+                    constraints: BoxConstraints(
+                      minWidth: highlightHeight * 2.6,
+                    ),
                     alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
                       color: AppColors.primary(context),
                       borderRadius: BorderRadius.circular(22),
@@ -593,12 +630,18 @@ class _VolumeSection extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: Text(
-                      selectedValue.toString(),
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.onPrimary(context),
+                    // The value is already in the wheel's semantics node;
+                    // without this it would be announced a second time.
+                    child: ExcludeSemantics(
+                      child: Text(
+                        selectedValue.toString(),
+                        // Already scaled into selectedFontSize.
+                        textScaler: TextScaler.noScaling,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: selectedFontSize,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.onPrimary(context),
+                        ),
                       ),
                     ),
                   ),

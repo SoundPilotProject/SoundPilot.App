@@ -4,6 +4,7 @@
 // input).
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -50,6 +51,12 @@ class RecommendationCard extends StatelessWidget {
 /// The visible heading sits above the field, so [label] is invisible and only
 /// serves screen readers: without it the field would be announced as an
 /// unnamed text box.
+///
+/// NOTE: The label is attached with a [Semantics] wrapper, not with an
+/// invisible `labelText`. These fields start pre-filled ('200' / '100'), and
+/// an invisible `labelText` only reaches the semantics tree while the field is
+/// empty — so they used to be announced as a nameless text box with the value
+/// '200'.
 class BeltNumberField extends StatelessWidget {
   final TextEditingController controller;
 
@@ -74,35 +81,38 @@ class BeltNumberField extends StatelessWidget {
       color: AppColors.text(context),
     );
 
-    return TextField(
-      controller: controller,
-      keyboardType: TextInputType.number,
-      textAlign: TextAlign.center,
-      style: textStyle,
-      decoration: InputDecoration(
-        labelText: label,
-        floatingLabelBehavior: FloatingLabelBehavior.never,
-        labelStyle: const TextStyle(color: Colors.transparent),
-        suffixText: suffix,
-        suffixStyle: textStyle.copyWith(color: AppColors.mutedText(context)),
-        filled: true,
-        fillColor: AppColors.surface(context),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 22,
-          vertical: 22,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide(
-            color: AppColors.inputBorder(context),
-            width: 2,
+    return Semantics(
+      label: label,
+      child: TextField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        // Only digits: the field is read back as a number, and a pasted word
+        // would silently become an invalid setting.
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        textAlign: TextAlign.center,
+        style: textStyle,
+        decoration: InputDecoration(
+          suffixText: suffix,
+          suffixStyle: textStyle.copyWith(color: AppColors.mutedText(context)),
+          filled: true,
+          fillColor: AppColors.surface(context),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 22,
+            vertical: 22,
           ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide(
-            color: AppColors.primary(context),
-            width: 3.5,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: AppColors.inputBorder(context),
+              width: 2,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: AppColors.primary(context),
+              width: 3.5,
+            ),
           ),
         ),
       ),

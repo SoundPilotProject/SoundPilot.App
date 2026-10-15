@@ -13,8 +13,13 @@ import '../theme/app_colors.dart';
 /// Replaces the former `_LoginTextField` / `_RegisterTextField` duplicates.
 ///
 /// Accessibility notes:
-/// - [label] is passed to the field as its screen-reader label, so TalkBack and
-///   VoiceOver announce what has to be typed in.
+/// - [label] is the field's screen-reader label, so TalkBack and VoiceOver
+///   announce what has to be typed in.
+///   NOTE: Where the label stays invisible it is attached with a [Semantics]
+///   wrapper, not with `labelText`. An invisible `labelText` only reaches the
+///   semantics tree while the field is empty, so a field that is pre-filled
+///   when it is first built (the password reset opened from the login) was
+///   announced as a nameless text box.
 /// - The field has no fixed height. Its height follows the content padding and
 ///   the system font size, so large text is never clipped.
 /// - A focused field gets a thicker border in the accent colour, which is the
@@ -43,9 +48,15 @@ class AuthTextField extends StatelessWidget {
   /// has content, instead of being invisible.
   ///
   /// Use this where the screen has no room for a separate caption above the
-  /// field (the registration form, which must fit on one screen). The caller
-  /// then must not render its own caption, or the label is announced twice.
+  /// field. The caller then must not render its own caption, or the label is
+  /// announced twice.
   final bool showLabel;
+
+  /// Autofill category of the field, e.g. `[AutofillHints.email]`.
+  ///
+  /// Lets the system and password managers fill the field in, which matters
+  /// for users who cannot type long strings.
+  final Iterable<String>? autofillHints;
 
   /// Smaller vertical padding, for forms that have to fit on one screen.
   final bool compact;
@@ -73,10 +84,19 @@ class AuthTextField extends StatelessWidget {
     this.showLabel = false,
     this.compact = false,
     this.stretch = false,
+    this.autofillHints,
   });
 
   @override
   Widget build(BuildContext context) {
+    final field = _buildField(context);
+
+    // With a visible label the field names itself; otherwise the label is
+    // attached here, so it survives the field having content (see class docs).
+    return showLabel ? field : Semantics(label: label, child: field);
+  }
+
+  Widget _buildField(BuildContext context) {
     final borderRadius = BorderRadius.circular(20);
     final fontSize = compact ? 18.0 : 21.0;
     final mutedText = AppColors.mutedText(context);
@@ -87,15 +107,18 @@ class AuthTextField extends StatelessWidget {
       keyboardType: keyboardType,
       textInputAction: textInputAction,
       onSubmitted: onSubmitted,
+      autofillHints: autofillHints,
       style: GoogleFonts.plusJakartaSans(
         fontSize: fontSize,
         fontWeight: FontWeight.w700,
         color: AppColors.text(context),
       ),
       decoration: InputDecoration(
-        labelText: label,
-        // Without [showLabel] the visible caption sits above the field, so the
-        // label is only needed by screen readers and stays hidden.
+        // Without [showLabel] the visible caption sits above the field and the
+        // screen-reader label comes from the Semantics wrapper in [build], so
+        // the decoration carries no label at all and the placeholder is free
+        // to show.
+        labelText: showLabel ? label : null,
         floatingLabelBehavior:
             showLabel ? FloatingLabelBehavior.auto : FloatingLabelBehavior.never,
         // Only show the placeholder where it is not competing with a visible

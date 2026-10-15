@@ -172,6 +172,59 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
     return null;
   }
 
+  /// The one control that fits the current state.
+  ///
+  /// NOTE: Only ever a button that really does something. 'Start' and 'Stop'
+  /// used to be shown side by side at all times, each disabled unless it
+  /// applied — so on a phone without the earbud connected (and on every
+  /// desktop and browser, where there is no sound at all) the screen offered
+  /// two grey buttons and no way forward. Now the state decides: play, stop,
+  /// or the way to the Bluetooth settings, the same pattern the calibration
+  /// uses for its test tone.
+  List<Widget> _buildPlaybackControls() {
+    // No sound here at all; the note already says so.
+    if (!_soundSupported) return const [];
+
+    // The first connection state has not arrived yet: show nothing rather
+    // than a button that is about to be replaced.
+    if (_connection?.known != true) return const [];
+
+    if (!_canPlay) {
+      return [
+        _PlaybackButton(
+          label: 'Bluetooth-Einstellungen öffnen',
+          icon: Icons.settings_rounded,
+          fontSize: 19,
+          color: AppColors.primary(context),
+          textColor: AppColors.onPrimary(context),
+          onPressed: AudioDeviceService.openBluetoothSettings,
+        ),
+      ];
+    }
+
+    if (_isPlaying) {
+      return [
+        _PlaybackButton(
+          label: 'Stop',
+          icon: Icons.stop_rounded,
+          color: AppColors.stopRed,
+          textColor: Colors.white,
+          onPressed: _stopAudio,
+        ),
+      ];
+    }
+
+    return [
+      _PlaybackButton(
+        label: 'Start',
+        icon: Icons.play_arrow_rounded,
+        color: AppColors.primary(context),
+        textColor: AppColors.onPrimary(context),
+        onPressed: _startAudio,
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -240,23 +293,7 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    _PlaybackButton(
-                      label: 'Start',
-                      icon: Icons.play_arrow_rounded,
-                      enabled: !_isPlaying && _canPlay,
-                      activeColor: AppColors.primary(context),
-                      activeTextColor: AppColors.onPrimary(context),
-                      onPressed: _startAudio,
-                    ),
-                    const SizedBox(height: 12),
-                    _PlaybackButton(
-                      label: 'Stop',
-                      icon: Icons.stop_rounded,
-                      enabled: _isPlaying,
-                      activeColor: AppColors.stopRed,
-                      activeTextColor: Colors.white,
-                      onPressed: _stopAudio,
-                    ),
+                    ..._buildPlaybackControls(),
                     const SizedBox(height: 22),
                     Semantics(
                       header: true,
@@ -336,41 +373,38 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
 
 // ── Playback buttons ─────────────────────────────────────────────────────────
 
-/// Wide 'Start' / 'Stop' button with an icon and a centred label.
+/// Wide button with an icon and a centred label, used for the one control the
+/// [TestPage] offers at a time (see `_buildPlaybackControls`).
 ///
-/// Disabled state is not shown by colour alone: a disabled button is also
-/// reported as disabled to screen readers because [onPressed] is null.
+/// Always enabled: the page shows the button that applies instead of greying
+/// one out, so there is never a button that cannot be used.
 class _PlaybackButton extends StatelessWidget {
   final String label;
   final IconData icon;
 
-  /// False while the action is not available (e.g. 'Stop' while nothing plays).
-  final bool enabled;
-
-  final Color activeColor;
-  final Color activeTextColor;
+  final Color color;
+  final Color textColor;
   final VoidCallback onPressed;
+
+  /// Smaller for the long label of the Bluetooth settings.
+  final double fontSize;
 
   const _PlaybackButton({
     required this.label,
     required this.icon,
-    required this.enabled,
-    required this.activeColor,
-    required this.activeTextColor,
+    required this.color,
+    required this.textColor,
     required this.onPressed,
+    this.fontSize = 23,
   });
 
   @override
   Widget build(BuildContext context) {
-    final foreground = enabled ? activeTextColor : Colors.white;
-
     return ElevatedButton(
-      onPressed: enabled ? onPressed : null,
+      onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-        backgroundColor: activeColor,
-        foregroundColor: activeTextColor,
-        disabledBackgroundColor: AppColors.inactiveButton(context),
-        disabledForegroundColor: Colors.white,
+        backgroundColor: color,
+        foregroundColor: textColor,
         elevation: 4,
         shadowColor: Colors.black.withValues(alpha: 0.15),
         minimumSize: const Size(double.infinity, 64),
@@ -382,18 +416,18 @@ class _PlaybackButton extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: foreground, size: 30),
+          Icon(icon, color: textColor, size: 30),
           const SizedBox(width: 10),
           Flexible(
             child: Text(
               label,
               textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              // Two lines instead of being cut off at large font sizes.
+              maxLines: 2,
               style: GoogleFonts.plusJakartaSans(
-                fontSize: 23,
+                fontSize: fontSize,
                 fontWeight: FontWeight.w800,
-                color: foreground,
+                color: textColor,
               ),
             ),
           ),
