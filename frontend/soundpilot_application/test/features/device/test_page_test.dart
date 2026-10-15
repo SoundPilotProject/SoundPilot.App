@@ -1,7 +1,8 @@
 // test/features/device/test_page_test.dart
 //
-// Tests that the TestPage plays its sound on the calibrated earbud with the
-// calibrated gains, and only while the earbud is connected.
+// Tests that the TestPage plays its sound with the calibrated gains — on the
+// calibrated earbud while that is connected, on the phone itself otherwise —
+// and which of its buttons can be used in each state.
 
 import 'dart:async';
 
@@ -46,21 +47,24 @@ Future<void> _pumpPage(
   await tester.pump();
 }
 
-/// The label of the one playback control the page offers, or null if it
-/// offers none.
+/// The playback controls on the page: every button but 'Abschließen', which
+/// leaves the page. [onlyUsable] drops the ones that are disabled.
 ///
-/// NOTE: The page shows the button that applies ('Start', 'Stop' or the way
-/// to the Bluetooth settings) instead of greying out the ones that do not, so
-/// there is never a button that cannot be used.
-String? _controlLabel(WidgetTester tester) {
+/// NOTE: 'Start' and 'Stop' are always on the screen; which of them can be
+/// used is the state. The Bluetooth button only appears while the earbud is
+/// missing, so the screen is never a dead end.
+List<String> _controls(WidgetTester tester, {bool onlyUsable = false}) {
+  final labels = <String>[];
   final buttons = find.byType(ElevatedButton);
   for (var i = 0; i < buttons.evaluate().length; i++) {
+    final button = tester.widget<ElevatedButton>(buttons.at(i));
     final label = find.descendant(of: buttons.at(i), matching: find.byType(Text));
     final text = tester.widget<Text>(label.first).data;
-    // 'Abschließen' is the button that leaves the page, not a control.
-    if (text != null && text != 'Abschließen') return text;
+    if (text == null || text == 'Abschließen') continue;
+    if (onlyUsable && button.onPressed == null) continue;
+    labels.add(text);
   }
-  return null;
+  return labels;
 }
 
 void main() {
@@ -98,25 +102,70 @@ void main() {
       'deviceId': 7,
     });
     expect(find.textContaining('Wiedergabe läuft'), findsOneWidget);
-    // While it plays, 'Stop' is the control, not a second grey button.
-    expect(_controlLabel(tester), 'Stop');
+    // 'Start' keeps its colour and restarts the recording; 'Stop' is only
+    // alive while something plays.
+    expect(_controls(tester), ['Start', 'Stop']);
+    expect(_controls(tester, onlyUsable: true), ['Start', 'Stop']);
 
     await tester.tap(find.text('Stop'));
     await tester.pump();
     expect(methods().last, 'stopPlayback');
-    expect(_controlLabel(tester), 'Start');
+    expect(_controls(tester, onlyUsable: true), ['Start']);
+  });
+
+  testWidgets('without an earbud it plays on the phone itself',
+      (tester) async {
+    await _pumpPage(tester, headphones: Stream.value(const []));
+
+    // 'Start' works here too, otherwise the exercise could not be tried at
+    // all before pairing anything.
+    await tester.tap(find.text('Start'));
+    await tester.pump();
+
+    expect(calls.single.method, 'playTestSound');
+    // No device: the native side plays on the default output.
+    expect((calls.single.arguments as Map)['deviceId'], isNull);
+    expect(find.textContaining('über den Lautsprecher'), findsWidgets);
+    expect(_controls(tester, onlyUsable: true),
+        ['Start', 'Stop', 'Bluetooth-Einstellungen öffnen']);
+  });
+
+  testWidgets('sound on the phone survives a headphone change',
+      (tester) async {
+    final headphones = StreamController<List<HeadphoneDevice>>(sync: true);
+    addTearDown(headphones.close);
+    await _pumpPage(tester, headphones: headphones.stream);
+    headphones.add(const []);
+    await tester.pump();
+    await tester.tap(find.text('Start'));
+    await tester.pump();
+
+    // Another device comes and goes; only a playback on the earbud is
+    // stopped by that, this one is not.
+    headphones.add(const []);
+    await tester.pump();
+
+    expect(find.textContaining('Wiedergabe läuft'), findsOneWidget);
   });
 
   testWidgets('offers the Bluetooth settings while the earbud is not connected',
       (tester) async {
     await _pumpPage(tester, headphones: Stream.value(const []));
 
-    expect(find.textContaining('Verbinde zuerst deine Kopfhörer'),
+    expect(find.textContaining('Kopfhörer sind nicht verbunden'),
         findsOneWidget);
-    // Not a greyed-out 'Start' but the way forward, and it works.
-    expect(_controlLabel(tester), 'Bluetooth-Einstellungen öffnen');
+    // 'Start' plays on the phone itself, and the way to the earbud is right
+    // there for whoever wants to hear the calibration.
+    expect(_controls(tester),
+        ['Start', 'Stop', 'Bluetooth-Einstellungen öffnen']);
+    expect(_controls(tester, onlyUsable: true),
+        ['Start', 'Bluetooth-Einstellungen öffnen']);
 
-    await tester.tap(find.text('Bluetooth-Einstellungen öffnen'));
+    // Below the fold on a small phone once the note is there.
+    final bluetooth = find.text('Bluetooth-Einstellungen öffnen');
+    await tester.ensureVisible(bluetooth);
+    await tester.pump();
+    await tester.tap(bluetooth);
     await tester.pump();
     expect(methods().last, 'openBluetoothSettings');
   });
@@ -128,8 +177,10 @@ void main() {
 
     expect(find.text('Die Aufnahme gibt es nur in der Android-App.'),
         findsOneWidget);
-    // Nothing to offer here, so no control at all.
-    expect(_controlLabel(tester), isNull);
+    // The buttons are shown, but there is no sound at all here, and no
+    // Bluetooth settings to send anyone to.
+    expect(_controls(tester), ['Start', 'Stop']);
+    expect(_controls(tester, onlyUsable: true), isEmpty);
   });
 
   testWidgets('follows when the earbud disconnects', (tester) async {
@@ -146,7 +197,8 @@ void main() {
 
     // The native side stops the sound itself; the page follows.
     expect(find.textContaining('Wiedergabe gestoppt'), findsOneWidget);
-    expect(_controlLabel(tester), 'Bluetooth-Einstellungen öffnen');
+    expect(_controls(tester, onlyUsable: true),
+        ['Start', 'Bluetooth-Einstellungen öffnen']);
   });
 
   testWidgets('stops when the app goes to the background', (tester) async {

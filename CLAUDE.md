@@ -452,13 +452,26 @@ device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
   disconnects or the `TestPage` opens. Not connected: a note and a button to
   the Bluetooth settings. Outside the Android app there is no tone.
 - The `TestPage` ("Testübung") plays `assets/audio/Marschieren.mp3` the same
-  way, on the calibrated earbud with the calibrated gain per side, and only
-  while it is connected. It shows the one control that applies — 'Start',
-  'Stop' or, if the earbud is not connected, a button to the Bluetooth
-  settings (`_buildPlaybackControls`). 'Start' and 'Stop' used to stand side
-  by side at all times, each greyed out unless it applied, so without a
-  connected earbud (and on every desktop and browser, where there is no
-  sound) the screen offered two dead buttons and no way on.
+  way, with the calibrated gain per side. **Unlike the calibration's test
+  tone it does not need the earbud:** it plays on the calibrated earbud while
+  that is connected and on the phone's own output otherwise (`deviceId`
+  null, which the native side already understood). The note then says that
+  the recording runs through the speaker and that left/right can only be
+  heard on the earbuds, and the status line names the output as well. The
+  exercise is how the app is shown and tried, so requiring hardware made it
+  untryable; the test tone keeps requiring the earbud, because setting one
+  ear's volume without that ear is meaningless.
+  **'Start' and 'Stop' are always on the screen** (`_buildPlaybackControls`),
+  plus the button to the Bluetooth settings while no earbud is connected.
+  'Start' keeps the app's colour wherever there is sound at all and restarts
+  the recording when it is already playing (the native side stops the
+  running player before it opens the new one anyway); 'Stop' is grey until
+  there is something to stop and red while it runs. The pair was briefly collapsed into
+  the single button that applied, because two grey buttons used to be the
+  screen's only offer without an earbud — a dead end. Both halves of that are
+  fixed now; do not take either away again.
+  Only a playback that went to the earbud is stopped when the earbud
+  disconnects (`_playingOnEarbud`); sound on the phone itself keeps running.
   Both sounds go through `GainPlayer.java`: the file
   is decoded with `MediaCodec`, mixed down to mono (the file is mono anyway)
   and each sample gets its side's gain. It used to play through

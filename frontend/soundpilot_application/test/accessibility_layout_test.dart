@@ -206,12 +206,13 @@ void main() {
       // is not running while the playback is stopped.
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      // The earbud is not connected here, so the page offers the way to the
-      // Bluetooth settings instead of a greyed-out 'Start' and 'Stop'
-      // (see _buildPlaybackControls in test_page.dart).
+      // 'Start' and 'Stop' are always on the screen; the earbud is not
+      // connected here, so neither can be used and the way to the Bluetooth
+      // settings is there as well (see _buildPlaybackControls in
+      // test_page.dart).
+      expect(find.text('Start'), findsOneWidget);
+      expect(find.text('Stop'), findsOneWidget);
       expect(find.text('Bluetooth-Einstellungen öffnen'), findsOneWidget);
-      expect(find.text('Start'), findsNothing);
-      expect(find.text('Stop'), findsNothing);
     });
   });
 
