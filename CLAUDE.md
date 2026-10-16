@@ -68,8 +68,24 @@ Before starting any task, check the state of the repo and report it:
   - local branches that are merged or whose remote branch is gone
   - leftover remote branches of merged PRs
   - open PRs that still wait for a merge
+- **Plan:** if there is a "Current plan" section below, report where it
+  stands and which step comes next.
 
 Ask before deleting anything or discarding changes.
+
+### Plans that span several branches
+
+Claude has no memory between sessions or devices, so a plan that needs more
+than one branch/PR is written down here until it is done:
+
+- Before the first branch, add a section `### Current plan: <title>` at the
+  end of this file: the goal, the steps (one per branch, with the branch
+  name), and decisions made with the user.
+- Commit it with the first branch. Each later branch marks its step done
+  (with the PR number) and adjusts the remaining steps if the plan changed.
+- Keep the status per step on its own line, so parallel branches do not
+  conflict in the same line.
+- The last branch of the plan removes the section.
 
 ### Before pushing / opening a PR
 
@@ -112,3 +128,4 @@ When the user says a PR was merged:
 3. Delete the merged local branch (`git branch -d`, which refuses unmerged
    work) after asking, and check for other merged or orphaned branches and
    open PRs, as at session start.
+4. If the PR was a step of the current plan, name the next step.
