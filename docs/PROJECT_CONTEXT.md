@@ -243,10 +243,8 @@ npm run deploy     :: firebase deploy --only functions (does NOT build first)
 - To test the auth triggers together with the rules, run
   `firebase emulators:start --only functions,auth,firestore` from `firebase/`
   (ports: functions 5001, auth 9099, firestore 8080).
-- `firebase.json` also configures `storage` (with an empty `storage.rules`),
-  `hosting` (public folder `web`, which does not exist) and their emulators.
-  Neither is used. The hosting emulator's port 5000 is the same as the web
-  dev server's, so always pass `--only`.
+- `firebase.json` configures only Firestore and Functions; Cloud Storage and
+  Hosting are not used. Port 5000 belongs to the web dev server (see "Web development" above).
 - On Windows, `npm run lint` reports `linebreak-style` (CRLF) errors when
   git's `core.autocrlf` is on. The repo stores LF, so CI is not affected.
 
