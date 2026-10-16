@@ -102,6 +102,7 @@ firebase/                          Firestore rules, Cloud Functions, Hosting
   firestore.rules
   functions/src/index.ts
   functions/lib/                   tsc output, git-ignored (see §3)
+  rules-tests/                     tests of firestore.rules (see §3, §6)
   web/                             the hosting site (see §3): auth-action.html
                                    is the page the e-mail links open
 .github/workflows/ci-cd.yml        CI/CD pipeline (see §3)
@@ -279,6 +280,19 @@ npm run deploy     :: firebase deploy --only functions (does NOT build first)
 - `firebase/functions/lib/` (the compiled JavaScript) is git-ignored and
   `firebase.json` has no predeploy build step: run `npm run build` after
   cloning or pulling, before using the emulator or deploying by hand.
+- **Rules tests** (`firebase/rules-tests/`, also run in CI):
+
+  ```cmd
+  cd firebase/rules-tests
+  npm install
+  npm test             :: starts the Firestore emulator, runs, stops it
+  npm run test:running :: against an emulator that is already running
+  ```
+
+  They need Java 21 (like the emulator) and `firebase-tools` on the `PATH`.
+  On Windows the emulator's Java process can outlive `npm test` and keep port
+  8080 busy, so the next run reports "Port 8080 is not open"; end the
+  leftover `java.exe` in the Task Manager.
 - To test the auth triggers together with the rules, run
   `firebase emulators:start --only functions,auth,firestore` from `firebase/`
   (ports: functions 5001, auth 9099, firestore 8080).
@@ -359,10 +373,11 @@ Runs on every pull request to `main` and every push to `main`:
 |---|---|---|
 | `build_and_test` | `flutter pub get`, `flutter analyze --no-fatal-infos`, `flutter test` (Flutter 3.47.6) | analyzer warnings/errors, failing tests |
 | `functions` | `npm ci`, `npm run lint`, `npm run build` (Node.js 22) | lint errors, TypeScript errors |
+| `rules` | `npm ci`, `npm test` in `firebase/rules-tests` (Node.js 22, Java 21, Firestore emulator) | a failing rules test |
 | `deploy` | build functions, `firebase deploy --only firestore:rules,functions,hosting` | any deploy error |
 
 - **Deploying is automatic.** `deploy` runs only on pushes to `main` (i.e.
-  merged PRs) and only after both other jobs pass. Rules, functions and the
+  merged PRs) and only after all other jobs pass. Rules, functions and the
   hosting site do not need to be deployed by hand.
 - A manual deploy is overwritten by the next deploy from `main`. Deploy by
   hand only for things CI does not deploy (e.g. Firestore indexes), and test
@@ -656,10 +671,12 @@ For client code this means:
 - Other users' documents and all other paths, including any subcollection,
   are blocked. Do not build queries over the whole `users` collection. A rule
   for a new subcollection has to be added on purpose.
-- The rules are not tested in CI. They were tested by hand against the
-  Firestore emulator (13 allow/deny cases, 2026-09-24), and the writes of
-  `FirestoreDeviceRepository` as REST field-path updates (2026-10-07).
-  Re-test after changing them.
+- The rules are tested in CI against the Firestore emulator
+  (`firebase/rules-tests/firestore.rules.test.mjs`, see §3): every case
+  above, plus the writes of `FirestoreDeviceRepository` (put/remove of a
+  device with an `AA:BB:…` key, the multi-device import, a document that does
+  not exist yet). A rules change needs a test for what it allows and what it
+  still denies.
 
 ### Eventual consistency on registration
 
@@ -722,9 +739,10 @@ Not backed by evidence — check in the code instead of assuming:
 - **Firestore language default:** the function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
 - **Test strategy** is not documented. Tests mirror `lib/` under `test/`;
-  `test/helpers/` holds the fakes (repository, auth service). Not tested in
-  CI: `AuthService` itself, the native Android side (`MainActivity.java`) and
-  the security rules. `test/widget_test.dart` is still a placeholder.
+  `test/helpers/` holds the fakes (repository, auth service); the security
+  rules are tested in `firebase/rules-tests/`. Not tested in CI:
+  `AuthService` itself, the native Android side (`MainActivity.java`) and the
+  Cloud Functions. `test/widget_test.dart` is still a placeholder.
 
 ### Settled decisions
 

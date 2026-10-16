@@ -1,0 +1,20 @@
+{
+  "name": "rules-tests",
+  "description": "Tests of firebase/firestore.rules against the Firestore emulator",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore --project demo-soundpilot \"node --test\"",
+    "test:running": "node --test"
+  },
+  "engines": {
+    "node": "22"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.19.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.13.6"
+  }
+}
