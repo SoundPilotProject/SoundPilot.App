@@ -1,7 +1,8 @@
 // test/features/device/test_page_test.dart
 //
-// Tests that the TestPage plays its sound on the calibrated earbud with the
-// calibrated gains, and only while the earbud is connected.
+// Tests that the TestPage plays its sound with the calibrated gains — on the
+// calibrated earbud while that is connected, on the phone itself otherwise —
+// and which of its buttons can be used in each state.
 
 import 'dart:async';
 
@@ -46,13 +47,24 @@ Future<void> _pumpPage(
   await tester.pump();
 }
 
-/// Whether the 'Start' button can be tapped.
-bool _startEnabled(WidgetTester tester) {
-  final button = tester.widget<ButtonStyleButton>(find.ancestor(
-    of: find.text('Start'),
-    matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-  ));
-  return button.onPressed != null;
+/// The playback controls on the page: every button but 'Abschließen', which
+/// leaves the page. [onlyUsable] drops the ones that are disabled.
+///
+/// NOTE: 'Start' and 'Stop' are always on the screen; which of them can be
+/// used is the state. The Bluetooth button only appears while the earbud is
+/// missing, so the screen is never a dead end.
+List<String> _controls(WidgetTester tester, {bool onlyUsable = false}) {
+  final labels = <String>[];
+  final buttons = find.byType(ElevatedButton);
+  for (var i = 0; i < buttons.evaluate().length; i++) {
+    final button = tester.widget<ElevatedButton>(buttons.at(i));
+    final label = find.descendant(of: buttons.at(i), matching: find.byType(Text));
+    final text = tester.widget<Text>(label.first).data;
+    if (text == null || text == 'Abschließen') continue;
+    if (onlyUsable && button.onPressed == null) continue;
+    labels.add(text);
+  }
+  return labels;
 }
 
 void main() {
@@ -90,19 +102,72 @@ void main() {
       'deviceId': 7,
     });
     expect(find.textContaining('Wiedergabe läuft'), findsOneWidget);
+    // 'Start' keeps its colour and restarts the recording; 'Stop' is only
+    // alive while something plays.
+    expect(_controls(tester), ['Start', 'Stop']);
+    expect(_controls(tester, onlyUsable: true), ['Start', 'Stop']);
 
     await tester.tap(find.text('Stop'));
     await tester.pump();
     expect(methods().last, 'stopPlayback');
+    expect(_controls(tester, onlyUsable: true), ['Start']);
   });
 
-  testWidgets('cannot start while the earbud is not connected',
+  testWidgets('without an earbud it plays on the phone itself',
       (tester) async {
     await _pumpPage(tester, headphones: Stream.value(const []));
 
-    expect(find.textContaining('Verbinde zuerst deine Kopfhörer'),
+    // 'Start' works here too, otherwise the exercise could not be tried at
+    // all before pairing anything.
+    await tester.tap(find.text('Start'));
+    await tester.pump();
+
+    expect(calls.single.method, 'playTestSound');
+    // No device: the native side plays on the default output.
+    expect((calls.single.arguments as Map)['deviceId'], isNull);
+    expect(find.textContaining('über den Lautsprecher'), findsWidgets);
+    expect(_controls(tester, onlyUsable: true),
+        ['Start', 'Stop', 'Bluetooth-Einstellungen öffnen']);
+  });
+
+  testWidgets('sound on the phone survives a headphone change',
+      (tester) async {
+    final headphones = StreamController<List<HeadphoneDevice>>(sync: true);
+    addTearDown(headphones.close);
+    await _pumpPage(tester, headphones: headphones.stream);
+    headphones.add(const []);
+    await tester.pump();
+    await tester.tap(find.text('Start'));
+    await tester.pump();
+
+    // Another device comes and goes; only a playback on the earbud is
+    // stopped by that, this one is not.
+    headphones.add(const []);
+    await tester.pump();
+
+    expect(find.textContaining('Wiedergabe läuft'), findsOneWidget);
+  });
+
+  testWidgets('offers the Bluetooth settings while the earbud is not connected',
+      (tester) async {
+    await _pumpPage(tester, headphones: Stream.value(const []));
+
+    expect(find.textContaining('Kopfhörer sind nicht verbunden'),
         findsOneWidget);
-    expect(_startEnabled(tester), isFalse);
+    // 'Start' plays on the phone itself, and the way to the earbud is right
+    // there for whoever wants to hear the calibration.
+    expect(_controls(tester),
+        ['Start', 'Stop', 'Bluetooth-Einstellungen öffnen']);
+    expect(_controls(tester, onlyUsable: true),
+        ['Start', 'Bluetooth-Einstellungen öffnen']);
+
+    // Below the fold on a small phone once the note is there.
+    final bluetooth = find.text('Bluetooth-Einstellungen öffnen');
+    await tester.ensureVisible(bluetooth);
+    await tester.pump();
+    await tester.tap(bluetooth);
+    await tester.pump();
+    expect(methods().last, 'openBluetoothSettings');
   });
 
   testWidgets('says that the sound is only in the Android app',
@@ -112,7 +177,10 @@ void main() {
 
     expect(find.text('Die Aufnahme gibt es nur in der Android-App.'),
         findsOneWidget);
-    expect(_startEnabled(tester), isFalse);
+    // The buttons are shown, but there is no sound at all here, and no
+    // Bluetooth settings to send anyone to.
+    expect(_controls(tester), ['Start', 'Stop']);
+    expect(_controls(tester, onlyUsable: true), isEmpty);
   });
 
   testWidgets('follows when the earbud disconnects', (tester) async {
@@ -129,7 +197,8 @@ void main() {
 
     // The native side stops the sound itself; the page follows.
     expect(find.textContaining('Wiedergabe gestoppt'), findsOneWidget);
-    expect(_startEnabled(tester), isFalse);
+    expect(_controls(tester, onlyUsable: true),
+        ['Start', 'Bluetooth-Einstellungen öffnen']);
   });
 
   testWidgets('stops when the app goes to the background', (tester) async {

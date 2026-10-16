@@ -21,8 +21,8 @@ class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
 
   /// Starts guest mode. AppEntryPoint then replaces this screen with the
-  /// [DeviceScreen]; guest mode stays active on later app starts until the
-  /// user signs in or logs out.
+  /// [DeviceScreen]; guest mode lasts for this app run only, the next start
+  /// shows this screen again (see GuestModeService).
   ///
   /// NOTE: This used to keep the loading screen visible for a moment with a
   /// `Future.delayed(2 s)`. Original comment: "It slows the UI down on
@@ -63,7 +63,11 @@ class StartScreen extends StatelessWidget {
                         children: [
                           const Spacer(flex: 2),
 
-                          const SoundPilotLogo(width: 300),
+                          // The heading right below says 'SoundPilot', so the
+                          // logo would be announced twice.
+                          const ExcludeSemantics(
+                            child: SoundPilotLogo(width: 300),
+                          ),
 
                           const Spacer(flex: 2),
 

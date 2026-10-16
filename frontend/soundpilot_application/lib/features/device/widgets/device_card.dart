@@ -60,15 +60,19 @@ class DeviceCard extends StatelessWidget {
           Icon(type.icon, size: 26, color: onPrimary),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: onPrimary,
-                height: 1.2,
+            // The name is already part of the card's own label below;
+            // without this it would be announced a second time.
+            child: ExcludeSemantics(
+              child: Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: onPrimary,
+                  height: 1.2,
+                ),
               ),
             ),
           ),
@@ -90,13 +94,19 @@ class DeviceCard extends StatelessWidget {
       ),
     );
 
+    // The type belongs in the label: the group heading above the cards names
+    // it, but a screen reader that moves from element to element can skip it.
+    final label = '${type.singular}, $name, $stateText';
+
     if (onTap == null) {
-      return Semantics(label: '$name, $stateText', child: card);
+      return Semantics(label: label, child: card);
     }
 
     return Semantics(
       button: true,
-      label: '$name, $stateText',
+      label: label,
+      // Says what a double tap does, which the label alone does not.
+      onTapHint: type.openHint,
       child: Material(
         color: Colors.transparent,
         child: InkWell(

@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
+import '../../../core/widgets/app_snack_bar.dart';
 import '../../../core/widgets/auth_text_field.dart';
 import '../../../core/widgets/google_sign_in_button.dart';
 import '../auth_flow.dart';
@@ -16,7 +17,8 @@ import 'register_screen.dart';
 
 /// Login screen with e-mail and password.
 ///
-/// Also offers the password reset and a link to the [RegisterScreen].
+/// Also offers the password reset ([PasswordResetScreen]) and a link to the
+/// [RegisterScreen].
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -95,12 +97,8 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// Shows [message] in a SnackBar.
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
+  /// Shows [message] in a SnackBar that waits for the user.
+  void _showMessage(String message) => showAppMessage(context, message);
 
   /// Back arrow: closes this screen and returns to the screen below
   /// (StartScreen or, for a guest, the DeviceScreen).
@@ -159,6 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 icon: Icons.mail_outline_rounded,
                                 keyboardType: TextInputType.emailAddress,
                                 textInputAction: TextInputAction.next,
+                                autofillHints: const [AutofillHints.username],
                               ),
                               const SizedBox(height: 22),
                               const _FieldLabel(text: 'Passwort:'),
@@ -171,6 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 obscureText: _obscurePassword,
                                 textInputAction: TextInputAction.done,
                                 onSubmitted: (_) => _finishLogin(),
+                                autofillHints: const [AutofillHints.password],
                                 suffixIcon: IconButton(
                                   tooltip: _obscurePassword
                                       ? 'Passwort anzeigen'

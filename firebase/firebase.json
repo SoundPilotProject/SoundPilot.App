@@ -3,6 +3,15 @@
     "rules": "firestore.rules",
     "indexes": "indexes.json"
   },
+  "hosting": {
+    "public": "web",
+    "cleanUrls": true,
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  },
   "functions": [
     {
       "source": "functions",
@@ -26,6 +35,9 @@
     },
     "firestore": {
       "port": 8080
+    },
+    "hosting": {
+      "port": 5000
     },
     "ui": {
       "enabled": true

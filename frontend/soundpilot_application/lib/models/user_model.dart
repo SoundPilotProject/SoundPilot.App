@@ -20,9 +20,10 @@
 ///
 /// CURRENT STATE:
 /// - Signed-in users' devices ([DeviceData]) are stored in Firestore by
-///   FirestoreDeviceRepository, a guest's locally as JSON by
-///   DeviceStorageService (SharedPreferences), both in the same
-///   toMap()/fromMap() format.
+///   FirestoreDeviceRepository; a guest's are not stored at all, they live in
+///   memory in GuestDeviceRepository until the guest signs in. The same
+///   toMap()/fromMap() format is used for Firestore and for the local JSON
+///   of DeviceStorageService (devices of app versions before the sync).
 /// - Firestore field names: `volLeft`/`volRight` (Dart: volumeLeft/volumeRight).
 library;
 

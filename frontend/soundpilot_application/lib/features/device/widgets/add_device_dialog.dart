@@ -182,6 +182,9 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
             children: [
               Semantics(
                 header: true,
+                // Names the dialog's route, so screen readers say what has
+                // just opened instead of only reading its first element.
+                namesRoute: true,
                 child: Text(
                   'Gerät hinzufügen',
                   textAlign: TextAlign.center,
@@ -369,7 +372,21 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
                 onAction: AudioDeviceService.openBluetoothSettings,
               )
             : _ScanMessage(text: 'Keine ${type.singular} gefunden.'),
-      ScanFound(devices: final devices) => _buildDeviceList(type, devices),
+      ScanFound(devices: final devices) => Semantics(
+          // NOTE: Announces the end of a successful scan. Only the
+          // 'Suche läuft' text and the messages of the failing cases are live
+          // regions; a list that simply appears is not announced, so a screen
+          // reader user never learned that the scan had finished.
+          //
+          // The sentence lives on the list's semantics node instead of in a
+          // row of its own: sighted users can see the result, and a visible
+          // line would push the first device out of the tab's fixed height.
+          liveRegion: true,
+          label: devices.length == 1
+              ? '1 Gerät gefunden. Wähle ein Gerät aus.'
+              : '${devices.length} Geräte gefunden. Wähle ein Gerät aus.',
+          child: _buildDeviceList(type, devices),
+        ),
     };
   }
 
@@ -474,6 +491,56 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
 
   // ── Manual Tab ─────────────────────────────────────────────────────────────
 
+  /// The field for a name typed in by hand.
+  ///
+  /// NOTE: The screen-reader label is attached with a [Semantics] wrapper, not
+  /// as an invisible `labelText`: that only reaches the semantics tree while
+  /// the field is empty, so the field lost its name as soon as the user typed
+  /// something.
+  Widget _buildNameField(DeviceType type) {
+    return Semantics(
+      label: type.manualLabel,
+      child: TextField(
+        controller: _nameController,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _confirmManual(),
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: AppColors.text(context),
+        ),
+        decoration: InputDecoration(
+          hintText: type.manualHint,
+          // NOTE: The placeholder stays at w600 while the typed text is bold
+          // — see the same note in AuthTextField.
+          hintStyle: GoogleFonts.plusJakartaSans(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: AppColors.mutedText(context),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 18,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(
+              color: AppColors.inputBorder(context),
+              width: 2,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(
+              color: AppColors.primary(context),
+              width: 3,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildManualTab() {
     final type = _selectedType;
 
@@ -485,59 +552,21 @@ class _AddDeviceDialogState extends State<AddDeviceDialog>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  '${type.manualLabel}:',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.text(context),
-                    height: 1.3,
+                // The caption is decoration for sighted users; the field below
+                // carries the same text as its screen-reader label.
+                ExcludeSemantics(
+                  child: Text(
+                    '${type.manualLabel}:',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.text(context),
+                      height: 1.3,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
-                TextField(
-                  controller: _nameController,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _confirmManual(),
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.text(context),
-                  ),
-                  decoration: InputDecoration(
-                    // The caption above is decoration for sighted users; this
-                    // invisible label is what screen readers announce.
-                    labelText: type.manualLabel,
-                    floatingLabelBehavior: FloatingLabelBehavior.never,
-                    labelStyle: const TextStyle(color: Colors.transparent),
-                    hintText: type.manualHint,
-                    // NOTE: The placeholder stays at w600 while the typed text
-                    // is bold — see the same note in AuthTextField.
-                    hintStyle: GoogleFonts.plusJakartaSans(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.mutedText(context),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 18,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(
-                        color: AppColors.inputBorder(context),
-                        width: 2,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(
-                        color: AppColors.primary(context),
-                        width: 3,
-                      ),
-                    ),
-                  ),
-                ),
+                _buildNameField(type),
                 const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.symmetric(

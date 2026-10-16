@@ -170,6 +170,13 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
 ///
 /// The selected state is not shown by colour alone: the selected button also
 /// carries a check mark and is announced as selected by screen readers.
+///
+/// NOTE: The `selected` state sits on the button's *content*, not on a
+/// [Semantics] around the button. `ElevatedButton` wraps itself in
+/// `Semantics(container: true)`, so a wrapper around it becomes a separate
+/// node: the state used to end up on a node without a name while the node the
+/// screen reader focuses carried the name without the state — 'Mitte,
+/// Schaltfläche', never 'ausgewählt'.
 class _SideButton extends StatelessWidget {
   final String label;
   final bool selected;
@@ -188,28 +195,27 @@ class _SideButton extends StatelessWidget {
     final textColor =
         selected ? AppColors.onPrimary(context) : AppColors.text(context);
 
-    return Semantics(
-      selected: selected,
-      button: true,
-      child: ElevatedButton(
-        onPressed: onTap,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: backgroundColor,
-          foregroundColor: textColor,
-          elevation: 4,
-          shadowColor: Colors.black.withValues(alpha: 0.15),
-          minimumSize: const Size(0, 84),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(
-              color: selected
-                  ? AppColors.primary(context)
-                  : AppColors.legendBorder(context),
-              width: 2,
-            ),
+    return ElevatedButton(
+      onPressed: onTap,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: backgroundColor,
+        foregroundColor: textColor,
+        elevation: 4,
+        shadowColor: Colors.black.withValues(alpha: 0.15),
+        minimumSize: const Size(0, 84),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(
+            color: selected
+                ? AppColors.primary(context)
+                : AppColors.legendBorder(context),
+            width: 2,
           ),
         ),
+      ),
+      child: Semantics(
+        selected: selected,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

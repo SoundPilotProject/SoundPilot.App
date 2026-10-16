@@ -1,15 +1,16 @@
 // lib/features/auth/guest_devices_offer.dart
 //
-// After a sign-in or registration on a phone with stored guest devices: asks
-// whether they go into the account, then uploads or deletes them.
+// After a sign-in or registration with devices added as a guest: asks
+// whether they go into the account, then uploads or forgets them.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/app_logger.dart';
-import '../../core/services/device_storage_service.dart';
+import '../../core/services/device_repository.dart';
 import '../../core/services/firestore_device_repository.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_snack_bar.dart';
 import '../../core/widgets/loading_screen.dart';
 import '../../models/user_model.dart';
 
@@ -20,24 +21,24 @@ typedef GuestDeviceUpload = Future<void> Function(DeviceData devices);
 /// a new account) before it counts as failed. Not a limit for the user.
 const Duration guestUploadTimeout = Duration(seconds: 30);
 
-/// Offers the guest devices stored on this phone to the user [uid] who just
-/// signed in. Does nothing if there are none.
+/// Offers the devices added as a guest ([GuestDeviceRepository], in memory
+/// only) to the user [uid] who just signed in. Does nothing if there are
+/// none.
 ///
 /// - "Geräte übernehmen": uploads the devices that are not in the account yet
 ///   ([upload], by default [FirestoreDeviceRepository.addMissingDevices]),
-///   then deletes them on the phone. If that fails, a message says so and
-///   they stay, so the question comes again on the next sign-in.
-/// - "Geräte löschen": deletes them on the phone.
+///   the only way they are ever stored. If that fails, a message says so and
+///   they stay for this app run.
+/// - "Geräte löschen": forgets them.
 ///
-/// NOTE: If the app is closed while the dialog is open, the devices stay on
-/// the phone and are offered again on the next sign-in (docs §7).
+/// NOTE: If the app is closed while the dialog is open, the guest devices are
+/// gone with it — nothing a guest adds is written to the phone (docs §4).
 Future<void> offerGuestDevices(
   BuildContext context, {
   required String uid,
   GuestDeviceUpload? upload,
 }) async {
-  const guest = DeviceStorageService.guestOwner;
-  final devices = await DeviceStorageService.load(guest);
+  final devices = GuestDeviceRepository.devices;
   final count = devices.headphones.length + devices.belts.length;
   if (count == 0 || !context.mounted) return;
 
@@ -50,7 +51,7 @@ Future<void> offerGuestDevices(
   if (!context.mounted) return;
 
   if (takeOver != true) {
-    await DeviceStorageService.clear(guest);
+    GuestDeviceRepository.clear();
     return;
   }
 
@@ -64,24 +65,13 @@ Future<void> offerGuestDevices(
     final doUpload = upload ??
         FirestoreDeviceRepository(uid: uid).addMissingDevices;
     await doUpload(devices).timeout(guestUploadTimeout);
-    await DeviceStorageService.clear(guest);
+    GuestDeviceRepository.clear();
   } catch (e) {
     logger.e('offerGuestDevices: Taking over the guest devices failed',
         error: e);
-    messenger.showSnackBar(const SnackBar(
-      content: Row(
-        children: [
-          Icon(Icons.error_outline),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Die Geräte konnten nicht übernommen werden. Sie bleiben auf '
-              'diesem Gerät gespeichert, und du wirst bei der nächsten '
-              'Anmeldung noch einmal gefragt.',
-            ),
-          ),
-        ],
-      ),
+    messenger.showSnackBar(appErrorSnackBar(
+      'Die Geräte konnten nicht übernommen werden. Sie sind nur noch in '
+      'dieser Sitzung vorhanden und müssen sonst neu hinzugefügt werden.',
     ));
   } finally {
     navigator.pop();
@@ -126,6 +116,9 @@ class GuestDevicesDialog extends StatelessWidget {
               const SizedBox(height: 10),
               Semantics(
                 header: true,
+                // Names the dialog's route, so screen readers say what has
+                // just opened.
+                namesRoute: true,
                 child: Text(
                   'Gast-Geräte übernehmen?',
                   textAlign: TextAlign.center,
@@ -139,9 +132,9 @@ class GuestDevicesDialog extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Du hast als Gast $devices gespeichert. Sollen sie in dein '
-                'Konto übernommen werden? Sonst werden sie von diesem Gerät '
-                'gelöscht.',
+                'Du hast als Gast $devices hinzugefügt. Sollen sie in dein '
+                'Konto übernommen werden? Sonst gehen sie verloren, denn als '
+                'Gast wird nichts gespeichert.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 17,

@@ -46,18 +46,22 @@ class LoadingScreen extends StatelessWidget {
 
                 const SizedBox(height: 44),
 
-                SizedBox(
-                  width: 62,
-                  height: 62,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 6,
-                    valueColor: AlwaysStoppedAnimation(
-                      AppColors.primary(context),
+                // NOTE: Left out where the system asks for reduced animations;
+                // the status text below already says that something is
+                // running (docs/PROJECT_CONTEXT.md §1).
+                if (!MediaQuery.disableAnimationsOf(context)) ...[
+                  SizedBox(
+                    width: 62,
+                    height: 62,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 6,
+                      valueColor: AlwaysStoppedAnimation(
+                        AppColors.primary(context),
+                      ),
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 32),
+                  const SizedBox(height: 32),
+                ],
 
                 Semantics(
                   liveRegion: true,

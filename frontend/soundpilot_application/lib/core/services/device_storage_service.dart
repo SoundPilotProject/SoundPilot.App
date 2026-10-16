@@ -1,7 +1,7 @@
 // lib/core/services/device_storage_service.dart
 //
 // Local persistence of the device list and calibration in SharedPreferences.
-// Key schema: user_calibration_<owner>; the guest is the owner "guest".
+// Key schema: user_calibration_<owner>.
 
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,14 +11,13 @@ import '../../models/user_model.dart';
 
 /// Local (SharedPreferences) storage for the devices of one owner.
 ///
-/// Guests keep their devices here ([LocalDeviceRepository]), only on this
-/// phone. After a sign-in the user decides whether they go into the account
-/// (offerGuestDevices); either way they are deleted here afterwards.
-/// Signed-in users keep them in Firestore; for them this storage only holds
-/// data from before the Firestore sync, which [FirestoreDeviceRepository]
-/// uploads once and then clears.
+/// Only holds data of app versions before the Firestore sync: a signed-in
+/// user's devices, which [FirestoreDeviceRepository] uploads once and then
+/// clears, and a guest's, which [GuestModeService.load] deletes on start.
+/// Nothing writes here any more — signed-in users keep their devices in
+/// Firestore, and a guest's are never stored ([GuestDeviceRepository]).
 class DeviceStorageService {
-  /// Owner of the guest's devices.
+  /// Owner of the devices a guest left behind in an older app version.
   static const String guestOwner = 'guest';
 
   /// The whole structure (headphones + belts) is stored as one JSON string,

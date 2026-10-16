@@ -19,13 +19,17 @@ import '../volume_scale.dart';
 /// Sound of the test exercise.
 const String testSoundAsset = 'assets/audio/Marschieren.mp3';
 
-/// Test exercise after the calibration: plays [testSoundAsset] in a loop on
-/// the calibrated earbud, each side with its calibrated volume
-/// ([wheelToGain]).
+/// Test exercise after the calibration: plays [testSoundAsset] in a loop,
+/// each side with its calibrated volume ([wheelToGain]).
 ///
-/// Like the test tone of the calibration, it only plays while the earbud is
-/// connected, and stops when the page is left, the app goes to the
-/// background or the earbud disconnects.
+/// It plays on the calibrated earbud while that is connected, and on the
+/// phone's own output otherwise — where the two sides are of course no
+/// longer separate ears. It stops when the page is left, the app goes to the
+/// background, or the earbud it was playing on disconnects.
+///
+/// NOTE: Unlike the test tone of the calibration, which exists to set one
+/// ear's volume and therefore needs that earbud, this exercise is also worth
+/// something without hardware: it is how the app is shown and tried.
 ///
 /// Pops with `true` when the user taps 'Abschließen'; the back arrow pops
 /// without a result.
@@ -70,6 +74,11 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   /// True while the sound is playing.
   bool _isPlaying = false;
 
+  /// Whether the running playback was sent to the earbud. Only that one is
+  /// stopped by the native side when the earbud disconnects; sound on the
+  /// phone's own output keeps going.
+  bool _playingOnEarbud = false;
+
   /// Shown if the sound could not be started.
   String? _error;
 
@@ -83,7 +92,10 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
         changes: widget.headphoneChanges,
         onChanged: () => setState(() {
           // The native side stops the sound itself when the earbud goes.
-          if (_connection?.connected == null) _isPlaying = false;
+          if (_playingOnEarbud && _connection?.connected == null) {
+            _isPlaying = false;
+            _playingOnEarbud = false;
+          }
         }),
       );
     }
@@ -103,13 +115,29 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed && _isPlaying) _stopAudio();
   }
 
-  /// Whether 'Start' can be used: the earbud is connected.
-  bool get _canPlay => _connection?.connected != null;
+  /// Whether 'Start' can be used: anywhere the app can play sound.
+  ///
+  /// NOTE: It used to need the connected earbud. Without one the exercise
+  /// could not be tried at all, which is what everyone hits who opens it
+  /// before pairing anything. It now falls back to the phone's own speaker
+  /// ([_onEarbud] says which it is); the left/right calibration is only
+  /// audible on the earbud, and [_note] says so.
+  bool get _canPlay => _soundSupported;
 
-  /// Starts the looping playback on the earbud with the calibrated gains.
+  /// True while the sound goes to the calibrated earbud rather than to
+  /// whatever the phone plays on by default.
+  bool get _onEarbud => _connection?.connected != null;
+
+  /// Starts the looping playback with the calibrated gains, on the earbud if
+  /// it is connected and on the phone's default output otherwise.
+  ///
+  /// NOTE: Pressing 'Start' while it already plays starts the recording over
+  /// rather than doing nothing — the native side stops the running player
+  /// before it opens the new one anyway.
   Future<void> _startAudio() async {
-    final headphone = _connection?.connected;
-    if (_isPlaying || headphone == null) return;
+    if (!_canPlay) return;
+
+    final onEarbud = _onEarbud;
 
     setState(() => _error = null);
     try {
@@ -117,13 +145,17 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
         asset: testSoundAsset,
         leftGain: wheelToGain(widget.leftVolume),
         rightGain: wheelToGain(widget.rightVolume),
-        outputDeviceId: headphone.outputDeviceId,
+        // null: the native side plays on the default output.
+        outputDeviceId: _connection?.connected?.outputDeviceId,
       );
       if (!mounted) {
         unawaited(_stopQuietly());
         return;
       }
-      setState(() => _isPlaying = true);
+      setState(() {
+        _isPlaying = true;
+        _playingOnEarbud = onEarbud;
+      });
     } on PlatformException catch (e) {
       logger.e('TestPage: Playback failed', error: e);
       if (!mounted) return;
@@ -139,7 +171,10 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   /// Stops the playback (no-op if nothing is playing).
   Future<void> _stopAudio() async {
     if (!_isPlaying) return;
-    setState(() => _isPlaying = false);
+    setState(() {
+      _isPlaying = false;
+      _playingOnEarbud = false;
+    });
     await _stopQuietly();
   }
 
@@ -161,15 +196,66 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
     Navigator.pop(context, true);
   }
 
-  /// Why 'Start' cannot be used, or the playback error; null if neither.
+  /// What the user has to know before pressing 'Start', or the playback
+  /// error; null if neither.
   String? get _note {
     if (_error != null) return _error;
     if (!_soundSupported) return 'Die Aufnahme gibt es nur in der Android-App.';
-    if (_connection?.known == true && !_canPlay) {
-      return 'Verbinde zuerst deine Kopfhörer, dann kannst du die Aufnahme '
-          'hören.';
+    if (_connection?.known == true && !_onEarbud) {
+      return 'Deine Kopfhörer sind nicht verbunden. Die Aufnahme läuft dann '
+          'über den Lautsprecher – die Einstellung für links und rechts '
+          'hörst du nur über die Earbuds.';
     }
     return null;
+  }
+
+  /// The playback controls: 'Start' and 'Stop' are always on the screen, each
+  /// usable only while it applies, plus the way to the Bluetooth settings
+  /// while the earbud is missing.
+  ///
+  /// NOTE: In between, the page showed only the one button that applied, so
+  /// there was never a disabled one. The team asked for the pair back: the
+  /// exercise is explained in terms of 'Start' and 'Stop', and a control
+  /// that exists only in one state is easy to miss. The dead end that
+  /// arrangement once had is gone from the other side as well — 'Start' now
+  /// works without an earbud (on the phone's own output, see [_canPlay]),
+  /// and the Bluetooth settings stay one tap away for the user who wants to
+  /// hear the calibration itself.
+  List<Widget> _buildPlaybackControls() {
+    final needsBluetooth =
+        _soundSupported && _connection?.known == true && !_onEarbud;
+
+    return [
+      // Always in the app's colour where there is sound at all: 'Start' is
+      // what the screen is for, and it also restarts a running playback.
+      _PlaybackButton(
+        label: 'Start',
+        icon: Icons.play_arrow_rounded,
+        color: AppColors.primary(context),
+        textColor: AppColors.onPrimary(context),
+        onPressed: _canPlay ? _startAudio : null,
+      ),
+      const SizedBox(height: 10),
+      // Grey until there is something to stop, red while the sound runs.
+      _PlaybackButton(
+        label: 'Stop',
+        icon: Icons.stop_rounded,
+        color: AppColors.stopRed,
+        textColor: Colors.white,
+        onPressed: _isPlaying ? _stopAudio : null,
+      ),
+      if (needsBluetooth) ...[
+        const SizedBox(height: 10),
+        _PlaybackButton(
+          label: 'Bluetooth-Einstellungen öffnen',
+          icon: Icons.settings_rounded,
+          fontSize: 19,
+          color: AppColors.primary(context),
+          textColor: AppColors.onPrimary(context),
+          onPressed: AudioDeviceService.openBluetoothSettings,
+        ),
+      ],
+    ];
   }
 
   @override
@@ -208,8 +294,9 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
                       liveRegion: true,
                       child: Text(
                         _isPlaying
-                            ? 'Wiedergabe läuft – links '
-                                '${widget.leftVolume}, rechts '
+                            ? 'Wiedergabe läuft ${_onEarbud ? 'über die '
+                                'Kopfhörer' : 'über den Lautsprecher'} – '
+                                'links ${widget.leftVolume}, rechts '
                                 '${widget.rightVolume}'
                             : 'Wiedergabe gestoppt – links '
                                 '${widget.leftVolume}, rechts '
@@ -240,23 +327,7 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    _PlaybackButton(
-                      label: 'Start',
-                      icon: Icons.play_arrow_rounded,
-                      enabled: !_isPlaying && _canPlay,
-                      activeColor: AppColors.primary(context),
-                      activeTextColor: AppColors.onPrimary(context),
-                      onPressed: _startAudio,
-                    ),
-                    const SizedBox(height: 12),
-                    _PlaybackButton(
-                      label: 'Stop',
-                      icon: Icons.stop_rounded,
-                      enabled: _isPlaying,
-                      activeColor: AppColors.stopRed,
-                      activeTextColor: Colors.white,
-                      onPressed: _stopAudio,
-                    ),
+                    ..._buildPlaybackControls(),
                     const SizedBox(height: 22),
                     Semantics(
                       header: true,
@@ -336,42 +407,48 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
 
 // ── Playback buttons ─────────────────────────────────────────────────────────
 
-/// Wide 'Start' / 'Stop' button with an icon and a centred label.
+/// Wide button with an icon and a centred label, used for the one control the
+/// [TestPage] offers at a time (see `_buildPlaybackControls`).
 ///
-/// Disabled state is not shown by colour alone: a disabled button is also
-/// reported as disabled to screen readers because [onPressed] is null.
+/// Always enabled: the page shows the button that applies instead of greying
+/// one out, so there is never a button that cannot be used.
 class _PlaybackButton extends StatelessWidget {
   final String label;
   final IconData icon;
 
-  /// False while the action is not available (e.g. 'Stop' while nothing plays).
-  final bool enabled;
+  final Color color;
+  final Color textColor;
 
-  final Color activeColor;
-  final Color activeTextColor;
-  final VoidCallback onPressed;
+  /// `null` while this control does not apply; the button is then disabled,
+  /// and [_note] on the page says why.
+  final VoidCallback? onPressed;
+
+  /// Smaller for the long label of the Bluetooth settings.
+  final double fontSize;
 
   const _PlaybackButton({
     required this.label,
     required this.icon,
-    required this.enabled,
-    required this.activeColor,
-    required this.activeTextColor,
+    required this.color,
+    required this.textColor,
     required this.onPressed,
+    this.fontSize = 23,
   });
 
   @override
   Widget build(BuildContext context) {
-    final foreground = enabled ? activeTextColor : Colors.white;
+    final enabled = onPressed != null;
+    // White on the inactive grey is the pair the contrast test measures.
+    final contentColor = enabled ? textColor : Colors.white;
 
     return ElevatedButton(
-      onPressed: enabled ? onPressed : null,
+      onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-        backgroundColor: activeColor,
-        foregroundColor: activeTextColor,
+        backgroundColor: color,
+        foregroundColor: textColor,
         disabledBackgroundColor: AppColors.inactiveButton(context),
         disabledForegroundColor: Colors.white,
-        elevation: 4,
+        elevation: enabled ? 4 : 0,
         shadowColor: Colors.black.withValues(alpha: 0.15),
         minimumSize: const Size(double.infinity, 64),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -382,18 +459,18 @@ class _PlaybackButton extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: foreground, size: 30),
+          Icon(icon, color: contentColor, size: 30),
           const SizedBox(width: 10),
           Flexible(
             child: Text(
               label,
               textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              // Two lines instead of being cut off at large font sizes.
+              maxLines: 2,
               style: GoogleFonts.plusJakartaSans(
-                fontSize: 23,
+                fontSize: fontSize,
                 fontWeight: FontWeight.w800,
-                color: foreground,
+                color: contentColor,
               ),
             ),
           ),

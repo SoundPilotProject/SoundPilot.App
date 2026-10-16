@@ -14,11 +14,14 @@ import '../auth_service.dart';
 /// Screen that sends a password reset e-mail.
 ///
 /// Opened by "Passwort vergessen?" on the LoginScreen, which passes the
-/// address already typed there as [initialEmail].
+/// address already typed there as [initialEmail]. The user sets the new
+/// password on Firebase's own web page, so after the request the only thing
+/// left in the app is to sign in again: "Weiter" closes the whole auth
+/// stack and lands on the StartScreen ([_continueToStart]).
 ///
 /// Accessibility notes:
 /// - One main action: the button sends the link; after a successful request
-///   it turns into "Zurück zur Anmeldung".
+///   it turns into "Weiter".
 /// - The result is text on the screen, not a SnackBar, so it stays until the
 ///   user leaves or changes the address (no time limit). It carries an icon
 ///   besides the text and is a live region, so screen readers announce it.
@@ -127,6 +130,17 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
     Navigator.pop(context);
   }
 
+  /// Leaves the whole login stack after the link was requested, so the user
+  /// signs in with the new password from the start.
+  ///
+  /// NOTE: Pops down to the first route, which is AppEntryPoint — the same
+  /// way runSignIn gets out of the auth screens. Nobody is signed in here,
+  /// so it shows the StartScreen (for a guest, the DeviceScreen it came
+  /// from).
+  void _continueToStart() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   @override
   Widget build(BuildContext context) {
     final textColor = AppColors.text(context);
@@ -162,7 +176,8 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
                     const SizedBox(height: 14),
                     Text(
                       'Gib deine E-Mail-Adresse ein. Wir schicken dir einen '
-                      'Link, mit dem du ein neues Passwort festlegen kannst.',
+                      'Link, mit dem du ein neues Passwort festlegen kannst. '
+                      'Danach meldest du dich mit dem neuen Passwort an.',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 19,
@@ -202,7 +217,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
                       onPressed: _isSending
                           ? null
                           : sent
-                              ? _handleBack
+                              ? _continueToStart
                               : _send,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary(context),
@@ -224,7 +239,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
                       child: _isSending
                           ? const _SendingLabel()
                           : Text(
-                              sent ? 'Zurück zur Anmeldung' : 'Link senden',
+                              sent ? 'Weiter' : 'Link senden',
                               textAlign: TextAlign.center,
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 26,

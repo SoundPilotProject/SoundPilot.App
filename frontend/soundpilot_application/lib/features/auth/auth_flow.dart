@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/widgets/app_snack_bar.dart';
 import '../../core/widgets/loading_screen.dart';
 import 'auth_service.dart';
 import 'guest_devices_offer.dart';
@@ -11,8 +12,8 @@ import 'guest_devices_offer.dart';
 /// Runs [signIn] behind a full-screen [LoadingScreen] that shows [loadingText],
 /// and reports the result to the user.
 ///
-/// On success the guest devices stored on this phone, if any, are offered for
-/// the account ([offerGuestDevices]). Then every route above the first one is
+/// On success the devices added as a guest, if any, are offered for the
+/// account ([offerGuestDevices]) — the only way they are ever stored. Then every route above the first one is
 /// popped: AppEntryPoint already shows the DeviceScreen for the signed-in
 /// user, so the auth screens only have to get out of the way.
 ///
@@ -55,7 +56,5 @@ Future<void> runSignIn(
   final error = result.errorMessage;
   if (error == null) return;
 
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(error)),
-  );
+  showAppMessage(context, error);
 }

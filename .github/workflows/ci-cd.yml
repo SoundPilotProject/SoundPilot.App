@@ -115,7 +115,7 @@ jobs:
         working-directory: firebase
         run: |
           for attempt in 1 2 3; do
-            firebase deploy --only firestore:rules,functions --non-interactive --debug && exit 0
+            firebase deploy --only firestore:rules,functions,hosting --non-interactive --debug && exit 0
             if [ "$attempt" -lt 3 ]; then
               echo "::warning::Deploy attempt $attempt failed, retrying in 30 s"
               sleep 30

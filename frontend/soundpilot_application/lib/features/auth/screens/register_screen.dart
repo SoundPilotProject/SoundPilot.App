@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
+import '../../../core/widgets/app_snack_bar.dart';
 import '../../../core/widgets/auth_text_field.dart';
 import '../../../core/widgets/google_sign_in_button.dart';
 import '../auth_flow.dart';
@@ -45,12 +46,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// tap; the progress itself is shown by the LoadingScreen of [runSignIn].
   bool _isSigningIn = false;
 
-  /// Answer to the 'Gürtel' (belt) question of the form: 'NEIN' or 'JA'.
+  /// Answer to the 'Gürtel' (belt) question of the form: 'Nein' or 'Ja'.
   /// Not used yet, see the note at the name controllers.
-  String _selectedBelt = 'NEIN';
+  ///
+  /// NOTE: Not in capitals any more. All-caps is harder to read for people
+  /// with impaired vision, and screen readers can spell such words out
+  /// letter by letter.
+  String _selectedBelt = 'Nein';
 
   /// Options of the belt dropdown.
-  final List<String> _beltOptions = ['NEIN', 'JA'];
+  final List<String> _beltOptions = ['Nein', 'Ja'];
 
   @override
   void dispose() {
@@ -105,12 +110,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (mounted) setState(() => _isSigningIn = false);
   }
 
-  /// Shows [message] in a SnackBar.
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
+  /// Shows [message] in a SnackBar that waits for the user.
+  void _showMessage(String message) => showAppMessage(context, message);
 
   /// Back arrow: closes this screen and returns to the screen below
   /// (StartScreen or, for a guest, the DeviceScreen).
@@ -166,6 +167,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           hintText: 'Vorname',
           icon: Icons.person_outline,
           textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.givenName],
         ),
         const SizedBox(height: _gapBetweenFields),
 
@@ -177,6 +179,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           hintText: 'Nachname',
           icon: Icons.person_outline,
           textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.familyName],
         ),
         const SizedBox(height: _gapBetweenFields),
 
@@ -189,6 +192,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           icon: Icons.mail_outline,
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.username],
         ),
         const SizedBox(height: _gapBetweenFields),
 
@@ -205,6 +209,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           obscureText: _obscurePassword,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _finishRegister(),
+          autofillHints: const [AutofillHints.newPassword],
           suffixIcon: IconButton(
             tooltip:
                 _obscurePassword ? 'Passwort anzeigen' : 'Passwort verbergen',
