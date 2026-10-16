@@ -67,8 +67,51 @@ jobs:
       - name: Build Functions (TypeScript to JS)
         run: npm run build
 
+  # Tests firestore.rules against the Firestore emulator before they are
+  # deployed (firebase/rules-tests).
+  rules:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firebase/rules-tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: firebase/rules-tests/package-lock.json
+
+      # The Firestore emulator is a Java program.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Same version as the deploy job.
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@15.5.1
+
+      # The emulator jar is downloaded on first use; keep it between runs.
+      - name: Cache Firebase emulators
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-15.5.1
+
+      - name: Install Test Dependencies
+        run: npm ci
+
+      - name: Test Firestore Rules
+        run: npm test
+
   deploy:
-    needs: [ build_and_test, functions ]
+    needs: [ build_and_test, functions, rules ]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # Run deploys one after another; never cancel one that is in progress.

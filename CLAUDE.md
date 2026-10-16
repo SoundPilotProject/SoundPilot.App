@@ -76,7 +76,8 @@ Ask before deleting anything or discarding changes.
 - Run the checks CI runs, for the parts you changed (see §3):
   `flutter analyze --no-fatal-infos` and `flutter test` in
   `frontend/soundpilot_application/`; `npm run lint` and `npm run build` in
-  `firebase/functions/`. Report failures with their output; do not push
+  `firebase/functions/`; `npm test` in `firebase/rules-tests/` when
+  `firestore.rules` changed. Report failures with their output; do not push
   known-red code.
 - Leave unrelated local changes out of the commit, e.g. a `pubspec.lock` that
   only a local `flutter pub get` changed (see §3), or the generated plugin

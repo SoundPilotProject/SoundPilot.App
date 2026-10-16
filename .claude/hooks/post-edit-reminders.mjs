@@ -24,7 +24,8 @@ if (/(^|\/)CLAUDE\.md$/.test(path)) {
   reminder = 'Firestore schema file changed. If the schema changed, update ' +
     'all three places: Cloud Function defaults (index.ts), Dart model ' +
     '(fromMap/toMap) and firestore.rules; bump schemaVersion in index.ts ' +
-    'and UserModel.currentSchemaVersion; re-test the rules in the emulator.';
+    'and UserModel.currentSchemaVersion; add a test for a rules change in ' +
+    'firebase/rules-tests and run `npm test` there.';
 }
 
 if (reminder) {
