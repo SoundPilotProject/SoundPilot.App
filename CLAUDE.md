@@ -68,8 +68,29 @@ Before starting any task, check the state of the repo and report it:
   - local branches that are merged or whose remote branch is gone
   - leftover remote branches of merged PRs
   - open PRs that still wait for a merge
+- **Plans:** if there are "Plan:" sections at the end of this file, report
+  where the user's own plans stand and which step comes next; only list
+  the titles and owners of the other plans.
 
 Ask before deleting anything or discarding changes.
+
+### Plans that span several branches
+
+Claude has no memory between sessions or devices, so a plan that needs more
+than one branch/PR is written down here until it is done:
+
+- Before the first branch, add a section `### Plan: <title> (@<owner>)` at
+  the end of this file: the goal, the steps (one per branch, with the branch
+  name), and decisions made with the user. `<owner>` is the GitHub login of
+  the user (`gh api user --jq .login`).
+- Several people can have plans at the same time, one section each. Work
+  only on your user's own plans; change someone else's plan only if your user
+  asks for it, and say whose it is.
+- Commit it with the first branch. Each later branch marks its step done
+  (with the PR number) and adjusts the remaining steps if the plan changed.
+- Keep the status per step on its own line, so parallel branches do not
+  conflict in the same line.
+- The last branch of the plan removes the section.
 
 ### Before pushing / opening a PR
 
@@ -112,3 +133,4 @@ When the user says a PR was merged:
 3. Delete the merged local branch (`git branch -d`, which refuses unmerged
    work) after asking, and check for other merged or orphaned branches and
    open PRs, as at session start.
+4. If the PR was a step of one of the user's plans, name the next step.
