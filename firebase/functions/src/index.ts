@@ -16,6 +16,18 @@ const db = getFirestore();
  */
 const SCHEMA_VERSION = 1;
 
+/** gRPC status of a Firestore `create()` on a document that exists. */
+const ALREADY_EXISTS = 6;
+
+/**
+ * Whether [error] is Firestore's ALREADY_EXISTS.
+ * @param {unknown} error The caught error.
+ * @return {boolean} True if the document already existed.
+ */
+function isAlreadyExists(error: unknown): boolean {
+  return (error as {code?: unknown})?.code === ALREADY_EXISTS;
+}
+
 /**
  * Automatically creates a Firestore document when a new user is registered.
  * Region: europe-central2 (Germany/Poland)
@@ -32,8 +44,8 @@ const SCHEMA_VERSION = 1;
  * NOTE: Errors are rethrown and `failurePolicy: true` enables retries, so a
  * failed write no longer leaves the user without a document. (Before, errors
  * were only logged and nothing retried them.) Retries are repeated for up to
- * 7 days, so the function must stay idempotent. Because of `merge: true`, a
- * retry keeps existing devices, but it rewrites `createdAt`.
+ * 7 days, so the function must stay idempotent: it only ever creates the
+ * document, and a retry that finds it already there leaves it untouched.
  */
 export const createUserDoc = functions
   .region("europe-central2")
@@ -63,12 +75,19 @@ export const createUserDoc = functions
         },
       };
 
-      // Using { merge: true } to prevent accidental overwrites
-      await userRef.set(data, {merge: true});
+      // Prevents accidental overwrites. NOTE: `create()`, not
+      // `set(..., {merge: true})`: merge writes the empty `calibration` maps
+      // and the default `settings` over the user's own on a retry.
+      await userRef.create(data);
 
       // eslint-disable-next-line max-len
       logger.info(`Successfully created Firestore document for UID: ${uid}`);
     } catch (error) {
+      if (isAlreadyExists(error)) {
+        // A retry after a run whose write succeeded; nothing left to do.
+        logger.info(`Document for UID: ${uid} already exists, kept as is`);
+        return;
+      }
       logger.error(`Error creating document for UID: ${uid}`, error);
       throw error;
     }

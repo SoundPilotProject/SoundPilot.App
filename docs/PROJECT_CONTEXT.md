@@ -585,14 +585,19 @@ File: `firebase/functions/src/index.ts`. Both functions run in the region
 `europe-central2` and are auth triggers in 1st Gen:
 
 - **`createUserDoc`** (`onCreate`) creates the default user document (schema
-  see §4). It writes with `set(..., { merge: true })`.
+  see §4). It writes with `create()`, never `set()`.
 - **`deleteUserDoc`** (`onDelete`) deletes `users/{uid}` when the auth account
   is deleted.
 
 Both functions log errors and then **rethrow** them, and use
 `runWith({ failurePolicy: true })`, so a failed run is retried (for up to
-7 days). Keep them idempotent. A retry of `createUserDoc` rewrites
-`createdAt`; what it does to existing data is open (see §7).
+7 days). Keep them idempotent. A retry of `createUserDoc` that finds the
+document already there (Firestore's `ALREADY_EXISTS`) logs it and succeeds
+without touching it, so the user's devices, settings and `createdAt` stay.
+Do not go back to `set(..., { merge: true })`: it writes the default
+`settings` and the empty `calibration` maps over the user's own, which
+deleted all devices on a retry (checked in the Firestore emulator,
+2026-10-16).
 
 ### Cloud Functions 1st Gen — deliberate decision
 
@@ -687,10 +692,6 @@ Not backed by evidence — check in the code instead of assuming:
   button back to the `StartScreen`. Restarting the app does lead there
   (nothing of a guest is stored, see §2), and the devices they added are then
   gone.
-- **`createUserDoc` retries:** `set(..., { merge: true })` with
-  `settings` and the empty `calibration.headphones` / `belts` maps may reset
-  those fields on a retry, instead of keeping existing devices. Not verified
-  in the emulator.
 - **Android 12+ address:** whether Android anonymises the Bluetooth address
   without the permission is not checked.
 - **Old `dummy_mac_…` headphones:** devices stored under a placeholder key
