@@ -1,8 +1,9 @@
 // .claude/hooks/pre-tool-guard.mjs
 //
-// PreToolUse hook: stops the risky actions the team rules forbid (CLAUDE.md
-// §3 and §8) before they run. "deny" blocks outright, "ask" turns the call
-// into a permission prompt with the reason shown.
+// PreToolUse hook: stops the risky actions the team rules forbid
+// (docs/PROJECT_CONTEXT.md §3 and §8) before they run. "deny" blocks
+// outright, "ask" turns the call into a permission prompt with the reason
+// shown.
 
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -50,7 +51,7 @@ if (['Edit', 'Write', 'NotebookEdit'].includes(tool)) {
       /service[-_]?account.*\.json$/i.test(name) ||
       /\.(jks|keystore)$/.test(name) || name === 'key.properties') {
     decide('deny', `${name} holds keys/credentials. Do not edit or create it ` +
-      'with Claude (CLAUDE.md §8); change it by hand if really needed.');
+      'with Claude (PROJECT_CONTEXT.md §8); change it by hand if really needed.');
   }
   if (name === 'firebase_options.dart') {
     decide('deny', 'firebase_options.dart is generated. Regenerate it with ' +
@@ -85,8 +86,8 @@ for (const part of parts) {
 
   if (sub === 'commit' && currentBranch() === 'main') {
     decide('ask', 'This commits directly to main. Team rule: work on a ' +
-      'branch and merge through a PR (CLAUDE.md §8). Only allow this if the ' +
-      'team agreed to it for this change.');
+      'branch and merge through a PR (PROJECT_CONTEXT.md §8). Only allow ' +
+      'this if the team agreed to it for this change.');
   }
 
   if (sub === 'push') {
@@ -104,7 +105,7 @@ for (const part of parts) {
       decide(isDelete ? 'deny' : 'ask', isDelete
         ? 'Deleting main on GitHub is never intended.'
         : 'This pushes to main, which also triggers the automatic deploy. ' +
-          'Team rule: push a branch and open a PR (CLAUDE.md §8).');
+          'Team rule: push a branch and open a PR (PROJECT_CONTEXT.md §8).');
     }
   }
 
@@ -120,8 +121,8 @@ for (const part of parts) {
 
   if (cmd === 'firebase' && words[1] === 'deploy') {
     decide('ask', 'CI deploys rules and functions on every merge to main; a ' +
-      'manual deploy is overwritten by the next one (CLAUDE.md §3). Test ' +
-      'with the emulators instead, deploy by hand only for things CI does ' +
+      'manual deploy is overwritten by the next one (PROJECT_CONTEXT.md §3). ' +
+      'Test with the emulators instead, deploy by hand only for things CI does ' +
       'not deploy (e.g. indexes).');
   }
 

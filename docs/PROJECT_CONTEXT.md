@@ -4,12 +4,13 @@ Project context: architecture, data model and team conventions.
 Diploma project (HTL).
 
 > Rule for this document: it contains only what is backed by the code or the
-> architecture docs. Unclear points are listed under "Open Points" and are
+> architecture docs, and describes the current state — history belongs in git
+> and the pull requests. Unclear points are listed under "Open Points" and are
 > marked as open — do not treat them as fact; check the code or ask.
 >
 > Status: reconciled with `firebase/firestore.rules`,
-> `firebase/functions/src/index.ts`, `frontend/soundpilot_application/lib/`
-> and `.github/workflows/ci-cd.yml`.
+> `firebase/functions/src/index.ts`, `firebase/firebase.json`,
+> `frontend/soundpilot_application/lib/` and `.github/workflows/ci-cd.yml`.
 
 ## 1. Overview
 
@@ -30,19 +31,32 @@ statement about the current state of the code):
 - **Screen readers:** all interactive and informative elements need meaningful
   labels (`Semantics`, `semanticLabel`, `tooltip`); decorative elements are
   excluded from the semantics tree. Must work with TalkBack (Android) and
-  VoiceOver (iOS).
+  VoiceOver (iOS). `test/screen_reader_test.dart` measures Flutter's own
+  guidelines (labels, Android 48 dp and iOS 44 dp tap targets) over every
+  screen and dialog in both themes, plus the states that matter (selected side
+  and type, card with its connection, calibration value, named text fields).
+  Two rules that cost real defects:
+  - **Never wrap `Semantics` or a `Tooltip` around an `ElevatedButton`,
+    `TextButton` or `OutlinedButton`.** `ButtonStyleButton` wraps itself in
+    `Semantics(container: true)`, so the wrapper becomes a node of its own and
+    never reaches the node a screen reader focuses. Put the label or the state
+    on the button's *content* instead, as `_IconSquareButton` and `_SideButton`
+    do.
+  - **Name a text field that can be pre-filled with a `Semantics(label: ...)`
+    wrapper** (`AuthTextField`, `BeltNumberField`): an invisible `labelText`
+    only reaches the semantics tree while the field is empty, so a pre-filled
+    field is announced as a nameless text box.
 - **Touch targets:** at least 48×48 dp, with enough spacing between them.
 - **Contrast:** at least WCAG AA (4.5:1 for text, 3:1 for large text and
   controls) in both light and dark theme (`core/theme/app_colors.dart`).
-  `test/color_contrast_test.dart` measures this on the palette and fails CI if
-  it is broken. If a colour change makes it fail, change the colour — do not
-  lower the threshold. Note that `mutedText` has to hold 4.5:1 on the *darker*
-  `surface`, not only on `background`.
+  `test/color_contrast_test.dart` measures the palette and fails CI if it is
+  broken. If a colour change makes it fail, change the colour — do not lower
+  the threshold. `mutedText` has to hold 4.5:1 on the *darker* `surface`, not
+  only on `background`.
 - **Text scaling:** layouts must not break or clip with large system font
-  sizes; no fixed heights for text containers.
-  `test/accessibility_layout_test.dart` renders the screens at text scale 1.0,
-  1.6 and 2.0 on a 360x720 phone. No screen caps the system font size any more
-  (the registration form used to, see §7).
+  sizes; no fixed heights for text containers, and no screen may cap the
+  system font size (see §7). `test/accessibility_layout_test.dart` renders the
+  screens at text scale 1.0, 1.6 and 2.0 on a 360x720 phone.
 - **Not color alone:** never convey state (e.g. connected, error) by color only;
   add text or an icon.
 - **Multiple channels:** important feedback (e.g. belt warning distance,
@@ -51,11 +65,11 @@ statement about the current state of the code):
 - **Simple flows:** short, clear German texts, one main action per screen,
   clear error messages (auth errors: `AuthService` returns an `AuthResult`
   with a German message from `AuthService.messageForCode`), no
-  time-limited interactions. Messages therefore go through `showAppMessage` /
+  time-limited interactions. Messages go through `showAppMessage` /
   `showAppError` (`core/widgets/app_snack_bar.dart`), never through a
   hand-built `SnackBar`: in Flutter 3.47 the auto-dismiss timer only looks at
   `SnackBar.persist` (default: `action != null`), so a message without an
-  action disappeared after 4 s even with a screen reader running.
+  action disappears after 4 s even with a screen reader running.
 - **Motion:** respect the system setting for reduced animations.
 
 When in doubt, choose the more accessible option and mention the trade-off.
@@ -140,23 +154,22 @@ features/
   exception is `_sideTitleStyle` in `calibration_screen.dart` ('Linke Seite' /
   'Rechte Seite'), which uses the platform's own font on purpose
   (`inherit: false` and no family, so the text theme is not merged in).
-  **Plus Jakarta Sans ends at `w800`.** A `w900` style therefore has no real
-  face: Flutter takes the w800 file and fakes the extra weight by smearing it,
-  which is what made those two headings look wrong. Prefer `w800`; the
-  remaining `w900` texts ('Geräte', 'Stärke in %', the dialog titles) are
-  still synthesised and should follow.
+  **Plus Jakarta Sans ends at `w800`**, so a `w900` style has no real face:
+  Flutter takes the w800 file and fakes the extra weight by smearing it.
+  Prefer `w800`; the remaining `w900` texts ('Geräte', 'Stärke in %', the
+  dialog titles) are still synthesised and should follow.
 - **Weight:** every visible text is bold (`w700` or heavier) — a request from
   the team for legibility. The only exception is the placeholder and the label
   *inside* an input box (`hintStyle` / `labelStyle` / `floatingLabelStyle`),
   which stay at `w600`, so an empty field is distinguishable from the bold text
   the user types into it. `grep -rn "FontWeight.w[1-6]00" lib` should only ever
   find those.
-- **Shared widgets:** `AppTopBar` replaced the five nearly identical private top
-  bars, `AuthTextField` the two login/register field duplicates.
+- **Shared widgets:** use `AppTopBar` for the top bar of a screen and
+  `AuthTextField` for the login/register fields instead of building new ones.
 - **Device types:** the `DeviceType` enum
   (`features/device/widgets/device_type.dart`) carries every user-visible word
   of a type (labels, scan button, hints). Do not compare bare strings like
-  `'Earbuds'` / `'Gürtel'` again.
+  `'Earbuds'` / `'Gürtel'`.
 - **State management:** no package, only `StatefulWidget` + `setState`.
 - **Routing:** `Navigator.push` with `MaterialPageRoute`, no router package.
 - **Start and auth state:** `AppEntryPoint` listens to
@@ -169,17 +182,36 @@ features/
   (see §4) and whether a user is signed in, so the screen itself does not
   touch Firebase.
 - **Guest mode** lasts for one app run: **nothing a guest does is written to
-  the phone**, neither the mode nor the devices (see §4), so every start
-  shows the `StartScreen` and every guest starts with an empty list. Both
-  used to be stored (`guestMode` and `user_calibration_guest` in
-  SharedPreferences), which sent a guest straight to the `DeviceScreen` on
-  every later start with no way back — nothing leaves guest mode but a
-  sign-in — and left their devices on the phone for whoever opened the app
-  next. `GuestModeService.load()` deletes both on start, so an install
-  carrying them is not stuck either. Logout leads to `StartScreen`.
-  On sign-in and registration only the flag is turned off; the guest's
-  devices are then offered for the account (see §4). Logout ends guest mode
-  with `GuestModeService.end()`, which also forgets the guest's devices.
+  the phone**, neither the mode nor the devices (see §4), so every start shows
+  the `StartScreen` and every guest starts with an empty list. Storing either
+  (`guestMode` and `user_calibration_guest` in SharedPreferences) sent a guest
+  straight to the `DeviceScreen` on every later start with no way back, and
+  left their devices on the phone for whoever opened the app next;
+  `GuestModeService.load()` deletes both on start, so an install carrying them
+  is not stuck. On sign-in and registration only the flag is turned off; the
+  guest's devices are then offered for the account (see §4). Logout ends guest
+  mode with `GuestModeService.end()`, which also forgets the guest's devices,
+  and leads to `StartScreen`.
+- **Google sign-in** takes two paths. On Android/iOS,
+  `AuthService.signInWithGoogle()` uses the `google_sign_in` plugin and builds
+  a Firebase credential from its ID token. In the browser it calls
+  `FirebaseAuth.signInWithPopup(GoogleAuthProvider())`, which keeps the app's
+  own accessible button (`google_sign_in_web`'s `signIn()` is deprecated and
+  its `renderButton()` cannot be styled). The client ID meta tag in
+  `web/index.html` is only needed by `google_sign_in_web`, which the web
+  build no longer calls.
+- **Password reset:** "Passwort vergessen?" on the login screen opens
+  `PasswordResetScreen` (one field, pre-filled with the typed address, one
+  button; the result stays on screen as text with an icon), which calls
+  `AuthService.sendPasswordReset`. The link opens our own page
+  (`firebase/web/auth-action.html`, see §3), where the new password is set.
+  Back in the app the only thing left is to sign in again, so after a
+  successful request the button says "Weiter" and pops down to the first route
+  (`AppEntryPoint`, i.e. the `StartScreen`). The app never changes a password
+  itself — whoever forgot it cannot enter the old one. `main.dart` sets
+  Firebase's language to German (`FirebaseAuth.setLanguageCode`), so the
+  e-mail uses Firebase's German template unless it was customised in the
+  console.
 
 ## 3. Commands
 
@@ -189,64 +221,52 @@ flutter pub get
 flutter run
 ```
 
-Debug SHA-1 for Android/Google Sign-In (Windows):
+### Google Sign-In setup
 
-```cmd
-cd frontend/soundpilot_application/android
-gradlew.bat signingReport
-```
+- **Android:** every developer registers their own debug SHA-1 once in the
+  Firebase console (Project settings → the Android app → "Add fingerprint")
+  and puts the newly downloaded `google-services.json` into `android/app/`.
+  Get the SHA-1 with `gradlew.bat signingReport` in
+  `frontend/soundpilot_application/android`. Without it, Google sign-in fails
+  with `ApiException: 10` (DEVELOPER_ERROR), reported as "Die
+  Google-Anmeldung ist für diese App-Version nicht freigegeben."
+  (`AuthService.messageForGoogleCode`). Everything else works without it.
+- **Browser:** goes through `signInWithPopup` and needs no SHA-1. The host
+  must be listed under *Authorized domains* in the Firebase console
+  (Authentication → Settings); `localhost` is there by default, on any port.
 
-**Every developer has to register their own debug SHA-1 once** in the Firebase
-console (Project settings → the Android app → "Add fingerprint"), and then put
-the newly downloaded `google-services.json` into `android/app/`. The debug
-keystore is generated locally on every machine, so a build signed with an
-unregistered one is refused by Google: the Google sign-in fails with
-`ApiException: 10` (DEVELOPER_ERROR), which the app reports as "Die
-Google-Anmeldung ist für diese App-Version nicht freigegeben."
-(`AuthService.messageForGoogleCode`). E-mail login is unaffected, and so is
-everything else in the app — only Google sign-in needs the fingerprint.
+### Web development
 
-Google Sign-In **in the browser** goes through Firebase Auth
-(`signInWithPopup`, see §7) and needs no SHA-1 and no Google Cloud setting.
-The host the app is served from must be listed under *Authorized domains* in
-the Firebase console (Authentication → Settings); `localhost` is there by
-default, on any port.
+- `web_dev_config.yaml` fixes `flutter run -d chrome` to
+  `http://localhost:5000` (also with the run button in Android Studio).
+- `flutter run -d chrome` starts Chrome with a temporary profile, so the
+  Firebase and Google login are asked again on every start (debug only). To
+  keep them, add the run arg
+  `--web-browser-flag=--user-data-dir=C:\Users\<you>\.flutter-chrome-profile`.
 
-`flutter run -d chrome` picks a random port unless told otherwise;
-`web_dev_config.yaml` in the app folder fixes it to `http://localhost:5000`
-(also with the run button in Android Studio).
+### Run logs
 
-`flutter run -d chrome` (also the run button) starts Chrome with a temporary
-profile that is deleted after the run, so the Firebase login and the Google
-session are gone on the next start and the whole Google login (including the
-confirmation on the phone) is asked again. That is a debug-only effect; a
-normal browser keeps the login. To keep it while developing, give Chrome a
-fixed profile outside the repo, e.g. as additional run args:
-`--web-browser-flag=--user-data-dir=C:\Users\<you>\.flutter-chrome-profile`.
-
-To keep what `flutter run` prints (build output, app logs, errors), start it
-through the log script instead, with the same arguments:
+To keep what `flutter run` prints, start it through the log script with the
+same arguments:
 
 ```cmd
 cd frontend/soundpilot_application
 node tool/run_with_log.mjs -d <device>
 ```
 
-Every start writes a new file `logs/run-<date>_<time>.log` (header with the
-arguments, branch and commit; a time in front of every line; colour codes
-removed) and deletes all but the newest 5. The keys of `flutter run` (`r`,
-`R`, `q`) still work. The file is written on the PC, not by the app, so an
-installed APK never creates one. The logs can contain e-mail addresses and
-device names; do not share them carelessly.
+Every start writes `logs/run-<date>_<time>.log` (header with the arguments,
+branch and commit; a time in front of every line; colour codes removed) and
+keeps only the newest 5. The keys of `flutter run` (`r`, `R`, `q`) still work.
+The file is written on the PC, not by the app. The logs can contain e-mail
+addresses and device names; do not share them carelessly.
 
-In Android Studio (with the repo root opened as the project), pick the shared
-run configuration **"flutter run with Log"** (`.run/` in the repo root)
-instead of the normal one. It starts the script in Android Studio's terminal,
-so the keys work there too. The device dropdown does not apply to it: with more than one device
-connected, `flutter run` asks in the terminal which one to use. It needs the
-bundled *Shell Script* plugin and `node` on the `PATH`.
+In Android Studio (repo root opened as the project), use the shared run
+configuration **"flutter run with Log"** (`.run/`). It runs the script in the
+terminal, so the device dropdown does not apply: with more than one device
+connected, `flutter run` asks in the terminal. It needs the bundled *Shell
+Script* plugin and `node` on the `PATH`.
 
-Cloud Functions:
+### Cloud Functions and emulators
 
 ```cmd
 cd firebase/functions
@@ -256,91 +276,80 @@ npm run serve      :: Build + emulator (functions only)
 npm run deploy     :: firebase deploy --only functions (does NOT build first)
 ```
 
-`firebase.json` also configures the Auth (9099) and Firestore (8080) emulators.
-To test the auth triggers together with the rules, run
-`firebase emulators:start --only functions,auth,firestore` from `firebase/`.
+- `firebase/functions/lib/` (the compiled JavaScript) is git-ignored and
+  `firebase.json` has no predeploy build step: run `npm run build` after
+  cloning or pulling, before using the emulator or deploying by hand.
+- To test the auth triggers together with the rules, run
+  `firebase emulators:start --only functions,auth,firestore` from `firebase/`
+  (ports: functions 5001, auth 9099, firestore 8080).
+- `firebase.json` configures Firestore, Functions and Hosting; Cloud Storage
+  is not used. The hosting emulator and the web dev server (see "Web
+  development" above) both use port 5000 — run only one of them at a time.
+- On Windows, `npm run lint` reports `linebreak-style` (CRLF) errors when
+  git's `core.autocrlf` is on. The repo stores LF, so CI is not affected.
 
-`firebase/functions/lib/` (the compiled JavaScript) is git-ignored. Run
-`npm run build` after cloning or pulling before using the emulator or
-deploying by hand; `firebase.json` has no predeploy build step.
+### Toolchain versions
 
-On Windows, `npm run lint` locally reports `linebreak-style` (CRLF) errors when
-git's `core.autocrlf` is on. The repo stores LF, so CI is not affected.
+- **Everyone uses the Flutter version CI pins (3.47.6).** `pubspec.yaml`
+  requires its Dart (`sdk: ^3.13.0`). A different Flutter gives different
+  analyzer warnings and can rewrite transitive versions in `pubspec.lock`;
+  do not commit such lock changes unless you changed dependencies on purpose
+  (`git checkout -- pubspec.lock`). To upgrade, change the CI version, the
+  `sdk` constraint, the lock and this section in one PR.
+- **Android build:** Flutter 3.47.6 needs at least Gradle 8.14, Android
+  Gradle plugin 8.11.1 and Kotlin 2.2.20
+  (`android/gradle/wrapper/gradle-wrapper.properties`,
+  `android/settings.gradle.kts`). CI does not build the app, so it would not
+  notice a mismatch; raise these together with Flutter. Keep the
+  `android.builtInKotlin` / `android.newDsl` lines in
+  `android/gradle.properties` (written by Flutter's migrator). Flutter warns
+  that these versions will be dropped (it names Gradle 9.1, AGP 9.0.1,
+  Kotlin 2.3.20); moving to AGP 9 is a separate migration, ideally with the
+  next Flutter upgrade.
+- **Java:** this Gradle needs Java 17–24 and fails on Java 25, which recent
+  Android Studio versions bundle. Point Flutter to a JDK 21 once:
+  `flutter config --jdk-dir=<path to JDK 21>`.
 
-**Everyone uses the Flutter version CI pins (3.47.6).** `pubspec.yaml`
-requires its Dart (`sdk: ^3.13.0`), so an older Flutter stops at
-`flutter pub get`. A different Flutter also gives different analyzer warnings
-and deprecations than CI, and can rewrite transitive versions in
-`pubspec.lock` during `flutter pub get`. Do not commit such lock changes unless
-you changed dependencies on purpose; discard them with
-`git checkout -- pubspec.lock`. To upgrade, change the CI version, the `sdk`
-constraint, the lock and this section in one PR, and the whole team upgrades
-with it.
+### Troubleshooting
 
-**Android build versions.** Flutter 3.47.6 refuses to build the Android app
-below Gradle 8.14, Android Gradle plugin 8.11.1 and Kotlin 2.2.20
-(`android/gradle/wrapper/gradle-wrapper.properties`,
-`android/settings.gradle.kts`); the error names the minimum. CI does not build
-the app, so it would not notice. Raise these together with Flutter. The
-`android.builtInKotlin` / `android.newDsl` lines in `android/gradle.properties`
-are written by Flutter's migrator on every Android build; keep them.
-Flutter 3.47.6 already warns that support for these versions "will soon be
-dropped" and names Gradle 9.1, AGP 9.0.1 and Kotlin 2.3.20. These are only
-warnings, the build works. Moving to AGP 9 is a migration of its own (new
-build DSL and built-in Kotlin, which the two flags above opt out of); do it
-as a separate task, ideally with the next Flutter upgrade.
-
-This Gradle needs Java 17–24 and fails on Java 25 ("incompatible with Gradle"),
-which recent Android Studio versions bundle and Flutter uses by default. Point
-Flutter to a JDK 21 once (a setting on your PC, not in the repo):
-`flutter config --jdk-dir=<path to JDK 21>`.
-
-If the first Android build fails with `PKIX path building failed` while
-downloading, Java does not trust the certificate an antivirus or proxy puts in
-front of HTTPS. Let Java use the Windows certificate store for that build:
-`set GRADLE_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT` and the same for
-`JAVA_TOOL_OPTIONS`. Once Gradle and the dependencies are cached, it is
-usually not needed again.
-
-On Windows, a full `flutter test` run sometimes fails to load single test files
-with "Connection closed before test suite loaded". That is a crash of the local
-test runner, not a failing test: rerun those files with
-`flutter test --concurrency=1 <files>`.
-
-If a build or test run behaves strangely after switching branches, Flutter
-versions or native/plugin dependencies (stale errors, changes not picked up),
-run `flutter clean` and then `flutter pub get`. Do not run it routinely: it
-deletes `build/` and `.dart_tool/`, so the next build starts from scratch and
-takes minutes.
+- `PKIX path building failed` during the first Android build: an antivirus or
+  proxy intercepts HTTPS. Set
+  `GRADLE_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT` and the same for
+  `JAVA_TOOL_OPTIONS` for that build.
+- "Connection closed before test suite loaded" on Windows is a crash of the
+  local test runner, not a failing test: rerun those files with
+  `flutter test --concurrency=1 <files>`.
+- Strange build or test behaviour after switching branches, Flutter versions
+  or native dependencies: `flutter clean`, then `flutter pub get`. Not
+  routinely — the next build starts from scratch and takes minutes.
 
 ### The hosting site (`firebase/web/`)
 
 Two static pages, deployed by CI with everything else:
 
 - `auth-action.html` — the page a link from a Firebase Auth e-mail opens
-  ("Passwort vergessen?", see §7). It reads `mode` and `oobCode` from the
-  URL, sets the new password with `confirmPasswordReset` and tells the user
-  to sign in again in the app. `verifyEmail` and `recoverEmail` are handled
-  too, so no link of Firebase's ever lands on a blank page. Written in the
-  app's palette (`core/theme/app_colors.dart`, light and dark) and in Plus
-  Jakarta Sans, with the accessibility rules of §1.
+  ("Passwort vergessen?", see §2). It reads `mode` and `oobCode` from the URL,
+  sets the new password with `confirmPasswordReset` and tells the user to sign
+  in again in the app. `verifyEmail` and `recoverEmail` are handled too, so no
+  link of Firebase's lands on a blank page. Written in the app's palette
+  (`core/theme/app_colors.dart`, light and dark) and in Plus Jakarta Sans,
+  with the accessibility rules of §1.
 - `index.html` — one paragraph, so the bare domain is not a 404.
 
 Both are plain HTML with the Firebase JS SDK (pinned, from `gstatic.com`).
 **No API key lives in the repository:** the page reads the config from
 `/__/firebase/init.json`, which Firebase Hosting serves for its own project.
-That is also why it only works when it is served by Hosting — opening the
-file from disk shows its "Seite nicht erreichbar" message.
+That is also why it only works when Hosting serves it — opening the file from
+disk shows its "Seite nicht erreichbar" message.
 
 **One setting has to be made by hand, once per project:** Firebase console →
-Authentication → Templates → "Passwort zurücksetzen" → the pencil next to
-"Absenderadresse"/the template → *Aktions-URL anpassen* →
-`https://<project>.web.app/auth-action`. Without it, Firebase keeps sending
-its own page and this one is never opened.
+Authentication → Templates → "Passwort zurücksetzen" → the pencil next to the
+template → *Aktions-URL anpassen* → `https://<project>.web.app/auth-action`.
+Without it, Firebase keeps sending its own page and this one is never opened.
 
-To look at it locally: `firebase emulators:start --only hosting` in
-`firebase/` (port 5000) — the emulator serves `init.json` as well, but the
-links themselves still need a real e-mail from the project.
+To look at it locally: `firebase emulators:start --only hosting` in `firebase/`
+(port 5000) — the emulator serves `init.json` as well, but the links
+themselves still need a real e-mail from the project.
 
 ### CI/CD (`.github/workflows/ci-cd.yml`)
 
@@ -359,134 +368,131 @@ Runs on every pull request to `main` and every push to `main`:
   hand only for things CI does not deploy (e.g. Firestore indexes), and test
   unmerged changes with the emulators instead.
 - The app itself is not built or released by CI.
-- `firebase-tools` is pinned to `15.5.1` in the workflow (deploys with the unpinned
-  latest version failed with "An unexpected error has occurred"; with 15.5.1
-  they succeed). Change the version
-  on purpose and check the first deploy after it.
+- `firebase-tools` is pinned to `15.5.1` (the unpinned latest version failed
+  to deploy). Change it on purpose and check the first deploy after it.
 - The deploy authenticates with a Google Cloud service account: its JSON key
-  is the repository secret `FIREBASE_SERVICE_ACCOUNT`, and
-  `google-github-actions/auth` exports it as `GOOGLE_APPLICATION_CREDENTIALS`.
-  If a deploy fails with a 403 / permission error, the service account is
-  missing an IAM role. (Previously: the deprecated `FIREBASE_TOKEN` from
-  `firebase login:ci`.) Deploys run one after another
-  (`concurrency: deploy-main`) and with `--debug`, so a failed run shows the
-  cause in the Actions log.
-- The deploy step makes up to 3 attempts, 30 s apart, because Google APIs
-  sometimes return a temporary 503 (this failed the deploy of PR #20). A retry
-  shows up as a warning in the run. A deploy that fails all 3 attempts is a
-  real error (e.g. a 403), not a hiccup.
+  is the repository secret `FIREBASE_SERVICE_ACCOUNT`, exported as
+  `GOOGLE_APPLICATION_CREDENTIALS` by `google-github-actions/auth`. A 403 /
+  permission error means the service account is missing an IAM role.
+- Deploys run one after another (`concurrency: deploy-main`) and with
+  `--debug`. The deploy step makes up to 3 attempts, 30 s apart, because
+  Google APIs sometimes return a temporary 503; a retry shows up as a
+  warning. A deploy that fails all 3 attempts is a real error.
 
 ## 4. Data Model
 
-### Current state of persistence
+### Persistence
 
 `DeviceScreen` reads and writes the devices through a `DeviceRepository`
 (`core/services/device_repository.dart`): `watch()` delivers the whole device
 list (`DeviceData`) and again after every change, and every write changes one
 device (`putHeadphone`, `putBelt`, `removeHeadphone`, `removeBelt`).
 
-- **Signed-in users: Firestore** (`FirestoreDeviceRepository`), field
-  `calibration` of `users/{uid}` (schema below).
-  - Reads with a snapshot listener, so a document the cloud function writes
-    late is picked up (see §6, eventual consistency).
-  - Writes one device per field path (`FieldPath(['calibration',
-    'headphones', key])`), deletes with `FieldValue.delete()`; never the whole
-    map. Writes wait until the document exists.
-  - Offline: Android and iOS keep a Firestore cache on disk by default; the
-    browser keeps it in memory only (its default, on purpose, see logout
-    below), so offline does not survive a reload there. A write shows up at
-    once but its future only completes when the server has it, so
-    `DeviceScreen` does not await writes; a failed write is reported with a
-    SnackBar.
-  - **Logout clears the cache** (Android/iOS): `AuthService.logout()` calls
-    `terminate()` + `clearPersistence()` after the sign-out, so the user's
-    devices do not stay on the phone. FlutterFire creates a new instance on
-    the next use. The web plugin keeps the terminated instance (every later
-    call fails until a reload), which is why the browser has no disk cache.
-  - Clearing also drops writes that have not reached the server. Before the
-    logout, `DeviceScreen` asks `AuthService.hasUnsavedChanges()`, which waits
-    up to 5 s for them; if they are still pending (offline) it shows
-    `UnsyncedLogoutDialog` ("Angemeldet bleiben" / "Trotzdem abmelden").
-- **Guests: nothing is stored** (`GuestDeviceRepository`). Their devices
-  live in memory for one app run and are gone when the app closes. Without an
-  account there is nowhere they belong, and storing them left a stranger's
-  data on the phone for whoever opened the app next. The state is `static`,
-  so it survives a rebuild of `AppEntryPoint` and can be read by the sign-in
-  flow after `DeviceScreen` is already gone; `watch()` is served from one
-  shared broadcast stream, and `dispose()` does nothing. Signing in is the
-  only way they are ever written, and **only if the user agrees**:
-  - After a successful sign-in or registration with guest devices present,
-    `runSignIn` calls `offerGuestDevices` (`GuestDevicesDialog`:
-    "Geräte übernehmen" / "Geräte löschen"; back and tapping outside do
-    nothing, no time limit).
-  - "Übernehmen" waits for the user document and adds the devices that are
-    not in the account yet (`FirestoreDeviceRepository.addMissingDevices`,
-    the account wins), at most `guestUploadTimeout` (30 s), then forgets
-    them. If it fails, a SnackBar says so and they stay for the rest of this
-    app run.
-  - "Löschen" forgets them.
-  - Logout forgets any that are left (`GuestModeService.end()`).
-  - `GuestModeService.load()` deletes the guest devices an older app version
-    stored under `user_calibration_guest`.
-- **Old local devices of a user:** on the first snapshot from the server,
-  `FirestoreDeviceRepository` uploads the devices stored under
-  `user_calibration_<uid>` (written by app versions before the sync) that are
-  not in the account yet, in one update; devices already in the account win.
-  Afterwards the local key is removed. If the upload fails, it stays and is
-  tried again on the next start.
-- The earbud volumes are part of this map (`HeadphoneCalib.volumeLeft` /
-  `volumeRight`, one pair per device). `CalibrationScreen` gets the earbud and
-  saves through a callback; its wheel shows them as 1–100
-  (`volumeToWheel` / `wheelToVolume` in `features/device/volume_scale.dart`).
-  The stored value is the wheel position (`0.01`–`1.0`), not a gain: what is
-  played is `wheelToGain`, which runs evenly in decibels from −40 dB at 1 to
-  0 dB at 100, because the ear hears loudness logarithmically. The test tone
-  of the calibration and the sound of the `TestPage` both use it. (Until
-  2026-10 playback used the value linearly, so older calibrations sound
-  quieter in the middle range now.)
+**Signed-in users: Firestore** (`FirestoreDeviceRepository`), field
+`calibration` of `users/{uid}` (schema below).
+
+- Reads with a snapshot listener, so a document the cloud function writes
+  late is picked up (see §6, eventual consistency).
+- Writes one device per field path (`FieldPath(['calibration', 'headphones',
+  key])`), deletes with `FieldValue.delete()`; never the whole map. Writes
+  wait until the document exists.
+- Offline: Android and iOS keep a Firestore cache on disk; the browser keeps
+  it in memory only (on purpose, see logout below). A write shows up at once
+  but its future only completes when the server has it, so `DeviceScreen`
+  does not await writes; a failed write is reported with a SnackBar.
+- **Logout clears the cache** (Android/iOS): `AuthService.logout()` calls
+  `terminate()` + `clearPersistence()` after the sign-out. The web plugin
+  keeps the terminated instance (every later call fails until a reload),
+  which is why the browser has no disk cache.
+- Clearing also drops writes that have not reached the server. Before the
+  logout, `DeviceScreen` asks `AuthService.hasUnsavedChanges()`, which waits
+  up to 5 s for them; if they are still pending it shows
+  `UnsyncedLogoutDialog` ("Angemeldet bleiben" / "Trotzdem abmelden").
+- **Old local devices:** on the first snapshot from the server, devices stored
+  under the SharedPreferences key `user_calibration_<uid>` (older app
+  versions) that are not in the account yet are uploaded in one update;
+  devices already in the account win. Then the local key is removed; if the
+  upload fails, it is tried again on the next start.
+
+**Guests: nothing is stored** (`GuestDeviceRepository`). Their devices live in
+memory for one app run and are gone when the app closes: without an account
+there is nowhere they belong, and storing them left a stranger's data on the
+phone for whoever opened the app next. The state is `static`, so it survives a
+rebuild of `AppEntryPoint` and can be read by the sign-in flow after
+`DeviceScreen` is already gone; `watch()` is served from one shared broadcast
+stream, and `dispose()` does nothing. Signing in is the only way they are ever
+written, and **only if the user agrees**:
+
+- After a sign-in or registration with guest devices present, `runSignIn`
+  calls `offerGuestDevices` (`GuestDevicesDialog`: "Geräte übernehmen" /
+  "Geräte löschen"; back and tapping outside do nothing, no time limit).
+- "Übernehmen" waits for the user document and adds the devices that are not
+  in the account yet (`FirestoreDeviceRepository.addMissingDevices`, the
+  account wins), at most `guestUploadTimeout` (30 s), then forgets them. If it
+  fails, a SnackBar says so and they stay for the rest of this app run.
+- "Löschen" forgets them. Logout forgets any that are left
+  (`GuestModeService.end()`).
+- `GuestModeService.load()` deletes the guest devices an older app version
+  stored under `user_calibration_guest`.
+
+### Volume and sound
+
+- The earbud volumes are `HeadphoneCalib.volumeLeft` / `volumeRight`.
+  `CalibrationScreen` shows them on a wheel as 1–100 (`volumeToWheel` /
+  `wheelToVolume` in `features/device/volume_scale.dart`). The stored value
+  is the wheel position (`0.01`–`1.0`), not a gain: what is played is
+  `wheelToGain`, evenly in decibels from −40 dB at 1 to 0 dB at 100.
 - While the earbud is connected, `CalibrationScreen` offers a test tone
   ("Testton abspielen" / "Testton stoppen") routed to that earbud; turning a
-  wheel changes its side at once without restarting the tone. It never starts
-  by itself, because a screen reader speaks through the same headphones. It
-  stops when the screen is left, the app goes to the background, the earbud
-  disconnects or the `TestPage` opens. Not connected: a note and a button to
-  the Bluetooth settings. Outside the Android app there is no tone.
+  wheel changes its side at once. It never starts by itself, because a screen
+  reader speaks through the same headphones. It stops when the screen is
+  left, the app goes to the background, the earbud disconnects or the
+  `TestPage` opens. Not connected: a note and a button to the Bluetooth
+  settings. Outside the Android app there is no tone.
 - The `TestPage` ("Testübung") plays `assets/audio/Marschieren.mp3` the same
-  way, with the calibrated gain per side. **Unlike the calibration's test
-  tone it does not need the earbud:** it plays on the calibrated earbud while
-  that is connected and on the phone's own output otherwise (`deviceId`
-  null, which the native side already understood). The note then says that
-  the recording runs through the speaker and that left/right can only be
-  heard on the earbuds, and the status line names the output as well. The
-  exercise is how the app is shown and tried, so requiring hardware made it
-  untryable; the test tone keeps requiring the earbud, because setting one
-  ear's volume without that ear is meaningless.
-  **'Start' and 'Stop' are always on the screen** (`_buildPlaybackControls`),
-  plus the button to the Bluetooth settings while no earbud is connected.
-  'Start' keeps the app's colour wherever there is sound at all and restarts
-  the recording when it is already playing (the native side stops the
-  running player before it opens the new one anyway); 'Stop' is grey until
-  there is something to stop and red while it runs. The pair was briefly collapsed into
-  the single button that applied, because two grey buttons used to be the
-  screen's only offer without an earbud — a dead end. Both halves of that are
-  fixed now; do not take either away again.
-  Only a playback that went to the earbud is stopped when the earbud
+  way, with the calibrated gain per side. **Unlike the calibration's test tone
+  it does not need the earbud:** it plays on the calibrated earbud while that
+  is connected and on the phone's own output otherwise (`deviceId` null, which
+  the native side already understands). The note then says that the recording
+  runs through the speaker and that left/right can only be heard on the
+  earbuds, and the status line names the output as well. The test tone keeps
+  requiring the earbud, because setting one ear's volume without that ear is
+  meaningless.
+- **'Start' and 'Stop' are both always on the screen**
+  (`_buildPlaybackControls`, see §7), plus the button to the Bluetooth
+  settings while no earbud is connected. 'Start' keeps the app's colour
+  wherever there is sound at all and restarts the recording when it is already
+  playing (the native side stops the running player before it opens the new
+  one anyway); 'Stop' is grey until there is something to stop and red while
+  it runs. Only a playback that went to the earbud is stopped when the earbud
   disconnects (`_playingOnEarbud`); sound on the phone itself keeps running.
-  Both sounds go through `GainPlayer.java`: the file
-  is decoded with `MediaCodec`, mixed down to mono (the file is mono anyway)
-  and each sample gets its side's gain. It used to play through
-  `audioplayers` (`MediaPlayer`) with a balance, which did not audibly change
-  this mono file, so the test did not reflect the calibration; the package
-  was removed.
-- The connection state is runtime only; nothing is stored. Headphones show
-  the real Bluetooth state: `DeviceScreen` listens to
-  `AudioDeviceService.headphoneChanges()` and a card counts as connected while
-  headphones with its key (address, case-insensitive) are an active audio
-  output. Changes are announced to screen readers ("… ist jetzt verbunden" /
-  "… getrennt"), except the state at the start. Without Bluetooth only the
-  simulated headphones (`simulated_1` … `simulated_5`) are connected; typed-in
-  and `dummy_mac_…` headphones never are. Belts still count as connected once
-  their setup was finished in this session.
+- Both sounds go through `GainPlayer.java` (decoded with `MediaCodec`, mixed
+  to mono, a gain per side).
+
+### Bluetooth and connection state
+
+- **Headphones only, Android only.** The add dialog's scan (`scanForDevices`
+  in `device_type.dart`) lists real headphones; the belt scan is simulated
+  (fixed list, 1.5 s delay). Before the scan it checks that Bluetooth is on
+  and asks for the permission ("Geräte in der Nähe"); each case has its own
+  German text and, where it helps, a button to the settings.
+- The native side is `MainActivity.java`: connected output devices (with the
+  address from Android 9), a live event stream
+  (`com.soundpilot/audio_device_events`), paired audio devices, the routed
+  test tone, the `BLUETOOTH_CONNECT` permission (Android 12+) and the
+  Bluetooth state. The app never pairs or connects headphones itself.
+- `AudioDeviceService` wraps it; `findHeadphones()` merges connected and
+  paired headphones into one list per headset and returns a simulated list
+  where there is no Bluetooth (browser, desktop, most emulators). Bluetooth
+  that is only switched off is not simulated.
+- The connection state is runtime only. A headphone card counts as connected
+  while headphones with its key (address, case-insensitive) are an active
+  audio output (`AudioDeviceService.headphoneChanges()`). Changes are
+  announced to screen readers ("… ist jetzt verbunden" / "… getrennt"),
+  except the state at the start. Without Bluetooth only `simulated_1` …
+  `simulated_5` are connected; typed-in and `dummy_mac_…` headphones never
+  are. Belts count as connected once their setup was finished in this
+  session.
 
 ### Firestore: collection `users`
 
@@ -509,16 +515,15 @@ creates it:
 }
 ```
 
-`displayName` is `"New User"` if the auth account has no name.
-There is no `username` field anywhere in the code.
+`displayName` is `"New User"` if the auth account has no name (the Dart model
+falls back to `"User"`). There is no `username` field anywhere in the code.
 
 `schemaVersion` identifies the schema of the document (`SCHEMA_VERSION` in
 `index.ts`, `UserModel.currentSchemaVersion` in Dart). **Increase it whenever
 the default document changes**, in both places. Outdated documents can then be
-found with a query on `schemaVersion` (documents created before versioning have
-no field, `UserModel` reads them as `0`) and migrated with a one-off admin
-script, not with a deployed function. Only the cloud function writes it; the
-security rules block client writes.
+found with a query on `schemaVersion` (documents without the field are read as
+`0`) and migrated with a one-off admin script, not with a deployed function.
+Only the cloud function writes it; the security rules block client writes.
 
 ### Key design decision: maps instead of arrays
 
@@ -538,15 +543,16 @@ await FirebaseFirestore.instance.collection('users').doc(uid).update({
 No read-modify-write of the entire `calibration` map — that creates race
 conditions between multiple devices.
 
-Headphones picked from the scan are stored under their real `BD_ADDR`
-(upper case, e.g. `AA:BB:CC:DD:EE:FF`). Belts (their scan is still simulated:
-fixed list, 1.5 s delay), names typed in by hand and headphones whose address
-Android does not report (Android 7–8) get a placeholder key
-(`dummy_mac_<timestamp>`). Without Bluetooth (browser, desktop, emulator) the
-simulated headphones have the keys `simulated_1` … `simulated_5`. The scan
-does not offer headphones that are already in the list, so adding them again
-cannot reset their calibration. Devices stored under `dummy_mac_…` before the
-real scan cannot be matched to real headphones; what to do with them is open.
+Keys:
+
+- Headphones from the scan: their real `BD_ADDR`, upper case
+  (`AA:BB:CC:DD:EE:FF`).
+- Belts, names typed in by hand and headphones whose address Android does not
+  report (Android 7–8): `dummy_mac_<timestamp>`.
+- Simulated headphones without Bluetooth: `simulated_1` … `simulated_5`.
+
+The scan does not offer headphones that are already in the list, so adding
+them again cannot reset their calibration.
 
 ### Dart models (`models/user_model.dart`)
 
@@ -585,8 +591,8 @@ File: `firebase/functions/src/index.ts`. Both functions run in the region
 
 Both functions log errors and then **rethrow** them, and use
 `runWith({ failurePolicy: true })`, so a failed run is retried (for up to
-7 days). Keep them idempotent. A retry of `createUserDoc` keeps existing devices
-(`merge: true`) but rewrites `createdAt`.
+7 days). Keep them idempotent. A retry of `createUserDoc` rewrites
+`createdAt`; what it does to existing data is open (see §7).
 
 ### Cloud Functions 1st Gen — deliberate decision
 
@@ -645,12 +651,10 @@ For client code this means:
 - Other users' documents and all other paths, including any subcollection,
   are blocked. Do not build queries over the whole `users` collection. A rule
   for a new subcollection has to be added on purpose.
-- The rules were tested against the Firestore emulator (13 allow/deny cases,
-  2026-09-24). Re-test after changing them. The writes of
-  `FirestoreDeviceRepository` were sent to the emulator as REST field-path
-  updates on 2026-10-07: put/remove of a device (also with a `AA:BB:…` key)
-  and the multi-device import are allowed; `displayName`, another user's
-  document and a document that does not exist yet are denied.
+- The rules are not tested in CI. They were tested by hand against the
+  Firestore emulator (13 allow/deny cases, 2026-09-24), and the writes of
+  `FirestoreDeviceRepository` as REST field-path updates (2026-10-07).
+  Re-test after changing them.
 
 ### Eventual consistency on registration
 
@@ -664,163 +668,76 @@ document that does not exist yet also fails.
 
 Not backed by evidence — check in the code instead of assuming:
 
-- **Firestore sync: not tried on a device yet.** Tested with
-  `fake_cloud_firestore` and the rules in the emulator (§4, §6), not with the
-  real backend, offline, or on two phones at once.
-- **Firestore cache after logout:** cleared on Android/iOS (§4). Not tried on
-  a real phone yet, and `clearPersistence()` only drops the data, it does not
-  overwrite it securely (FlutterFire documentation). In the browser the
-  memory cache lasts until the tab is reloaded or closed.
-- **Guest devices if the app is closed during the question:** if the app is
-  closed while `GuestDevicesDialog` is open, or after a failed take-over, the
-  devices are gone — a guest's are never stored (§4). The user has to add
-  them again in the account. Accepted on purpose; the take-over has not been
-  tried on a real phone yet.
-- **Bluetooth: headphones only, on Android only.** The add dialog's scan
-  (`scanForDevices` in `device_type.dart`) lists the real headphones; the
-  belt scan is still simulated. Before the headphone scan it checks that
-  Bluetooth is on and asks for the permission ("Geräte in der Nähe"); each
-  case has its own German text and, where it helps, a button to the
-  Bluetooth or app settings. The device cards show the real connection of
-  the headphones, and the calibration plays its test tone on them (see §4).
-  The native Android
-  side is in `MainActivity.java`:
-  connected output devices (with the Bluetooth address from Android 9),
-  a live device event stream (`com.soundpilot/audio_device_events`), paired
-  audio devices, a stereo test tone that can be routed to one device (and
-  stops when it disconnects), the `BLUETOOTH_CONNECT` permission (Android
-  12+, declared in the manifest) and the Bluetooth state. The app never pairs
-  or connects headphones itself; the user does that in the Android settings.
-  `AudioDeviceService` wraps all of it; `findHeadphones()` merges the
-  connected and paired headphones into one list per headset and returns a
-  simulated list where there is no Bluetooth (browser, desktop, Android
-  without Bluetooth such as most emulators); Bluetooth that is only
-  switched off is not simulated.
-  The app builds and runs on a phone, but the headphone scan has not been
-  tried there yet, and whether Android 12+ anonymises the address without
-  the permission is not checked.
-- **Accessibility: measured in CI, never tested on a device.** The oldest list
-  of findings is `docs/ACCESSIBILITY_AUDIT.md` (static code review, partly
-  outdated); what is still to do is `docs/ACCESSIBILITY_TODO.md`. Done so
-  far: every screen scrolls and survives text scale 2.0 (exception below);
-  `Semantics` headers, labels and tooltips on all icon-only controls; 48x48 dp
-  tap targets; state is no longer carried by colour alone (connection dot, type
-  selector and side buttons all carry an icon too); the whole palette measured
-  against WCAG AA in `test/color_contrast_test.dart`; the system back button
-  works again on login/register (`PopScope(canPop: true)`, back just pops),
-  and Android 13+ predictive back is on (`enableOnBackInvokedCallback` in the
-  manifest; not tried on a phone yet);
-  the app locale is fixed to German (`core/app_locale.dart`), so Flutter's
-  built-in labels are German and the app reports German to the platform
-  (whether TalkBack/VoiceOver then pick a German voice is not verified).
-  `test/screen_reader_test.dart` measures Flutter's own guidelines (labels,
-  Android 48 dp and iOS 44 dp tap targets) over every screen and dialog in
-  both themes, plus the states that matter (selected side and type, card with
-  its connection, calibration value, named text fields).
-  **Do not wrap `Semantics` or a `Tooltip` around an `ElevatedButton`,
-  `TextButton` or `OutlinedButton`:** `ButtonStyleButton` wraps itself in
-  `Semantics(container: true)`, so the wrapper becomes a node of its own and
-  never reaches the node a screen reader focuses. That one mistake caused
-  three real defects (the add button had no name, the belt side buttons never
-  said 'ausgewählt', and the state ended up on an unnamed node). Put the label
-  or state on the button's *content* instead, as `_IconSquareButton` and
-  `_SideButton` now do.
-  Equally: an invisible `labelText` only reaches the semantics tree while the
-  field is empty, so a pre-filled field was announced as a nameless text box.
-  Name such fields with a `Semantics(label: ...)` wrapper (`AuthTextField`,
-  `BeltNumberField`).
+- **Not tried on a real phone yet:** the Firestore sync (tested only with
+  `fake_cloud_firestore` and the rules emulator; not offline or on two phones
+  at once), clearing the cache on logout, taking over guest devices, the
+  headphone scan, and Android 13+ predictive back
+  (`enableOnBackInvokedCallback`).
+- **The hosting site has not been opened in a browser** (`firebase/web/`, see
+  §3), and whether the action URL is set in the Firebase console — without
+  which the e-mail links never reach `auth-action.html` — nobody has
+  confirmed.
+- **Firestore cache after logout:** `clearPersistence()` only drops the data,
+  it does not overwrite it securely (FlutterFire documentation). In the
+  browser the memory cache lasts until the tab is reloaded or closed.
+- **Guest devices if the app is closed during the question,** or after a
+  failed take-over: they are gone — a guest's are never stored (§4). The user
+  has to add them again in the account. Accepted on purpose.
+- **Leaving guest mode:** within a session only by signing in; there is no
+  button back to the `StartScreen`. Restarting the app does lead there
+  (nothing of a guest is stored, see §2), and the devices they added are then
+  gone.
+- **`createUserDoc` retries:** `set(..., { merge: true })` with
+  `settings` and the empty `calibration.headphones` / `belts` maps may reset
+  those fields on a retry, instead of keeping existing devices. Not verified
+  in the emulator.
+- **Android 12+ address:** whether Android anonymises the Bluetooth address
+  without the permission is not checked.
+- **Old `dummy_mac_…` headphones:** devices stored under a placeholder key
+  cannot be matched to real headphones; what to do with them is open.
+- **Accessibility: measured in CI, never tested on a device.** Findings of the
+  static review are in `docs/ACCESSIBILITY_AUDIT.md` (partly outdated), what
+  is still to do in `docs/ACCESSIBILITY_TODO.md`, the screen reader plan (CI
+  checks, device test protocol, open gaps) in `docs/SCREEN_READER_PLAN.md`.
   Still open: localisation (texts are hardcoded German; a second language
   would need `gen-l10n` with ARB files); multiple channels — one
   `HapticFeedback` call in the whole app, and only on the screen-reader path
   of the calibration wheel, while the belt warning distance has neither
   vibration nor sound; validation of the belt fields; a confirmation before a
-  device is deleted; and nothing verified with TalkBack or VoiceOver on real
-  hardware. The plan for screen reader support (CI checks, device test
-  protocol, open gaps) is `docs/SCREEN_READER_PLAN.md`.
-- **The registration form scrolls; do not try to fit it on one screen again.**
-  It was built without a scroll view for a while, because a form that needs no
-  scrolling had been asked for. Holding that promise cost a text-scale cap
-  (first 1.3x, then 1.15x), 16 px captions and 58 px fields — small print in an
-  app whose whole point is impaired vision. That was the wrong trade and was
-  reverted. Measured now on a 360x720 phone: caption 29 px, field 72 px, submit
-  button 108 px at scale 1.0, growing to 116 / 103 / 188 px at scale 2.0, with
-  no cap anywhere. Sizes are bounded from below by
-  `test/accessibility_layout_test.dart`. If the form has to get shorter, remove
-  a field (first name, last name and the belt question are not used yet, see
-  the TODO in the file) — do not shrink the type.
-- **Google sign-in takes two paths.** On Android/iOS,
-  `AuthService.signInWithGoogle()` uses the `google_sign_in` plugin and builds
-  a Firebase credential from its ID token. In the browser it calls
-  `FirebaseAuth.signInWithPopup(GoogleAuthProvider())` instead:
-  `google_sign_in_web`'s `signIn()` is deprecated, cannot reliably provide an
-  ID token and needs the People API for the profile, and its replacement
-  `renderButton()` cannot be styled and would not follow the app's
-  accessibility rules. The popup path keeps the app's own button. Nobody has
-  decided whether the browser is a target at all (`web/` is otherwise untouched
-  Flutter scaffolding); the client ID meta tag in `web/index.html` is only
-  needed by `google_sign_in_web`, which the web build no longer calls.
-- **Password reset and Google accounts.** "Passwort vergessen?" on the login
-  screen opens `PasswordResetScreen` (one field, pre-filled with the typed
-  address, one button; the result stays on screen as text with an icon),
-  which calls `AuthService.sendPasswordReset`; the link opens Firebase's own
-  web page, where the new password is set. Back in the app the only thing
-  left is to sign in again, so after a successful request the button says
-  "Weiter" and pops down to the first route (AppEntryPoint, i.e. the
-  StartScreen). The page the link opens is ours
-  (`firebase/web/auth-action.html`, see §3), not Firebase's default one —
-  but only once the action URL is set in the console, which nobody has
-  confirmed yet. The app never changes a password itself: a screen asking for
-  the old password plus the new one twice was built and dropped again, since
-  whoever forgot their password cannot enter the old one.
-  According to Firebase's documentation (not tried on this project):
-  a reset for an account that only uses Google adds e-mail/password to the
-  same account. The other way round, a Google sign-in with the Gmail address of
-  an e-mail/password account whose address is not verified replaces the
-  password, and the reset is then the way back. The app never sends a
-  verification e-mail; whether it should is open. `main.dart` sets
-  Firebase's language to German (`FirebaseAuth.setLanguageCode`), so the
-  reset e-mail comes from Firebase's German template, unless the template was
-  customised in the console (Authentication → Templates); that, and whether
-  e-mail enumeration protection is on, has not been checked.
-- **Leaving guest mode:** within a session a guest can only leave guest mode
-  by signing in; there is no button to go back to the `StartScreen`.
-  Restarting the app does lead there (nothing of a guest is stored, see §2),
-  and the devices they added are then gone.
+  device is deleted; nothing verified with TalkBack or VoiceOver on real
+  hardware, and whether they pick a German voice for the fixed German locale
+  (`core/app_locale.dart`).
+- **Browser as a target:** nobody has decided whether the web build is a
+  target; `web/` is otherwise untouched Flutter scaffolding.
+- **Password reset and Google accounts** (from Firebase's documentation, not
+  tried here): a reset for a Google-only account adds e-mail/password to it;
+  a Google sign-in with the Gmail address of an unverified e-mail/password
+  account replaces the password. The app never sends a verification e-mail;
+  whether it should is open. Whether the reset template was customised and
+  whether e-mail enumeration protection is on has not been checked.
 - **Two device-type enums:** `DeviceCategory` (`models/user_model.dart`, label
   only) and `DeviceType` (`features/device/widgets/device_type.dart`, all UI
-  texts and the icon) describe the same two types. The device screens use
-  `DeviceType`; merging the two is open.
-- **Test strategy** is not documented. CI runs `flutter test`; tested so far
-  are the models (`test/models/`), the auth error messages
-  (`test/features/auth/`), `GuestModeService` and `GuestDeviceRepository`
-  (`test/core/services/`) and
-  the German app locale (`test/core/app_locale_test.dart`).
-  `test/accessibility_layout_test.dart` renders the screens on a 360x720 phone
-  in both themes at text scale 1.0/1.6/2.0 and checks the add-device dialog
-  and the password reset flow (including "Weiter" back to the StartScreen);
-  `test/color_contrast_test.dart` checks the palette;
-  `test/screen_reader_test.dart` runs Flutter's accessibility guidelines over
-  every screen in both themes and checks the labels and states a screen
-  reader is told (it leaves out `textContrastGuideline`, which renders the
-  screen to an image and then trips over google_fonts' runtime font fetch);
-  `test/features/device/calibration_screen_test.dart` checks that the
-  calibration starts at and saves the volumes of its earbud, the decibel
-  curve and when the test tone plays and stops;
-  `test/features/device/test_page_test.dart` checks the same for the sound
-  of the test exercise;
-  `test/features/device/device_screen_test.dart` checks the `DeviceScreen`
-  with a fake repository (`test/helpers/`), which the layout test uses too;
-  `test/features/device/add_device_dialog_test.dart` checks the headphone
-  scan states with a fake scanner;
-  `test/core/services/audio_device_service_test.dart` checks
-  `AudioDeviceService` against a mocked native channel;
-  `test/core/services/` tests both repositories (Firestore with
-  `fake_cloud_firestore`);
-  `test/widget_test.dart` is still a placeholder. `AuthService`, the native
-  Android side (`MainActivity.java`) and the security rules are not tested in
-  CI.
-- **Firestore language default:** The function sets `settings.language:
+  texts and the icon) describe the same two types. Merging them is open.
+- **Firestore language default:** the function sets `settings.language:
   "system"`, but the app UI is German. Whether this is intended is open.
+- **Test strategy** is not documented. Tests mirror `lib/` under `test/`;
+  `test/helpers/` holds the fakes (repository, auth service). Not tested in
+  CI: `AuthService` itself, the native Android side (`MainActivity.java`) and
+  the security rules. `test/widget_test.dart` is still a placeholder.
+
+### Settled decisions
+
+- **The test exercise keeps both 'Start' and 'Stop', and works without an
+  earbud** (see §4). Collapsing the pair into the single button that applied
+  left two grey buttons as the screen's only offer without an earbud — a dead
+  end on the screen that is how the app is shown and tried. Do not take either
+  away again.
+- **The registration form scrolls; do not try to fit it on one screen again.**
+  Fitting it once cost a text-scale cap and small captions and fields — the
+  wrong trade for an app about impaired vision. Sizes are bounded from below
+  by `test/accessibility_layout_test.dart`. If the form has to get shorter,
+  remove a field (first name, last name and the belt question are not used
+  yet, see the TODO in the file) — do not shrink the type.
 
 ## 8. Working Conventions in This Repo
 
