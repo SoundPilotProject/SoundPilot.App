@@ -25,7 +25,8 @@ if (/(^|\/)CLAUDE\.md$/.test(path)) {
     'all three places: Cloud Function defaults (index.ts), Dart model ' +
     '(fromMap/toMap) and firestore.rules; bump schemaVersion in index.ts ' +
     'and UserModel.currentSchemaVersion; add a test for a rules change in ' +
-    'firebase/rules-tests and run `npm test` there.';
+    'firebase/rules-tests and for a function change in ' +
+    'firebase/functions/test, and run `npm test` there.';
 }
 
 if (reminder) {

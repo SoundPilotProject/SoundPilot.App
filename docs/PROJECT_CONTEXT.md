@@ -102,6 +102,7 @@ firebase/                          Firestore rules, Cloud Functions, Hosting
   firestore.rules
   functions/src/index.ts
   functions/lib/                   tsc output, git-ignored (see §3)
+  functions/test/                  tests of the functions (see §3, §5)
   rules-tests/                     tests of firestore.rules (see §3, §6)
   web/                             the hosting site (see §3): auth-action.html
                                    is the page the e-mail links open
@@ -273,6 +274,7 @@ Script* plugin and `node` on the `PATH`.
 cd firebase/functions
 npm run lint       :: eslint (also run in CI)
 npm run build      :: tsc
+npm test           :: build + Firestore emulator + tests (also run in CI)
 npm run serve      :: Build + emulator (functions only)
 npm run deploy     :: firebase deploy --only functions (does NOT build first)
 ```
@@ -280,6 +282,11 @@ npm run deploy     :: firebase deploy --only functions (does NOT build first)
 - `firebase/functions/lib/` (the compiled JavaScript) is git-ignored and
   `firebase.json` has no predeploy build step: run `npm run build` after
   cloning or pulling, before using the emulator or deploying by hand.
+- **Function tests** (`firebase/functions/test/index.test.mjs`): run the
+  compiled functions with `firebase-functions-test` against the Firestore
+  emulator, with Node's built-in `node:test`. `npm run test:running` builds
+  and runs them against an emulator that is already running. Same
+  requirements and Windows port note as the rules tests below.
 - **Rules tests** (`firebase/rules-tests/`, also run in CI):
 
   ```cmd
@@ -372,7 +379,7 @@ Runs on every pull request to `main` and every push to `main`:
 | Job | Steps | Fails on |
 |---|---|---|
 | `build_and_test` | `flutter pub get`, `flutter analyze --no-fatal-infos`, `flutter test` (Flutter 3.47.6) | analyzer warnings/errors, failing tests |
-| `functions` | `npm ci`, `npm run lint`, `npm run build` (Node.js 22) | lint errors, TypeScript errors |
+| `functions` | `npm ci`, `npm run lint`, `npm run build`, `npm test` (Node.js 22, Java 21, Firestore emulator) | lint errors, TypeScript errors, a failing function test |
 | `rules` | `npm ci`, `npm test` in `firebase/rules-tests` (Node.js 22, Java 21, Firestore emulator) | a failing rules test |
 | `deploy` | build functions, `firebase deploy --only firestore:rules,functions,hosting` | any deploy error |
 
@@ -611,8 +618,9 @@ document already there (Firestore's `ALREADY_EXISTS`) logs it and succeeds
 without touching it, so the user's devices, settings and `createdAt` stay.
 Do not go back to `set(..., { merge: true })`: it writes the default
 `settings` and the empty `calibration` maps over the user's own, which
-deleted all devices on a retry (checked in the Firestore emulator,
-2026-10-16).
+deleted all devices on a retry. `firebase/functions/test/` checks this in
+CI (the default document, a retry that keeps devices, settings and
+`createdAt`, and both deletes); a change to a function needs a test there.
 
 ### Cloud Functions 1st Gen — deliberate decision
 
@@ -740,9 +748,10 @@ Not backed by evidence — check in the code instead of assuming:
   "system"`, but the app UI is German. Whether this is intended is open.
 - **Test strategy** is not documented. Tests mirror `lib/` under `test/`;
   `test/helpers/` holds the fakes (repository, auth service); the security
-  rules are tested in `firebase/rules-tests/`. Not tested in CI:
-  `AuthService` itself, the native Android side (`MainActivity.java`) and the
-  Cloud Functions. `test/widget_test.dart` is still a placeholder.
+  rules are tested in `firebase/rules-tests/`, the Cloud Functions in
+  `firebase/functions/test/`. Not tested in CI: `AuthService` itself and the
+  native Android side (`MainActivity.java`). `test/widget_test.dart` is still
+  a placeholder.
 
 ### Settled decisions
 

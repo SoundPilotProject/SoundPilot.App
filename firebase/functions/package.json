@@ -4,6 +4,8 @@
     "lint": "eslint --ext .js,.ts .",
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "test": "npm run build && firebase emulators:exec --only firestore --project demo-soundpilot \"node --test\"",
+    "test:running": "npm run build && node --test",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
