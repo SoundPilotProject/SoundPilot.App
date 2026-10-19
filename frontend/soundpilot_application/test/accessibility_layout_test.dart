@@ -34,6 +34,7 @@ import 'package:soundpilot_application/features/device/screens/device_screen.dar
 import 'package:soundpilot_application/features/device/widgets/add_device_dialog.dart';
 import 'package:soundpilot_application/features/device/widgets/device_card.dart';
 import 'package:soundpilot_application/features/device/widgets/device_type.dart';
+import 'package:soundpilot_application/features/device/widgets/remove_device_dialog.dart';
 import 'package:soundpilot_application/features/device/widgets/unsynced_logout_dialog.dart';
 import 'package:soundpilot_application/models/user_model.dart';
 
@@ -118,6 +119,7 @@ void main() {
             soundSupported: true,
           ),
       'UnsyncedLogoutDialog': () => const UnsyncedLogoutDialog(),
+      'RemoveDeviceDialog': () => const RemoveDeviceDialog(name: 'Pods'),
       'GuestDevicesDialog': () => const GuestDevicesDialog(count: 2),
       // Connected, so the tone section shows its text and button.
       'CalibrationScreen': () => CalibrationScreen(

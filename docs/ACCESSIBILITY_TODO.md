@@ -98,14 +98,14 @@ a separate node and never reaches the node the screen reader focuses.
       system asks for reduced animations (its status text already says that
       something is running).
 - [x] **ALL-CAPS 'NEIN' / 'JA'** — now 'Nein' / 'Ja'.
+- [x] **Deleting a device had no confirmation** — with TalkBack the delete
+      button is the element right after the card, so one double tap dropped
+      the device and its calibration for good. `RemoveDeviceDialog` now asks
+      first and names the device; "Behalten" is the prominent button, and
+      back or tapping outside keeps the device.
 
 Still open:
 
-- [ ] **Deleting a device has no confirmation and no undo** — with TalkBack
-      the delete button is the element right after the card; one double tap
-      drops the device and its calibration for good. Left out on purpose: it
-      changes a flow, not a defect, so it is the team's call how it should
-      look (a dialog like `UnsyncedLogoutDialog`, or an undo in the message).
 - [ ] **Validation of the belt values** — digits only is in place, but a range
       check (warning distance, 0–100 %) with a spoken error message is still
       missing, and the values are still not stored at all (see the

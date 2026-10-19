@@ -13,6 +13,7 @@ import 'package:soundpilot_application/core/services/audio_device_service.dart';
 import 'package:soundpilot_application/features/device/screens/device_screen.dart';
 import 'package:soundpilot_application/features/device/widgets/device_card.dart';
 import 'package:soundpilot_application/features/device/widgets/device_type.dart';
+import 'package:soundpilot_application/features/device/widgets/remove_device_dialog.dart';
 import 'package:soundpilot_application/models/user_model.dart';
 
 import '../../helpers/fake_auth_service.dart';
@@ -47,6 +48,14 @@ Future<void> _pumpScreen(
       headphoneChanges: () => headphones ?? const Stream.empty(),
     ),
   ));
+}
+
+/// Taps the delete button of the device [name] and confirms the question.
+Future<void> _removeConfirmed(WidgetTester tester, String name) async {
+  await tester.tap(find.byTooltip('$name entfernen'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Entfernen'));
+  await tester.pumpAndSettle();
 }
 
 /// Whether the card of the device [name] shows it as connected.
@@ -125,10 +134,53 @@ void main() {
     repository.devices.add(_devices);
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Gürtel 1 entfernen'));
-    await tester.pump();
+    await _removeConfirmed(tester, 'Gürtel 1');
 
     expect(repository.writes, ['removeBelt bb']);
+  });
+
+  testWidgets('removing a device asks first and names it', (tester) async {
+    final repository = FakeDeviceRepository();
+    await _pumpScreen(tester, repository);
+    repository.devices.add(_devices);
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Pods entfernen'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RemoveDeviceDialog), findsOneWidget);
+    expect(find.textContaining('„Pods“'), findsOneWidget);
+    expect(repository.writes, isEmpty);
+  });
+
+  testWidgets('"Behalten" keeps the device', (tester) async {
+    final repository = FakeDeviceRepository();
+    await _pumpScreen(tester, repository);
+    repository.devices.add(_devices);
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Pods entfernen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Behalten'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RemoveDeviceDialog), findsNothing);
+    expect(repository.writes, isEmpty);
+  });
+
+  testWidgets('tapping outside the question keeps the device', (tester) async {
+    final repository = FakeDeviceRepository();
+    await _pumpScreen(tester, repository);
+    repository.devices.add(_devices);
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Pods entfernen'));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RemoveDeviceDialog), findsNothing);
+    expect(repository.writes, isEmpty);
   });
 
   testWidgets('a failed save is reported with text', (tester) async {
@@ -137,8 +189,7 @@ void main() {
     repository.devices.add(_devices);
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Pods entfernen'));
-    await tester.pump();
+    await _removeConfirmed(tester, 'Pods');
 
     expect(
       find.textContaining('konnte nicht gespeichert werden'),
@@ -192,7 +243,7 @@ void main() {
     first.devices.add(_devices);
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Pods entfernen'));
+    await _removeConfirmed(tester, 'Pods');
     await tester.pumpWidget(const SizedBox());
 
     expect(first.writes, ['removeHeadphone aa']);
