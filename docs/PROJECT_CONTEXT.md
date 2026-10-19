@@ -147,7 +147,9 @@ features/
   device/headphone_connection.dart  whether one earbud is connected
   device/widgets/                device_type (DeviceType + device scan),
                                  add_device_dialog, device_card,
-                                 belt_setup_fields, unsynced_logout_dialog
+                                 remove_device_dialog (asks before a
+                                 device is removed), belt_setup_fields,
+                                 unsynced_logout_dialog
 ```
 
 - **Fonts:** Plus Jakarta Sans is set once as the `textTheme` of both themes
@@ -729,8 +731,8 @@ Not backed by evidence — check in the code instead of assuming:
   would need `gen-l10n` with ARB files); multiple channels — one
   `HapticFeedback` call in the whole app, and only on the screen-reader path
   of the calibration wheel, while the belt warning distance has neither
-  vibration nor sound; validation of the belt fields; a confirmation before a
-  device is deleted; nothing verified with TalkBack or VoiceOver on real
+  vibration nor sound; validation of the belt fields; nothing verified with
+  TalkBack or VoiceOver on real
   hardware, and whether they pick a German voice for the fixed German locale
   (`core/app_locale.dart`).
 - **Browser as a target:** nobody has decided whether the web build is a

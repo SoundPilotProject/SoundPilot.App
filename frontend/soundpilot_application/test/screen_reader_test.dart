@@ -41,6 +41,7 @@ import 'package:soundpilot_application/features/device/screens/test_page.dart';
 import 'package:soundpilot_application/features/device/widgets/add_device_dialog.dart';
 import 'package:soundpilot_application/features/device/widgets/belt_setup_fields.dart';
 import 'package:soundpilot_application/features/device/widgets/device_type.dart';
+import 'package:soundpilot_application/features/device/widgets/remove_device_dialog.dart';
 import 'package:soundpilot_application/features/device/widgets/unsynced_logout_dialog.dart';
 import 'package:soundpilot_application/main.dart';
 import 'package:soundpilot_application/models/user_model.dart';
@@ -183,6 +184,7 @@ void main() {
           ),
       'GuestDevicesDialog': () => const GuestDevicesDialog(count: 2),
       'UnsyncedLogoutDialog': () => const UnsyncedLogoutDialog(),
+      'RemoveDeviceDialog': () => const RemoveDeviceDialog(name: 'Pods'),
       'AddDeviceDialog': () => const Scaffold(body: AddDeviceDialog()),
     };
 

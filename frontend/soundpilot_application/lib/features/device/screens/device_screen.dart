@@ -27,6 +27,7 @@ import '../../auth/screens/register_screen.dart';
 import '../widgets/add_device_dialog.dart';
 import '../widgets/device_card.dart';
 import '../widgets/device_type.dart';
+import '../widgets/remove_device_dialog.dart';
 import '../widgets/unsynced_logout_dialog.dart';
 
 /// Main screen after start-up (signed in or guest).
@@ -223,8 +224,18 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   // ── Remove ─────────────────────────────────────────────────────────────────
 
-  /// Removes the device with the map key [key] (BD_ADDR) of the given [type].
-  void _removeDevice(DeviceType type, String key) {
+  /// Removes the device with the map key [key] (BD_ADDR) of the given [type],
+  /// after the user confirmed it ([RemoveDeviceDialog]).
+  Future<void> _removeDevice(
+    DeviceType type,
+    String key,
+    String name,
+  ) async {
+    final remove = await showDialog<bool>(
+      context: context,
+      builder: (_) => RemoveDeviceDialog(name: name),
+    );
+    if (remove != true || !mounted) return;
     _connectedBelts.remove(key);
     _save(type == DeviceType.earbuds
         ? _repository.removeHeadphone(key)
@@ -568,7 +579,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
               name: value.name,
               type: type,
               isConnected: value.isConnected,
-              onDelete: () => _removeDevice(type, key),
+              onDelete: () => _removeDevice(type, key, value.name),
               onTap: () => onOpen(key),
             ),
           ),
