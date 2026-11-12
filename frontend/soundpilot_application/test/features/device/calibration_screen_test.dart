@@ -114,6 +114,67 @@ void main() {
       expect(saved.single.volumeRight, 0.7);
       expect(saved.single.isConnected, isTrue);
     });
+
+    testWidgets('saves once the wheels are still, not on every step',
+        (tester) async {
+      final saved = <HeadphoneCalib>[];
+      await _pumpScreen(tester, HeadphoneCalib(modelId: 'Pods'), saved);
+
+      for (final item in [55, 60, 65, 69]) {
+        _wheel(tester, 0).jumpToItem(item);
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      expect(saved, isEmpty);
+
+      await tester.pump(CalibrationScreen.saveDelay);
+      expect(saved, hasLength(1));
+      expect(saved.single.volumeLeft, 0.7);
+      expect(saved.single.volumeRight, 0.5);
+    });
+
+    testWidgets('saves a change still waiting when the screen is left',
+        (tester) async {
+      final saved = <HeadphoneCalib>[];
+      await _pumpScreen(tester, HeadphoneCalib(modelId: 'Pods'), saved);
+
+      _wheel(tester, 1).jumpToItem(19); // right: 20
+      await tester.pump();
+      expect(saved, isEmpty);
+
+      await tester.pumpWidget(const SizedBox());
+      expect(saved, hasLength(1));
+      expect(saved.single.volumeRight, 0.2);
+    });
+
+    testWidgets('saves a change still waiting when the app goes away',
+        (tester) async {
+      final saved = <HeadphoneCalib>[];
+      await _pumpScreen(tester, HeadphoneCalib(modelId: 'Pods'), saved);
+
+      _wheel(tester, 0).jumpToItem(9); // left: 10
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+
+      expect(saved, hasLength(1));
+      expect(saved.single.volumeLeft, 0.1);
+    });
+
+    testWidgets('does not save values that did not change', (tester) async {
+      final saved = <HeadphoneCalib>[];
+      await _pumpScreen(tester, HeadphoneCalib(modelId: 'Pods'), saved);
+
+      // There and back again before the delay is over.
+      _wheel(tester, 0).jumpToItem(79);
+      await tester.pump();
+      _wheel(tester, 0).jumpToItem(49);
+      await tester.pump(CalibrationScreen.saveDelay);
+      await tester.pumpWidget(const SizedBox());
+
+      expect(saved, isEmpty);
+    });
   });
 
   group('wheelToGain', () {

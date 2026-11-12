@@ -466,6 +466,11 @@ written, and **only if the user agrees**:
   `wheelToVolume` in `features/device/volume_scale.dart`). The stored value
   is the wheel position (`0.01`–`1.0`), not a gain: what is played is
   `wheelToGain`, evenly in decibels from −40 dB at 1 to 0 dB at 100.
+- `CalibrationScreen` saves the volumes once the wheels have been still for
+  1 s (`CalibrationScreen.saveDelay`), and at once when the screen is left,
+  the app goes to the background or the `TestPage` opens. Unchanged values are
+  not written again. Every save is a Firestore write, which is paid for: do
+  not save on every wheel step.
 - While the earbud is connected, `CalibrationScreen` offers a test tone
   ("Testton abspielen" / "Testton stoppen") routed to that earbud; turning a
   wheel changes its side at once. It never starts by itself, because a screen
