@@ -26,10 +26,19 @@ import 'test_page.dart';
 /// reader speaks through the same headphones) and stops when the screen is
 /// left, the app goes to the background or the earbud disconnects.
 ///
-/// Before the [TestPage] opens, the chosen values are handed to [onSave] as a
-/// copy of [calib]. The screen pops with `true` once the test exercise was
-/// finished.
+/// The chosen values are handed to [onSave] as a copy of [calib] once the
+/// wheels have been still for [saveDelay], and at once when the screen is
+/// left, the app goes to the background or the [TestPage] opens. Values that
+/// equal the last saved ones are not saved again. The screen pops with `true`
+/// once the test exercise was finished.
+///
+/// NOTE: Every save is one Firestore write, which the project pays for. The
+/// delay turns a whole turn of the wheel into one write instead of one per
+/// step, and unchanged values cost nothing.
 class CalibrationScreen extends StatefulWidget {
+  /// How long the wheels have to be still before the values are saved.
+  static const Duration saveDelay = Duration(seconds: 1);
+
   /// The earbud being calibrated; its volumes are the starting values.
   final HeadphoneCalib calib;
 
@@ -67,6 +76,15 @@ class _CalibrationScreenState extends State<CalibrationScreen>
   late int _leftVolume;
   late int _rightVolume;
 
+  /// The volumes saved last (at first the earbud's own), so unchanged values
+  /// are not written again.
+  late int _savedLeftVolume;
+  late int _savedRightVolume;
+
+  /// Runs [_saveNow] once the wheels have been still for
+  /// [CalibrationScreen.saveDelay]; restarted by every wheel change.
+  Timer? _saveTimer;
+
   late final bool _toneSupported =
       widget.toneSupported ?? AudioDeviceService.isSupported;
 
@@ -90,6 +108,8 @@ class _CalibrationScreenState extends State<CalibrationScreen>
     super.initState();
     _leftVolume = volumeToWheel(widget.calib.volumeLeft);
     _rightVolume = volumeToWheel(widget.calib.volumeRight);
+    _savedLeftVolume = _leftVolume;
+    _savedRightVolume = _rightVolume;
     _leftController =
         FixedExtentScrollController(initialItem: _leftVolume - 1);
     _rightController =
@@ -107,6 +127,9 @@ class _CalibrationScreenState extends State<CalibrationScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Back arrow, system back and the test page finishing all end here, so a
+    // change still waiting for its delay is not lost.
+    unawaited(_saveNow());
     _connection?.dispose();
     if (_toneOn) unawaited(_stopToneQuietly());
     _leftController.dispose();
@@ -116,8 +139,39 @@ class _CalibrationScreenState extends State<CalibrationScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) return;
     // NOTE: No tone in the background, where the user cannot stop it.
-    if (state != AppLifecycleState.resumed && _toneOn) _stopTone();
+    if (_toneOn) _stopTone();
+    // The app may be closed from the background without disposing the screen.
+    unawaited(_saveNow());
+  }
+
+  // ── Saving ─────────────────────────────────────────────────────────────────
+
+  /// Saves the values once the wheels have been still for
+  /// [CalibrationScreen.saveDelay].
+  void _scheduleSave() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(CalibrationScreen.saveDelay, () => _saveNow());
+  }
+
+  /// Saves the current values now, unless they are the ones saved last.
+  Future<void> _saveNow() async {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    if (_leftVolume == _savedLeftVolume && _rightVolume == _savedRightVolume) {
+      return;
+    }
+    _savedLeftVolume = _leftVolume;
+    _savedRightVolume = _rightVolume;
+    try {
+      await widget.onSave(widget.calib.copyWith(
+        volumeLeft: wheelToVolume(_leftVolume),
+        volumeRight: wheelToVolume(_rightVolume),
+      ));
+    } catch (e) {
+      logger.e('CalibrationScreen: Saving the calibration failed', error: e);
+    }
   }
 
   // ── Test tone ──────────────────────────────────────────────────────────────
@@ -194,10 +248,7 @@ class _CalibrationScreenState extends State<CalibrationScreen>
 
     // Save current values before opening the test page, so they are kept
     // even if the test is left without finishing it.
-    await widget.onSave(widget.calib.copyWith(
-      volumeLeft: wheelToVolume(_leftVolume),
-      volumeRight: wheelToVolume(_rightVolume),
-    ));
+    await _saveNow();
 
     if (!mounted) return;
 
@@ -258,6 +309,7 @@ class _CalibrationScreenState extends State<CalibrationScreen>
                           _leftVolume = _values[index];
                         });
                         _updateToneGain();
+                        _scheduleSave();
                       },
                     ),
                     const SizedBox(height: 24),
@@ -272,6 +324,7 @@ class _CalibrationScreenState extends State<CalibrationScreen>
                           _rightVolume = _values[index];
                         });
                         _updateToneGain();
+                        _scheduleSave();
                       },
                     ),
                     const SizedBox(height: 28),

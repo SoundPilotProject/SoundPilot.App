@@ -10,6 +10,19 @@ lives in `docs/PROJECT_CONTEXT.md` and is imported here:
 
 Only in `CLAUDE.md`; this is everything that is specific to Claude.
 
+### Working style
+
+- **Discuss until the user says go.** While something is being discussed,
+  stay in discussion — propose, weigh options, refine wording — and do not
+  edit files or write code until the user explicitly says to start.
+- **Read first, then edit, then test once.** Before changing anything, list
+  every file the change needs and read them in one pass. Then make all
+  edits, then run the tests once.
+- **Work through a queue.** Treat all work as a queue of todos. Tweaks,
+  changes or corrections the user proposes meanwhile are appended to the
+  queue; they do not interrupt the item in progress. Only stop when the
+  queue is completely clear.
+
 ### Where project knowledge goes
 
 - `docs/PROJECT_CONTEXT.md` is the single source for §1–§8. Edit it there;
