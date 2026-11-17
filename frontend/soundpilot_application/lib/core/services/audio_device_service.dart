@@ -99,6 +99,80 @@ class HeadphoneDevice {
       '$name ($address, ${isConnected ? 'connected' : 'paired'})';
 }
 
+/// One gain change the native player applies by itself, at its point in the
+/// recording (see [AudioDeviceService.playTestSound]).
+@immutable
+class PlaybackCue {
+  /// How far into the recording the change belongs.
+  final Duration at;
+
+  /// Gain of the left ear from then on, 0.0–1.0.
+  final double leftGain;
+
+  /// Gain of the right ear from then on, 0.0–1.0.
+  final double rightGain;
+
+  /// How long the glide to those gains takes.
+  final Duration ramp;
+
+  const PlaybackCue({
+    required this.at,
+    required this.leftGain,
+    required this.rightGain,
+    this.ramp = Duration.zero,
+  });
+
+  Map<String, Object> toMap() => {
+        'atMs': at.inMilliseconds,
+        'leftGain': leftGain.clamp(0.0, 1.0),
+        'rightGain': rightGain.clamp(0.0, 1.0),
+        'rampMs': ramp.inMilliseconds.clamp(0, 10000),
+      };
+
+  @override
+  String toString() =>
+      'PlaybackCue(${at.inMilliseconds}ms, L $leftGain, R $rightGain)';
+}
+
+/// The two Android accessibility settings that defeat a left/right direction.
+///
+/// `null` means **unknown**, never "off": the settings have no public
+/// constants, and one that nobody ever touched is not in the system database
+/// at all. Treating unknown as "off" would tell the user that nothing is in
+/// the way when something might be — and send them looking for the fault in
+/// their own hearing.
+@immutable
+class AudioAccessibility {
+  /// Whether 'Mono audio' mixes both channels together.
+  final bool? monoAudio;
+
+  /// The audio balance, −1.0 (fully left) to 1.0 (fully right); 0 is centred.
+  final double? balance;
+
+  const AudioAccessibility({this.monoAudio, this.balance});
+
+  /// Nothing could be read.
+  static const AudioAccessibility unknown = AudioAccessibility();
+
+  /// Whether the balance is far enough off the middle to be audible.
+  bool get balanceOffCentre => balance != null && balance!.abs() > 0.05;
+
+  /// Whether something that *is* known switches the direction off.
+  bool get defeatsDirection => monoAudio == true || balanceOffCentre;
+
+  @override
+  bool operator ==(Object other) =>
+      other is AudioAccessibility &&
+      other.monoAudio == monoAudio &&
+      other.balance == balance;
+
+  @override
+  int get hashCode => Object.hash(monoAudio, balance);
+
+  @override
+  String toString() => 'AudioAccessibility(mono: $monoAudio, balance: $balance)';
+}
+
 /// Whether the app may use Bluetooth (Android 12+: `BLUETOOTH_CONNECT`).
 enum BluetoothPermissionStatus {
   granted,
@@ -136,6 +210,9 @@ class AudioDeviceService {
 
   static const EventChannel _events =
       EventChannel('com.soundpilot/audio_device_events');
+
+  static const EventChannel _playbackEvents =
+      EventChannel('com.soundpilot/playback_events');
 
   // Android's AudioDeviceInfo.TYPE_* values used for sorting.
   static const int _typeBluetoothA2dp = 8;
@@ -381,36 +458,110 @@ class AudioDeviceService {
   /// `assets/audio/Marschieren.mp3`) in a loop until [stopPlayback], with the
   /// left and right gain like [playTestTone].
   ///
+  /// With [loop] the recording starts over at its end; with `false` the native
+  /// side plays it once and stops — what a guided exercise needs, whose
+  /// recording ends with a closing sentence. Nothing reports that end back, so
+  /// the caller keeps its own timer (see `MarchingExerciseScreen`).
+  ///
   /// NOTE: The file is mixed down to mono, so both ears get the same signal
-  /// and only the gain differs, which is what a calibration test needs.
+  /// and only the gain differs. That is what a calibration test needs, and it
+  /// is what lets one recording be played from any direction: prefer
+  /// `SpatialAudioEngine` over calling this directly, so the direction and the
+  /// calibration stay in one place.
+  /// [cues] are gain changes the native player applies **by itself**, at their
+  /// point in the recording.
+  ///
+  /// NOTE: Use them for anything that has to line up with what is being said.
+  /// A cue is counted in samples, so the gain travels with the audio through
+  /// the buffer and the Bluetooth link and arrives at the ear together with
+  /// the words. A timer here cannot do that: it runs ahead of the sound by
+  /// however much is buffered (80–180 ms, plus the output's own latency).
   static Future<void> playTestSound({
     required String asset,
     required double leftGain,
     required double rightGain,
     int? outputDeviceId,
+    bool loop = true,
+    List<PlaybackCue> cues = const [],
   }) async {
     await _channel.invokeMethod('playTestSound', {
       'asset': asset,
       'leftGain': leftGain.clamp(0.0, 1.0),
       'rightGain': rightGain.clamp(0.0, 1.0),
       'deviceId': ?outputDeviceId,
+      'loop': loop,
+      'cues': [for (final cue in cues) cue.toMap()],
     });
   }
 
+  /// Fires once a recording played with `loop: false` has reached its end
+  /// **and been heard** — the native side waits for the buffer and the output
+  /// latency before it reports (see `GainPlayer.awaitPlayedOut`).
+  ///
+  /// NOTE: A screen still keeps its own timer as a fallback: this only arrives
+  /// while the native side is there (not in the browser) and the playback was
+  /// not stopped first.
+  static Stream<void> playbackEnded() =>
+      _playbackEvents.receiveBroadcastStream().where((event) => event == 'ended');
+
   /// Changes the gains of the playing test tone or test sound; it glides to
   /// them without restarting.
+  ///
+  /// [ramp] is how long that glide takes. The native player eases it in and
+  /// out per sample; [Duration.zero] is its shortest one (~23 ms), which is
+  /// what the calibration wheel wants.
+  ///
+  /// NOTE: Never send a series of gains from here to make a long movement —
+  /// stepped gains crackle ("zipper noise") and a Dart timer cannot hit a
+  /// sample boundary. Name the target and the duration and let the player
+  /// glide.
   static Future<void> setPlaybackGain({
     required double leftGain,
     required double rightGain,
+    Duration ramp = Duration.zero,
   }) async {
     await _channel.invokeMethod('setPlaybackGain', {
       'leftGain': leftGain.clamp(0.0, 1.0),
       'rightGain': rightGain.clamp(0.0, 1.0),
+      'rampMs': ramp.inMilliseconds.clamp(0, 10000),
     });
   }
 
   /// Stops the test tone or test sound; does nothing if none is playing.
   static Future<void> stopPlayback() => _channel.invokeMethod('stopPlayback');
+
+  // ── Accessibility audio settings ───────────────────────────────────────────
+
+  /// Android's own audio settings from the accessibility section, as far as
+  /// they can be read.
+  ///
+  /// NOTE: Not an extra; both of them switch the whole direction engine off
+  /// without the app noticing. They are read on the screens that need a
+  /// direction, which say so before the user concludes that their ears are the
+  /// problem.
+  static Future<AudioAccessibility> audioAccessibility() async {
+    try {
+      final Map<dynamic, dynamic>? state =
+          await _channel.invokeMapMethod('getAudioAccessibility');
+      if (state == null) return AudioAccessibility.unknown;
+
+      final mono = state['mono'];
+      final balance = state['balance'];
+      return AudioAccessibility(
+        monoAudio: mono is bool ? mono : null,
+        balance: balance is num ? balance.toDouble() : null,
+      );
+    } on PlatformException catch (_) {
+      return AudioAccessibility.unknown;
+    } on MissingPluginException catch (_) {
+      return AudioAccessibility.unknown;
+    }
+  }
+
+  /// Opens the Android accessibility settings, where mono audio and the audio
+  /// balance live. Returns false if the phone has no such page.
+  static Future<bool> openAccessibilitySettings() async =>
+      await _channel.invokeMethod<bool>('openAccessibilitySettings') ?? false;
 
   // ── Bluetooth permission and state ─────────────────────────────────────────
 

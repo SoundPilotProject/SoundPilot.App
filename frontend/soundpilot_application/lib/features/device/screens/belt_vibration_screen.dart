@@ -5,12 +5,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/services/haptic_engine.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../widgets/belt_setup_fields.dart';
 
 /// Second step of the belt setup (after `BeltWarningDistanceScreen`): the user
-/// enters the vibration strength in % (recommended 60–100 %) and picks a side
+/// enters the vibration strength in % (recommended 60–100 %), can feel it as a
+/// single pulse ('Vibration testen', see `_testVibration`) and picks a side
 /// ('L', 'M' or 'R').
 ///
 /// Pops with `true` when the setup is finished.
@@ -35,6 +37,9 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
   /// Selected side: one of 'L', 'M' or 'R'.
   String _selectedSide = 'M';
 
+  /// What the last 'Vibration testen' did, as text; null until it is used.
+  String? _pulseNote;
+
   /// Long names of the sides, used for the button labels and for the
   /// screen-reader announcement.
   static const Map<String, String> _sideNames = {
@@ -47,6 +52,30 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
   void dispose() {
     _strengthController.dispose();
     super.dispose();
+  }
+
+  /// Plays one reference pulse at the strength that is typed in — the basic
+  /// belt test (see `docs/PROJECT_CONTEXT.md` §4).
+  ///
+  /// NOTE: It goes to the phone's own motor, because there is no belt to send
+  /// it to yet (see [HapticEngine]). The strength is read from the field for
+  /// this pulse only; storing it is the TODO on this class.
+  ///
+  /// NOTE: The pulse is reported as text as well, not only felt: a user who
+  /// cannot feel it has to be able to tell that the app did play one.
+  Future<void> _testVibration() async {
+    final value = int.tryParse(_strengthController.text.trim());
+    if (value == null || value < 0 || value > 100) {
+      setState(() =>
+          _pulseNote = 'Zum Testen eine Zahl von 0 bis 100 eingeben.');
+      return;
+    }
+
+    setState(() => _pulseNote = value == 0
+        ? 'Bei 0 % vibriert nichts.'
+        : 'Vibration mit $value % gespielt.');
+
+    await HapticEngine.pulse(intensity: value / 100);
   }
 
   /// Pops back with `true` (setup done).
@@ -94,6 +123,70 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
                       label: 'Vibrationsstärke in Prozent',
                       suffix: '%',
                     ),
+                    const SizedBox(height: 14),
+                    // One pulse at the strength above, so it can be felt
+                    // before it is kept. Below 'Abschließen' in weight: this
+                    // is a try, not the way on.
+                    ElevatedButton(
+                      onPressed: _testVibration,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.surface(context),
+                        foregroundColor: AppColors.text(context),
+                        elevation: 4,
+                        shadowColor: Colors.black.withValues(alpha: 0.15),
+                        minimumSize: const Size(double.infinity, 64),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40),
+                          side: BorderSide(
+                            color: AppColors.legendBorder(context),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.vibration_rounded,
+                            size: 28,
+                            color: AppColors.text(context),
+                          ),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              'Vibration testen',
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 21,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.text(context),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_pulseNote != null) ...[
+                      const SizedBox(height: 12),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          _pulseNote!,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.text(context),
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 32),
                     Semantics(
                       header: true,

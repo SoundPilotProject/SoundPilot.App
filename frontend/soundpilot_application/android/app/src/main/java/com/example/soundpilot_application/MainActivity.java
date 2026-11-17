@@ -49,6 +49,10 @@ public class MainActivity extends FlutterActivity {
     // Stream of the current output device list, sent again on every change.
     private static final String EVENT_CHANNEL = "com.soundpilot/audio_device_events";
 
+    // Stream of playback events; so far only "ended", once a recording has
+    // been played to its end and heard (see GainPlayer.awaitPlayedOut).
+    private static final String PLAYBACK_EVENT_CHANNEL = "com.soundpilot/playback_events";
+
     private static final int BLUETOOTH_PERMISSION_REQUEST = 4201;
     private static final String PREFS = "soundpilot_native";
     private static final String PREF_BT_PERMISSION_ASKED = "bluetoothPermissionAsked";
@@ -60,6 +64,7 @@ public class MainActivity extends FlutterActivity {
     private AudioManager audioManager;
     private AudioDeviceCallback deviceCallback;
     private EventChannel.EventSink deviceEventSink = null;
+    private EventChannel.EventSink playbackEventSink = null;
 
     // Result of a running permission request, answered in
     // onRequestPermissionsResult.
@@ -85,20 +90,24 @@ public class MainActivity extends FlutterActivity {
                 case "playTestTone":
                     handlePlay(GainPlayer.Sine::new, call.argument("leftGain"),
                             call.argument("rightGain"), call.argument("deviceId"),
-                            result);
+                            new GainMixer.Cue[0], result);
                     break;
 
                 case "playTestSound":
                     final String asset = call.argument("asset");
-                    handlePlay(() -> new GainPlayer.AudioFile(assetFile(asset)),
+                    final Boolean loop = call.argument("loop");
+                    handlePlay(() -> new GainPlayer.AudioFile(assetFile(asset),
+                                    loop == null || loop),
                             call.argument("leftGain"), call.argument("rightGain"),
-                            call.argument("deviceId"), result);
+                            call.argument("deviceId"),
+                            cueArgument(call.argument("cues")), result);
                     break;
 
                 case "setPlaybackGain":
                     if (player != null) {
                         player.setGains(gainArgument(call.argument("leftGain")),
-                                gainArgument(call.argument("rightGain")));
+                                gainArgument(call.argument("rightGain")),
+                                rampArgument(call.argument("rampMs")));
                     }
                     result.success(null);
                     break;
@@ -106,6 +115,15 @@ public class MainActivity extends FlutterActivity {
                 case "stopPlayback":
                     stopPlayer();
                     result.success(null);
+                    break;
+
+                case "getAudioAccessibility":
+                    result.success(audioAccessibility());
+                    break;
+
+                case "openAccessibilitySettings":
+                    result.success(openSettings(
+                            new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
                     break;
 
                 case "getBluetoothPermissionStatus":
@@ -152,6 +170,21 @@ public class MainActivity extends FlutterActivity {
             @Override
             public void onCancel(Object arguments) {
                 deviceEventSink = null;
+            }
+        });
+
+        new EventChannel(
+                flutterEngine.getDartExecutor().getBinaryMessenger(),
+                PLAYBACK_EVENT_CHANNEL
+        ).setStreamHandler(new EventChannel.StreamHandler() {
+            @Override
+            public void onListen(Object arguments, EventChannel.EventSink events) {
+                playbackEventSink = events;
+            }
+
+            @Override
+            public void onCancel(Object arguments) {
+                playbackEventSink = null;
             }
         });
 
@@ -242,6 +275,10 @@ public class MainActivity extends FlutterActivity {
     // being calibrated) and fails with DEVICE_NOT_CONNECTED if it is not
     // connected, instead of falling back to the speaker; it stops when that
     // device disconnects. Without a deviceId it plays on the default output.
+    //
+    // A test sound loops; an exercise recording is played once ("loop" false),
+    // because it ends with a closing sentence that starting over would talk
+    // through. setPlaybackGain glides to its new gains over "rampMs".
 
     interface SourceFactory {
         GainPlayer.Source create() throws Exception;
@@ -253,8 +290,75 @@ public class MainActivity extends FlutterActivity {
         return Math.max(0f, Math.min(1f, gain));
     }
 
+    // Ramp length from a channel argument (a Dart int, in milliseconds). 0 is
+    // the player's own shortest glide; the cap keeps a wrong value from
+    // leaving the gains stuck on their way somewhere.
+    private static int rampArgument(Object value) {
+        final int ms = value instanceof Number ? ((Number) value).intValue() : 0;
+        return Math.max(0, Math.min(10_000, ms));
+    }
+
+    // The cues of a recording from a channel argument: a list of maps with
+    // atMs, leftGain, rightGain and rampMs. Anything unreadable is skipped
+    // rather than refused — a missing direction is better than no exercise.
+    private static GainMixer.Cue[] cueArgument(Object value) {
+        if (!(value instanceof List)) return new GainMixer.Cue[0];
+
+        final List<GainMixer.Cue> cues = new ArrayList<>();
+        for (Object item : (List<?>) value) {
+            if (!(item instanceof Map)) continue;
+            final Map<?, ?> map = (Map<?, ?>) item;
+            final Object at = map.get("atMs");
+            if (!(at instanceof Number)) continue;
+            cues.add(new GainMixer.Cue(
+                    ((Number) at).intValue(),
+                    gainArgument(map.get("leftGain")),
+                    gainArgument(map.get("rightGain")),
+                    rampArgument(map.get("rampMs"))));
+        }
+        return cues.toArray(new GainMixer.Cue[0]);
+    }
+
+    // Android's own accessibility audio settings, which defeat the left/right
+    // calibration without the app noticing: "Mono audio" mixes both channels
+    // together, and the audio balance slider moves everything to one side.
+    //
+    // A key that is missing from the map means *unknown*, never "off": the
+    // settings have no public constants, and a setting nobody ever touched is
+    // not in the database at all. Telling the user "mono is off" when it is
+    // in fact unknown would send them looking for the fault in their ears.
+    private Map<String, Object> audioAccessibility() {
+        final Map<String, Object> state = new HashMap<>();
+        try {
+            final String mono =
+                    Settings.System.getString(getContentResolver(), "master_mono");
+            if (mono != null) state.put("mono", !mono.trim().equals("0"));
+        } catch (Exception ignored) {
+            // Not readable on this Android: stays unknown.
+        }
+        try {
+            final String balance =
+                    Settings.System.getString(getContentResolver(), "master_balance");
+            if (balance != null) {
+                state.put("balance", (double) Float.parseFloat(balance.trim()));
+            }
+        } catch (Exception ignored) {
+            // Not readable or not a number: stays unknown.
+        }
+        return state;
+    }
+
+    // The recording has been played to its end and heard. Dart puts its screen
+    // back to stopped on this; the timer it keeps is only a fallback.
+    private void reportPlaybackEnded() {
+        runOnUiThread(() -> {
+            if (playbackEventSink != null) playbackEventSink.success("ended");
+        });
+    }
+
     private void handlePlay(SourceFactory factory, Object leftGain, Object rightGain,
-                            Object deviceId, MethodChannel.Result result) {
+                            Object deviceId, GainMixer.Cue[] cues,
+                            MethodChannel.Result result) {
         stopPlayer();
 
         AudioDeviceInfo target = null;
@@ -271,7 +375,8 @@ public class MainActivity extends FlutterActivity {
         try {
             source = factory.create();
             player = new GainPlayer(source, gainArgument(leftGain),
-                    gainArgument(rightGain), target);
+                    gainArgument(rightGain), target, cues,
+                    this::reportPlaybackEnded);
             result.success(null);
         } catch (Exception e) {
             if (source != null) source.release();
@@ -323,6 +428,7 @@ public class MainActivity extends FlutterActivity {
             deviceCallback = null;
         }
         deviceEventSink = null;
+        playbackEventSink = null;
         if (pendingPermissionResult != null) {
             pendingPermissionResult.success(bluetoothPermissionStatus());
             pendingPermissionResult = null;

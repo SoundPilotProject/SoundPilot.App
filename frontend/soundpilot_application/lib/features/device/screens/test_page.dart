@@ -11,16 +11,24 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/app_logger.dart';
 import '../../../core/services/audio_device_service.dart';
+import '../../../core/services/spatial_audio_engine.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
+import '../../../core/widgets/playback_button.dart';
+import '../../exercise/direction_hint.dart';
+import '../../exercise/spatial_audio.dart';
 import '../headphone_connection.dart';
-import '../volume_scale.dart';
 
 /// Sound of the test exercise.
 const String testSoundAsset = 'assets/audio/Marschieren.mp3';
 
-/// Test exercise after the calibration: plays [testSoundAsset] in a loop,
-/// each side with its calibrated volume ([wheelToGain]).
+/// Test exercise after the calibration: plays [testSoundAsset] in a loop
+/// through a [SpatialAudioEngine], each side with its calibrated volume.
+///
+/// Two exercises live on this page (see `docs/PROJECT_CONTEXT.md` §4):
+/// 'Start' plays the recording centred — the calibration and nothing else —
+/// and 'Richtungstest' moves it through [earbudDirectionSteps], so the user
+/// can say whether they hear *where* it comes from at all.
 ///
 /// It plays on the calibrated earbud while that is connected, and on the
 /// phone's own output otherwise — where the two sides are of course no
@@ -68,6 +76,10 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   late final bool _soundSupported =
       widget.soundSupported ?? AudioDeviceService.isSupported;
 
+  /// Plays the recording from a direction; the only thing on this page that
+  /// reaches the native player.
+  final SpatialAudioEngine _engine = SpatialAudioEngine();
+
   /// Whether the earbud is connected; null without sound support.
   HeadphoneConnection? _connection;
 
@@ -82,19 +94,39 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   /// Shown if the sound could not be started.
   String? _error;
 
+  /// Index in [earbudDirectionSteps] of the direction that is playing; null
+  /// while the centred exercise runs or nothing does.
+  int? _directionStep;
+
+  /// Moves the direction test to its next step.
+  Timer? _stepTimer;
+
+  /// Whether a direction test has run on this page, so the hint about the
+  /// system settings is worth showing (see [directionCheckHint]).
+  bool _directionTestRan = false;
+
+  /// Android's mono audio and balance settings, as far as they can be read.
+  AudioAccessibility _audioSettings = AudioAccessibility.unknown;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     if (_soundSupported) {
+      unawaited(_loadAudioSettings());
       _connection = HeadphoneConnection(
         address: widget.address,
         changes: widget.headphoneChanges,
         onChanged: () => setState(() {
-          // The native side stops the sound itself when the earbud goes.
+          // The native side stops the sound itself when the earbud goes; a
+          // running direction test ends with it.
           if (_playingOnEarbud && _connection?.connected == null) {
+            _engine.markStopped();
+            _stepTimer?.cancel();
+            _stepTimer = null;
             _isPlaying = false;
             _playingOnEarbud = false;
+            _directionStep = null;
           }
         }),
       );
@@ -104,6 +136,7 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _stepTimer?.cancel();
     _connection?.dispose();
     if (_isPlaying) unawaited(_stopQuietly());
     super.dispose();
@@ -114,6 +147,17 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
     // NOTE: No sound in the background, where the user cannot stop it.
     if (state != AppLifecycleState.resumed && _isPlaying) _stopAudio();
   }
+
+  /// Reads the accessibility audio settings once: mono audio or a shifted
+  /// balance make the direction test meaningless, and the page has to say so
+  /// rather than let the user conclude that they cannot hear a side.
+  Future<void> _loadAudioSettings() async {
+    final settings = await AudioDeviceService.audioAccessibility();
+    if (mounted) setState(() => _audioSettings = settings);
+  }
+
+  /// A system setting that is known to make left and right inaudible.
+  String? get _blocked => directionBlockedMessage(_audioSettings);
 
   /// Whether 'Start' can be used: anywhere the app can play sound.
   ///
@@ -128,24 +172,48 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   /// whatever the phone plays on by default.
   bool get _onEarbud => _connection?.connected != null;
 
-  /// Starts the looping playback with the calibrated gains, on the earbud if
-  /// it is connected and on the phone's default output otherwise.
+  /// The user's calibration; the gains of every direction are scaled with it.
+  EarCalibration get _calibration => EarCalibration.fromWheel(
+        leftVolume: widget.leftVolume,
+        rightVolume: widget.rightVolume,
+      );
+
+  /// Starts the centred exercise: the recording in both ears, each with its
+  /// calibrated volume and no direction on top.
+  Future<void> _startAudio() =>
+      _start(angle: angleCentre, directionTest: false);
+
+  /// Starts the direction test: the same recording, moved through
+  /// [earbudDirectionSteps] one step at a time.
+  Future<void> _startDirectionTest() {
+    setState(() => _directionTestRan = true);
+    return _start(angle: earbudDirectionSteps.first.angle, directionTest: true);
+  }
+
+  /// Starts the looping playback from [angle], on the earbud if it is
+  /// connected and on the phone's default output otherwise.
   ///
-  /// NOTE: Pressing 'Start' while it already plays starts the recording over
-  /// rather than doing nothing — the native side stops the running player
-  /// before it opens the new one anyway.
-  Future<void> _startAudio() async {
+  /// NOTE: Pressing a start button while something already plays starts the
+  /// recording over rather than doing nothing — the native side stops the
+  /// running player before it opens the new one anyway. That is also how the
+  /// two exercises replace each other.
+  Future<void> _start({
+    required double angle,
+    required bool directionTest,
+  }) async {
     if (!_canPlay) return;
 
     final onEarbud = _onEarbud;
+    _stepTimer?.cancel();
+    _stepTimer = null;
 
     setState(() => _error = null);
     try {
-      await AudioDeviceService.playTestSound(
+      await _engine.play(
         asset: testSoundAsset,
-        leftGain: wheelToGain(widget.leftVolume),
-        rightGain: wheelToGain(widget.rightVolume),
-        // null: the native side plays on the default output.
+        calibration: _calibration,
+        angle: angle,
+        // No device: the native side plays on the default output.
         outputDeviceId: _connection?.connected?.outputDeviceId,
       );
       if (!mounted) {
@@ -155,7 +223,9 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
       setState(() {
         _isPlaying = true;
         _playingOnEarbud = onEarbud;
+        _directionStep = directionTest ? 0 : null;
       });
+      if (directionTest) _scheduleNextStep();
     } on PlatformException catch (e) {
       logger.e('TestPage: Playback failed', error: e);
       if (!mounted) return;
@@ -168,12 +238,37 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
     }
   }
 
-  /// Stops the playback (no-op if nothing is playing).
+  /// Lets the direction test wait [directionStepDuration] and then move on to
+  /// its next direction; after the last one it stops.
+  ///
+  /// NOTE: Only the gains change ([SpatialAudioEngine.setAngle]), and they
+  /// glide over [panRamp]: the recording keeps running, so the sound is heard
+  /// travelling from one ear to the other instead of jumping there.
+  void _scheduleNextStep() {
+    _stepTimer = Timer(directionStepDuration, () {
+      final next = (_directionStep ?? 0) + 1;
+      if (next >= earbudDirectionSteps.length) {
+        unawaited(_stopAudio());
+        return;
+      }
+
+      setState(() => _directionStep = next);
+      unawaited(
+          _engine.setAngle(earbudDirectionSteps[next].angle, ramp: panRamp));
+      _scheduleNextStep();
+    });
+  }
+
+  /// Stops the playback and a running direction test (no-op if nothing is
+  /// playing).
   Future<void> _stopAudio() async {
     if (!_isPlaying) return;
+    _stepTimer?.cancel();
+    _stepTimer = null;
     setState(() {
       _isPlaying = false;
       _playingOnEarbud = false;
+      _directionStep = null;
     });
     await _stopQuietly();
   }
@@ -181,7 +276,7 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   /// Stops the sound without touching the state (also used in [dispose]).
   Future<void> _stopQuietly() async {
     try {
-      await AudioDeviceService.stopPlayback();
+      await _engine.stop();
     } on PlatformException catch (e) {
       logger.e('TestPage: Stopping the playback failed', error: e);
     }
@@ -201,17 +296,56 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   String? get _note {
     if (_error != null) return _error;
     if (!_soundSupported) return 'Die Aufnahme gibt es nur in der Android-App.';
+    // Before the earbud: a direction nobody can hear is the more fundamental
+    // problem of the two.
+    final blocked = _blocked;
+    if (blocked != null) return blocked;
     if (_connection?.known == true && !_onEarbud) {
       return 'Deine Kopfhörer sind nicht verbunden. Die Aufnahme läuft dann '
-          'über den Lautsprecher – die Einstellung für links und rechts '
-          'hörst du nur über die Earbuds.';
+          'über den Lautsprecher – links, rechts und der Richtungstest sind '
+          'nur über die Earbuds zu hören.';
     }
     return null;
   }
 
-  /// The playback controls: 'Start' and 'Stop' are always on the screen, each
-  /// usable only while it applies, plus the way to the Bluetooth settings
-  /// while the earbud is missing.
+  /// Whether something is playing and where, in one sentence — the line a
+  /// screen reader is told about.
+  ///
+  /// It changes when the playback starts and when it stops, and at no point in
+  /// between (see [_directionLine]).
+  String get _playbackState => _isPlaying
+      ? 'Wiedergabe läuft ${_onEarbud ? 'über die Kopfhörer' : 'über den '
+          'Lautsprecher'}'
+      : 'Wiedergabe gestoppt';
+
+  /// The calibrated volumes and, during the direction test, where the sound
+  /// comes from.
+  ///
+  /// NOTE: Deliberately **not** a live region, unlike [_playbackState]. A
+  /// screen reader would read it out at every step of the direction test —
+  /// through the same headphones the recording plays on, from the middle, and
+  /// with the recording turned down while it speaks (TalkBack's audio
+  /// ducking). That covers the very sound the user is asked to place. Whoever
+  /// wants the direction read out puts the focus on this line.
+  String get _directionLine {
+    final volumes = 'links ${widget.leftVolume}, rechts ${widget.rightVolume}';
+    final step = _directionStep;
+    if (step == null) return volumes;
+    return '$volumes – Richtung ${earbudDirectionSteps[step].label}, Schritt '
+        '${step + 1} von ${earbudDirectionSteps.length}';
+  }
+
+  /// Height of one side's bars in the card: the wheel value, leaned by the
+  /// share of the sound this side gets right now.
+  ///
+  /// NOTE: The wheel value, not the played gain. The gain runs over 40 dB, so
+  /// a bar would be a stump at half volume; the card shows what the user set,
+  /// with the direction on top of it.
+  double _barStrength(int volume, double pan) => volume / 100 * pan;
+
+  /// The playback controls: 'Start', 'Richtungstest' and 'Stop' are always on
+  /// the screen, each usable only while it applies, plus the way to the
+  /// Bluetooth settings while the earbud is missing.
   ///
   /// NOTE: In between, the page showed only the one button that applied, so
   /// there was never a disabled one. The team asked for the pair back: the
@@ -228,7 +362,7 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
     return [
       // Always in the app's colour where there is sound at all: 'Start' is
       // what the screen is for, and it also restarts a running playback.
-      _PlaybackButton(
+      PlaybackButton(
         label: 'Start',
         icon: Icons.play_arrow_rounded,
         color: AppColors.primary(context),
@@ -236,17 +370,38 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
         onPressed: _canPlay ? _startAudio : null,
       ),
       const SizedBox(height: 10),
+      // The second exercise. Usable wherever 'Start' is; that the directions
+      // themselves need the earbuds is what the note says.
+      PlaybackButton(
+        label: 'Richtungstest',
+        icon: Icons.compare_arrows_rounded,
+        color: AppColors.primary(context),
+        textColor: AppColors.onPrimary(context),
+        onPressed: _canPlay ? _startDirectionTest : null,
+      ),
+      const SizedBox(height: 10),
       // Grey until there is something to stop, red while the sound runs.
-      _PlaybackButton(
+      PlaybackButton(
         label: 'Stop',
         icon: Icons.stop_rounded,
         color: AppColors.stopRed,
         textColor: Colors.white,
         onPressed: _isPlaying ? _stopAudio : null,
       ),
+      if (_blocked != null) ...[
+        const SizedBox(height: 10),
+        PlaybackButton(
+          label: 'Bedienungshilfen öffnen',
+          icon: Icons.accessibility_new_rounded,
+          fontSize: 19,
+          color: AppColors.primary(context),
+          textColor: AppColors.onPrimary(context),
+          onPressed: AudioDeviceService.openAccessibilitySettings,
+        ),
+      ],
       if (needsBluetooth) ...[
         const SizedBox(height: 10),
-        _PlaybackButton(
+        PlaybackButton(
           label: 'Bluetooth-Einstellungen öffnen',
           icon: Icons.settings_rounded,
           fontSize: 19,
@@ -260,6 +415,10 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // How the sound is shared between the ears right now: both at 1.0 while
+    // the centred exercise runs, leaning during the direction test.
+    final pan = StereoGains.forAngle(_engine.angle);
+
     return Scaffold(
       backgroundColor: AppColors.background(context),
       body: SafeArea(
@@ -283,24 +442,20 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _WaveCard(
-                      leftVolume: widget.leftVolume,
-                      rightVolume: widget.rightVolume,
+                      leftStrength: _barStrength(widget.leftVolume, pan.left),
+                      rightStrength:
+                          _barStrength(widget.rightVolume, pan.right),
                       isPlaying: _isPlaying,
                     ),
                     const SizedBox(height: 10),
-                    // The waveform is decorative; this line states the same
-                    // information in words, so it also works without sight.
+                    // The waveform is decorative; these two lines state the
+                    // same information in words — the direction included,
+                    // which the leaning bars only show — so the page also
+                    // works without sight. Only the first one is announced.
                     Semantics(
                       liveRegion: true,
                       child: Text(
-                        _isPlaying
-                            ? 'Wiedergabe läuft ${_onEarbud ? 'über die '
-                                'Kopfhörer' : 'über den Lautsprecher'} – '
-                                'links ${widget.leftVolume}, rechts '
-                                '${widget.rightVolume}'
-                            : 'Wiedergabe gestoppt – links '
-                                '${widget.leftVolume}, rechts '
-                                '${widget.rightVolume}',
+                        _playbackState,
                         textAlign: TextAlign.center,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 17,
@@ -308,6 +463,17 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
                           color: AppColors.text(context),
                           height: 1.3,
                         ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _directionLine,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.text(context),
+                        height: 1.3,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -328,6 +494,23 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
                       const SizedBox(height: 12),
                     ],
                     ..._buildPlaybackControls(),
+                    // NOTE: Shown whatever the settings say, because they
+                    // cannot always be read (see directionCheckHint). Without
+                    // it, a phone set to mono leaves the user with only one
+                    // explanation for hearing the same thing five times.
+                    if (_directionTestRan && _blocked == null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        directionCheckHint,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.text(context),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 22),
                     Semantics(
                       header: true,
@@ -346,7 +529,9 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
                     Text(
                       'Drücke Start, um die Marschieren-Aufnahme abzuspielen. '
                       'Die Wiedergabe wird an deine Links-Rechts-Kalibrierung '
-                      'angepasst.',
+                      'angepasst. Beim Richtungstest wandert die Aufnahme in '
+                      'fünf Schritten von ganz links nach ganz rechts – sage '
+                      'dabei, aus welcher Richtung du sie hörst.',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 20,
@@ -405,85 +590,11 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   }
 }
 
-// ── Playback buttons ─────────────────────────────────────────────────────────
-
-/// Wide button with an icon and a centred label, used for the one control the
-/// [TestPage] offers at a time (see `_buildPlaybackControls`).
-///
-/// Always enabled: the page shows the button that applies instead of greying
-/// one out, so there is never a button that cannot be used.
-class _PlaybackButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-
-  final Color color;
-  final Color textColor;
-
-  /// `null` while this control does not apply; the button is then disabled,
-  /// and [_note] on the page says why.
-  final VoidCallback? onPressed;
-
-  /// Smaller for the long label of the Bluetooth settings.
-  final double fontSize;
-
-  const _PlaybackButton({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.textColor,
-    required this.onPressed,
-    this.fontSize = 23,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    // White on the inactive grey is the pair the contrast test measures.
-    final contentColor = enabled ? textColor : Colors.white;
-
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: textColor,
-        disabledBackgroundColor: AppColors.inactiveButton(context),
-        disabledForegroundColor: Colors.white,
-        elevation: enabled ? 4 : 0,
-        shadowColor: Colors.black.withValues(alpha: 0.15),
-        minimumSize: const Size(double.infinity, 64),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(40),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: contentColor, size: 30),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              // Two lines instead of being cut off at large font sizes.
-              maxLines: 2,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: fontSize,
-                fontWeight: FontWeight.w800,
-                color: contentColor,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ── Waveform ─────────────────────────────────────────────────────────────────
 
 /// Translucent card with two bar "waveforms" (left and right). The bar heights
-/// follow the calibrated volumes and travel sideways while the sound plays.
+/// follow how much sound each side gets right now — the calibrated volume,
+/// leaned by the direction — and travel sideways while the sound plays.
 ///
 /// The animation runs exactly as long as the playback: it starts with 'Start'
 /// and freezes at its current shape with 'Stop', so the card doubles as a
@@ -492,15 +603,18 @@ class _PlaybackButton extends StatelessWidget {
 /// Decorative: the same information is available as text below the card, so the
 /// card is hidden from screen readers.
 class _WaveCard extends StatefulWidget {
-  final int leftVolume;
-  final int rightVolume;
+  /// Height of the left bars, 0.0-1.0.
+  final double leftStrength;
+
+  /// Height of the right bars, 0.0-1.0.
+  final double rightStrength;
 
   /// Drives the animation: `true` while the sound is playing.
   final bool isPlaying;
 
   const _WaveCard({
-    required this.leftVolume,
-    required this.rightVolume,
+    required this.leftStrength,
+    required this.rightStrength,
     required this.isPlaying,
   });
 
@@ -559,8 +673,8 @@ class _WaveCardState extends State<_WaveCard>
   Widget build(BuildContext context) {
     final lineColor = AppColors.primary(context);
 
-    final leftStrength = (widget.leftVolume / 100).clamp(0.0, 1.0).toDouble();
-    final rightStrength = (widget.rightVolume / 100).clamp(0.0, 1.0).toDouble();
+    final leftStrength = widget.leftStrength.clamp(0.0, 1.0).toDouble();
+    final rightStrength = widget.rightStrength.clamp(0.0, 1.0).toDouble();
 
     return ExcludeSemantics(
       child: Container(

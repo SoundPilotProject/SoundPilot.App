@@ -45,3 +45,12 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // JVM unit tests of the pure Java parts of the audio player
+    // (app/src/test, GainMixerTest). `./gradlew :app:testDebugUnitTest` runs
+    // them on a machine that has the Gradle wrapper; CI runs the same file
+    // with javac and JUnit directly, because the wrapper is not in the
+    // repository (see .github/workflows/ci-cd.yml).
+    testImplementation("junit:junit:4.13.2")
+}

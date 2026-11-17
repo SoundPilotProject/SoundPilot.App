@@ -36,6 +36,7 @@ import 'package:soundpilot_application/features/device/widgets/device_card.dart'
 import 'package:soundpilot_application/features/device/widgets/device_type.dart';
 import 'package:soundpilot_application/features/device/widgets/remove_device_dialog.dart';
 import 'package:soundpilot_application/features/device/widgets/unsynced_logout_dialog.dart';
+import 'package:soundpilot_application/features/exercise/screens/marching_exercise_screen.dart';
 import 'package:soundpilot_application/models/user_model.dart';
 
 import 'helpers/fake_device_repository.dart';
@@ -112,6 +113,28 @@ void main() {
             soundSupported: true,
           ),
       'TestPage (nicht verbunden)': () => TestPage(
+            leftVolume: 40,
+            rightVolume: 80,
+            address: 'AA',
+            headphoneChanges: () => Stream.value(const []),
+            soundSupported: true,
+          ),
+      'MarchingExerciseScreen': () => MarchingExerciseScreen(
+            leftVolume: 40,
+            rightVolume: 80,
+            address: 'AA',
+            headphoneChanges: () => Stream.value(const [
+              HeadphoneDevice(
+                name: 'Pods',
+                address: 'AA',
+                isConnected: true,
+                outputDeviceId: 1,
+              ),
+            ]),
+            soundSupported: true,
+          ),
+      'MarchingExerciseScreen (nicht verbunden)': () =>
+          MarchingExerciseScreen(
             leftVolume: 40,
             rightVolume: 80,
             address: 'AA',
