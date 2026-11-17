@@ -71,15 +71,94 @@ void main() {
   // ── BeltCalib ──────────────────────────────────────────────────────────────
 
   group('BeltCalib', () {
-    test('round trip keeps modelId', () {
-      final calib = BeltCalib.fromMap({'modelId': 'Belt 1'});
+    const stored = {
+      'modelId': 'Belt 1',
+      'warningDistanceCm': 350,
+      'vibrationStrength': 70,
+      'vibrationSide': 'left',
+    };
 
-      expect(BeltCalib.fromMap(calib.toMap()).modelId, 'Belt 1');
-      expect(calib.toMap(), {'modelId': 'Belt 1'});
+    test('reads all fields and writes them back', () {
+      final calib = BeltCalib.fromMap(stored);
+
+      expect(calib.modelId, 'Belt 1');
+      expect(calib.warningDistanceCm, 350);
+      expect(calib.vibrationStrength, 70);
+      expect(calib.vibrationSide, BeltSide.left);
+      expect(calib.toMap(), stored);
     });
 
-    test('modelId of the wrong type falls back to unknown', () {
-      expect(BeltCalib.fromMap({'modelId': true}).modelId, 'unknown');
+    test('a belt saved with only modelId gets the defaults', () {
+      final calib = BeltCalib.fromMap({'modelId': 'Belt 1'});
+
+      expect(calib.modelId, 'Belt 1');
+      expect(calib.warningDistanceCm, 200);
+      expect(calib.vibrationStrength, 100);
+      expect(calib.vibrationSide, BeltSide.front);
+      expect(calib.isConnected, isFalse);
+    });
+
+    test('fields of the wrong type fall back to defaults', () {
+      final calib = BeltCalib.fromMap({
+        'modelId': true,
+        'warningDistanceCm': 'far',
+        'vibrationStrength': null,
+        'vibrationSide': 'up',
+      });
+
+      expect(calib.modelId, 'unknown');
+      expect(calib.warningDistanceCm, BeltCalib.defaultWarningDistanceCm);
+      expect(calib.vibrationStrength, BeltCalib.defaultVibrationStrength);
+      expect(calib.vibrationSide, BeltCalib.defaultVibrationSide);
+    });
+
+    test('double numbers are rounded to int', () {
+      final calib = BeltCalib.fromMap(
+        {'warningDistanceCm': 249.6, 'vibrationStrength': 80.0},
+      );
+
+      expect(calib.warningDistanceCm, 250);
+      expect(calib.vibrationStrength, 80);
+    });
+
+    test('every side is stored as its own value', () {
+      for (final side in BeltSide.values) {
+        final map = BeltCalib(modelId: 'B', vibrationSide: side).toMap();
+        expect(BeltCalib.fromMap(map).vibrationSide, side);
+      }
+      expect(
+        BeltSide.values.map((s) => s.firestoreValue),
+        ['left', 'front', 'right'],
+      );
+    });
+
+    test('toMap does not write runtime fields', () {
+      final map = BeltCalib(modelId: 'Belt', isConnected: true).toMap();
+
+      expect(
+        map.keys,
+        unorderedEquals([
+          'modelId',
+          'warningDistanceCm',
+          'vibrationStrength',
+          'vibrationSide',
+        ]),
+      );
+    });
+
+    test('copyWith replaces only the given values and keeps isConnected', () {
+      final calib = BeltCalib(
+        modelId: 'Belt',
+        warningDistanceCm: 300,
+        vibrationStrength: 60,
+        isConnected: true,
+      ).copyWith(vibrationSide: BeltSide.right);
+
+      expect(calib.modelId, 'Belt');
+      expect(calib.warningDistanceCm, 300);
+      expect(calib.vibrationStrength, 60);
+      expect(calib.vibrationSide, BeltSide.right);
+      expect(calib.isConnected, isTrue);
     });
   });
 
@@ -115,7 +194,12 @@ void main() {
           'aa': {'modelId': 'Pods', 'volLeft': 0.3, 'volRight': 0.7},
         },
         'belts': {
-          'bb': {'modelId': 'Belt'},
+          'bb': {
+            'modelId': 'Belt',
+            'warningDistanceCm': 300,
+            'vibrationStrength': 80,
+            'vibrationSide': 'right',
+          },
         },
       };
 

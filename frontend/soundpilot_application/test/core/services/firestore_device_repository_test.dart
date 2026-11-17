@@ -116,7 +116,10 @@ void main() {
         _userDoc({'headphones': <String, dynamic>{}, 'belts': <String, dynamic>{}}));
     await write;
 
-    expect((await calibration())!['belts']['bb'], {'modelId': 'Belt'});
+    expect(
+      (await calibration())!['belts']['bb'],
+      BeltCalib(modelId: 'Belt').toMap(),
+    );
   });
 
   test('cancelling ends the Firestore listener; a late error is not uncaught',
@@ -170,7 +173,7 @@ void main() {
     expect(stored!['headphones']['aa']['modelId'], 'Cloud Pods');
     // Only local before: uploaded.
     expect(stored['headphones']['ee']['volLeft'], 0.4);
-    expect(stored['belts']['bb'], {'modelId': 'Old Belt'});
+    expect(stored['belts']['bb'], BeltCalib(modelId: 'Old Belt').toMap());
     // And removed locally.
     final user = await DeviceStorageService.load(_uid);
     expect(user.headphones, isEmpty);
@@ -222,6 +225,6 @@ void main() {
     final stored = await calibration();
     expect(stored!['headphones']['aa']['modelId'], 'Cloud Pods');
     expect(stored['headphones']['gg']['volLeft'], 0.4);
-    expect(stored['belts']['bb'], {'modelId': 'Guest Belt'});
+    expect(stored['belts']['bb'], BeltCalib(modelId: 'Guest Belt').toMap());
   });
 }
