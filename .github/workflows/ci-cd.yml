@@ -130,8 +130,51 @@ jobs:
       - name: Test Firestore Rules
         run: npm test
 
+  # The pure Java part of the audio player: the glide between two gain pairs,
+  # which cue of a recording applies at which frame, and the wait for the end
+  # (GainMixer). Runs on the JVM — no emulator, no device.
+  native_audio:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend/soundpilot_application/android/app/src
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # NOTE: Not `./gradlew test`, although the test sits exactly where Gradle
+      # and Android Studio look for it (app/src/test), so it can be run that
+      # way on a developer machine. Two things are missing here: the Gradle
+      # wrapper is not in the repository (android/.gitignore), and the Android
+      # Gradle plugin would want google-services.json, which CI does not have.
+      # GainMixer has no Android classes in it on purpose, so javac and JUnit
+      # are enough — and they take seconds instead of minutes.
+      - name: Fetch JUnit
+        run: |
+          curl -sSfLo /tmp/junit.jar \
+            https://repo1.maven.org/maven2/junit/junit/4.13.2/junit-4.13.2.jar
+          curl -sSfLo /tmp/hamcrest.jar \
+            https://repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar
+
+      - name: Test the native audio code
+        run: |
+          mkdir -p /tmp/native-tests
+          javac -d /tmp/native-tests -cp /tmp/junit.jar \
+            main/java/com/example/soundpilot_application/GainMixer.java \
+            test/java/com/example/soundpilot_application/GainMixerTest.java
+          java -cp /tmp/native-tests:/tmp/junit.jar:/tmp/hamcrest.jar \
+            org.junit.runner.JUnitCore \
+            com.example.soundpilot_application.GainMixerTest
+
   deploy:
-    needs: [ build_and_test, functions, rules ]
+    needs: [ build_and_test, functions, rules, native_audio ]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # Run deploys one after another; never cancel one that is in progress.

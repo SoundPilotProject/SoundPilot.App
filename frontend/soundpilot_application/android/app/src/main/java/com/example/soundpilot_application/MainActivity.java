@@ -90,7 +90,7 @@ public class MainActivity extends FlutterActivity {
                 case "playTestTone":
                     handlePlay(GainPlayer.Sine::new, call.argument("leftGain"),
                             call.argument("rightGain"), call.argument("deviceId"),
-                            new GainPlayer.Cue[0], result);
+                            new GainMixer.Cue[0], result);
                     break;
 
                 case "playTestSound":
@@ -301,22 +301,22 @@ public class MainActivity extends FlutterActivity {
     // The cues of a recording from a channel argument: a list of maps with
     // atMs, leftGain, rightGain and rampMs. Anything unreadable is skipped
     // rather than refused — a missing direction is better than no exercise.
-    private static GainPlayer.Cue[] cueArgument(Object value) {
-        if (!(value instanceof List)) return new GainPlayer.Cue[0];
+    private static GainMixer.Cue[] cueArgument(Object value) {
+        if (!(value instanceof List)) return new GainMixer.Cue[0];
 
-        final List<GainPlayer.Cue> cues = new ArrayList<>();
+        final List<GainMixer.Cue> cues = new ArrayList<>();
         for (Object item : (List<?>) value) {
             if (!(item instanceof Map)) continue;
             final Map<?, ?> map = (Map<?, ?>) item;
             final Object at = map.get("atMs");
             if (!(at instanceof Number)) continue;
-            cues.add(new GainPlayer.Cue(
+            cues.add(new GainMixer.Cue(
                     ((Number) at).intValue(),
                     gainArgument(map.get("leftGain")),
                     gainArgument(map.get("rightGain")),
                     rampArgument(map.get("rampMs"))));
         }
-        return cues.toArray(new GainPlayer.Cue[0]);
+        return cues.toArray(new GainMixer.Cue[0]);
     }
 
     // Android's own accessibility audio settings, which defeat the left/right
@@ -357,7 +357,7 @@ public class MainActivity extends FlutterActivity {
     }
 
     private void handlePlay(SourceFactory factory, Object leftGain, Object rightGain,
-                            Object deviceId, GainPlayer.Cue[] cues,
+                            Object deviceId, GainMixer.Cue[] cues,
                             MethodChannel.Result result) {
         stopPlayer();
 

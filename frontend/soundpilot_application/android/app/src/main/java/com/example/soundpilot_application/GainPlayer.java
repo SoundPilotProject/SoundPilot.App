@@ -4,7 +4,11 @@
 // optionally on one output device. Used for the calibration test tone and the
 // exercise recordings (see MainActivity). The two gains carry the whole
 // left/right image, the direction of a sound included (SpatialAudioEngine on
-// the Dart side), and a change of direction is glided here, per sample.
+// the Dart side), and a change of direction is glided per sample.
+//
+// This file is the Android half: the AudioTrack, the decoder and the playback
+// thread. Which gain each sample is multiplied by is GainMixer's, which has no
+// Android classes in it and is therefore covered by JUnit tests.
 
 package com.example.soundpilot_application;
 
@@ -49,46 +53,17 @@ final class GainPlayer {
         void release();
     }
 
-    // A pair of gains to glide to, and how many frames that glide takes.
-    private static final class Ramp {
-        final float left;
-        final float right;
-        final int frames;
-
-        Ramp(float left, float right, int frames) {
-            this.left = left;
-            this.right = right;
-            this.frames = Math.max(1, frames);
-        }
-    }
-
-    // One step of an exercise: from [atMs] into the recording, glide to these
-    // gains over [rampMs].
-    //
-    // NOTE: Cues are counted in frames *written*, not in wall time. The gains
-    // are applied to the samples, so the panning and the words travel through
-    // the same buffer and the same Bluetooth link and reach the ear together,
-    // whatever that link's latency is. A timer on the Dart side cannot do
-    // that: it is ahead of the sound by however much is buffered.
-    static final class Cue {
-        final int atMs;
+    // Gains to glide to, set by setGains and taken by the playback thread at
+    // the start of its next chunk; null while there is nothing new.
+    private static final class Target {
         final float left;
         final float right;
         final int rampMs;
 
-        Cue(int atMs, float left, float right, int rampMs) {
-            this.atMs = atMs;
+        Target(float left, float right, int rampMs) {
             this.left = left;
             this.right = right;
             this.rampMs = rampMs;
-        }
-
-        long frame(int sampleRate) {
-            return (long) atMs * sampleRate / 1000;
-        }
-
-        Ramp toRamp(int sampleRate) {
-            return new Ramp(left, right, rampFrames(rampMs, sampleRate));
         }
     }
 
@@ -97,11 +72,11 @@ final class GainPlayer {
     private final Thread thread;
     private final int sampleRate;
 
+    // Which gain every sample is multiplied by (see GainMixer).
+    private final GainMixer mixer;
+
     // How much audio the AudioTrack buffer holds, in milliseconds.
     private final int bufferMs;
-
-    // The directions of a recording, in order; empty for a test sound.
-    private final Cue[] cues;
 
     // Run once the recording has been played to its end *and* heard; null if
     // nobody wants to know.
@@ -111,25 +86,22 @@ final class GainPlayer {
     // output.
     final int deviceId;
 
-    // The ramp to start next, set by setGains and taken by the playback thread
-    // at the start of its next chunk; null while there is nothing new.
-    private volatile Ramp pending;
+    private volatile Target pending;
     private volatile boolean stopRequested = false;
 
     // Starts playing [source] at once. With a [device] the sound is routed to
     // it; Android otherwise falls back to the default output, so the caller
     // stops the player when that device disconnects.
     GainPlayer(Source source, float leftGain, float rightGain, AudioDeviceInfo device,
-               Cue[] cues, Runnable onEnded) {
+               GainMixer.Cue[] cues, Runnable onEnded) {
         this.source = source;
-        this.cues = cues != null ? cues : new Cue[0];
         this.onEnded = onEnded;
-        // The first ramp fades in from silence over one chunk, so the start
-        // does not click.
-        this.pending = new Ramp(leftGain, rightGain, CHUNK_FRAMES);
 
         final int sampleRate = source.sampleRate();
         this.sampleRate = sampleRate;
+        // The mixer starts silent, so its first chunk fades in.
+        this.mixer =
+                new GainMixer(sampleRate, CHUNK_FRAMES, leftGain, rightGain, cues);
         final int minBufSize = AudioTrack.getMinBufferSize(
                 sampleRate,
                 AudioFormat.CHANNEL_OUT_STEREO,
@@ -160,7 +132,7 @@ final class GainPlayer {
         thread.start();
     }
 
-    // Glides to the new gains over rampMs, eased in and out (see run()).
+    // Glides to the new gains over rampMs, eased in and out (GainMixer).
     // 0 or less takes one chunk (~23 ms), which is what the calibration wheel
     // wants: the tone has to follow the finger, not drift after it.
     //
@@ -169,14 +141,7 @@ final class GainPlayer {
     // ("zipper noise"), and a Dart timer cannot hit a sample boundary anyway.
     // Dart says where to go and in how long; the rest happens in this thread.
     void setGains(float left, float right, int rampMs) {
-        pending = new Ramp(left, right, rampFrames(rampMs, sampleRate));
-    }
-
-    // Ramp length in frames; 0 or less is one chunk.
-    private static int rampFrames(int rampMs, int sampleRate) {
-        return rampMs > 0
-                ? (int) Math.min(Integer.MAX_VALUE, (long) rampMs * sampleRate / 1000)
-                : CHUNK_FRAMES;
+        pending = new Target(left, right, rampMs);
     }
 
     // Fades out (one chunk) and releases everything.
@@ -191,98 +156,32 @@ final class GainPlayer {
         if (!thread.isAlive()) source.release();
     }
 
-    // Eased position of a ramp, 0.0 at its start and 1.0 at its end.
-    //
-    // NOTE: Smoothstep, not a straight line: the movement sets in softly and
-    // arrives softly, instead of sliding mechanically from one side to the
-    // other.
-    private static float eased(int position, int frames) {
-        if (position >= frames) return 1f;
-        final float t = position / (float) frames;
-        return t * t * (3f - 2f * t);
-    }
-
     private void run() {
         final float[] mono = new float[CHUNK_FRAMES];
         final short[] stereo = new short[CHUNK_FRAMES * 2];
 
-        // The gains as they are applied right now; a new ramp starts from
-        // these, so an interrupted glide carries on from where it was instead
-        // of jumping.
-        float currentLeft = 0f;
-        float currentRight = 0f;
-
-        float fromLeft = 0f;
-        float fromRight = 0f;
-        float toLeft = 0f;
-        float toRight = 0f;
-        int rampFrames = 1;
-        int rampPosition = 1;
-
         boolean ended = false;
-        long framesWritten = 0;
-        int cueIndex = 0;
 
         try {
             while (true) {
-                int read = source.read(mono, CHUNK_FRAMES);
-                if (read < CHUNK_FRAMES) {
-                    // The source has ended: silence for the rest of the chunk,
-                    // and this chunk fades out.
-                    java.util.Arrays.fill(mono, Math.max(read, 0), CHUNK_FRAMES, 0f);
-                    ended = true;
-                }
+                final int read = source.read(mono, CHUNK_FRAMES);
+                // Fewer samples than asked for: the recording has ended, and
+                // the mixer pads the chunk with silence while it fades out.
+                if (read < CHUNK_FRAMES) ended = true;
 
                 final boolean stopping = stopRequested || ended;
                 if (stopping) {
-                    // The last chunk fades out to silence.
-                    fromLeft = currentLeft;
-                    fromRight = currentRight;
-                    toLeft = 0f;
-                    toRight = 0f;
-                    rampFrames = CHUNK_FRAMES;
-                    rampPosition = 0;
+                    mixer.fadeOut();
                 } else {
-                    // Every cue of the recording whose frame has come; if more
-                    // than one is due in the same chunk, the last one wins.
-                    Ramp next = null;
-                    while (cueIndex < cues.length
-                            && cues[cueIndex].frame(sampleRate) <= framesWritten) {
-                        next = cues[cueIndex].toRamp(sampleRate);
-                        cueIndex++;
-                    }
-                    if (next == null) {
-                        next = pending;
-                        if (next != null) pending = null;
-                    } else {
-                        // While a recording has cues, they own the direction:
-                        // a gain that arrived meanwhile is dropped.
-                        pending = null;
-                    }
+                    final Target next = pending;
                     if (next != null) {
-                        fromLeft = currentLeft;
-                        fromRight = currentRight;
-                        toLeft = next.left;
-                        toRight = next.right;
-                        rampFrames = next.frames;
-                        rampPosition = 0;
+                        pending = null;
+                        mixer.glideTo(next.left, next.right, next.rampMs);
                     }
                 }
 
-                for (int i = 0; i < CHUNK_FRAMES; i++) {
-                    final float e = eased(rampPosition, rampFrames);
-                    currentLeft = fromLeft + (toLeft - fromLeft) * e;
-                    currentRight = fromRight + (toRight - fromRight) * e;
-
-                    final float sample = mono[i] * Short.MAX_VALUE;
-                    stereo[i * 2]     = (short) (sample * currentLeft);  // L
-                    stereo[i * 2 + 1] = (short) (sample * currentRight); // R
-
-                    if (rampPosition < rampFrames) rampPosition++;
-                }
-
+                mixer.mix(mono, Math.max(read, 0), stereo);
                 track.write(stereo, 0, stereo.length);
-                framesWritten += CHUNK_FRAMES;
                 if (stopping) break;
             }
         } catch (Exception e) {
@@ -298,7 +197,7 @@ final class GainPlayer {
         // side takes the first of event and fallback timer, so the two cannot
         // end the exercise twice.
         if (ended && !stopRequested && onEnded != null) {
-            awaitPlayedOut(framesWritten);
+            awaitPlayedOut(mixer.framesWritten());
             if (!stopRequested) onEnded.run();
         }
     }
@@ -317,9 +216,10 @@ final class GainPlayer {
             final AudioTimestamp stamp = new AudioTimestamp();
             while (!stopRequested && System.currentTimeMillis() < giveUpAt) {
                 if (track.getTimestamp(stamp) && stamp.framePosition > 0) {
-                    final long left = totalFrames - stamp.framePosition;
+                    final long left = GainMixer.millisUntilPlayedOut(
+                            totalFrames, stamp.framePosition, sampleRate);
                     if (left <= 0) return;
-                    if (!sleepSliced((left * 1000 / sampleRate) + 10)) return;
+                    if (!sleepSliced(left + 10)) return;
                     continue;
                 }
                 if (track.getPlaybackHeadPosition() >= totalFrames) {

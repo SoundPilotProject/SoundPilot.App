@@ -123,3 +123,35 @@ Status: **findings only, nothing has been fixed yet.**
 6. Contrast fixes in `AppColors` (`mutedText`, status colors).
 7. Haptic feedback for the belt; audio preview while calibrating.
 8. Set the app locale; clearer error messages; visible focus state.
+
+## Direction on a device — results
+
+The left/right direction (`PROJECT_CONTEXT.md` §4) is measured in unit tests
+and has never been heard. This is the place for the results of the protocol in
+`SCREEN_READER_PLAN.md` §3.7 — one row per run, so a finding can be traced to
+the phone, the headphones and the connection it came from.
+
+Fill in the setup before you start, so a later run can be compared:
+
+| Run | Phone | Headphones | Connection | Spatial audio | TalkBack |
+|---|---|---|---|---|---|
+| 1 | | | wired | off | off |
+| 2 | | | Bluetooth | off | off |
+| 3 | | | Bluetooth | off | on |
+
+And what came out of it. One line per observation, with the time in the
+recording if there is one — that is what a fix needs:
+
+| Run | Time | Observed | Expected | Pass |
+|---|---|---|---|---|
+| | 21.4 s | | sound is left before "linkes Bein" | |
+| | 33.5 s | | sound is right before "rechten Fuß" | |
+| | 65.8 s | | sound is right before "rechte Bein" | |
+| | 71.8 s | | sound travels to the left, no click | |
+| | 77.1 s | | centred from here on, no direction | |
+| | 91.8 s | | closing sentence complete before 'beendet' | |
+| | — | | no click when the sound fades out | |
+| | — | | TalkBack silent at every cue | |
+| | — | | mono audio / balance: the app says so | |
+
+Nothing here yet — the first run is still to be done.

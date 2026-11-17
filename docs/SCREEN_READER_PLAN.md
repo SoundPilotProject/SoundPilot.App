@@ -162,6 +162,21 @@ measured in unit tests and has never been heard. This is the checklist for the
 first run on a phone; it belongs next to the protocol of §3.2 and, like it,
 into a short table of results.
 
+Before starting, so the result is reproducible and not an effect of something
+else:
+
+- **Both earbuds in.** With one of them out, many models switch to mono by
+  themselves, and then there is nothing to hear on a side.
+- **Spatial audio off** on the phone ("Raumklang", Dolby Atmos, Samsung's
+  spatial effects). They re-pan what the app pans.
+- **Note the phone and the headphones** by model, and whether the connection
+  is wired or Bluetooth.
+- The player asks Android for `USAGE_MEDIA` and `CONTENT_TYPE_MUSIC`
+  (`GainPlayer`), so a headset should stay in its stereo profile. If there is
+  no direction at all, the cause is one of the three points above or the
+  headset running in the telephony profile (HFP), which is mono — not the pan
+  law.
+
 With earbuds on, in the marching exercise:
 
 - **The four sentence blocks** (21.4 s, 33.5 s, 65.8 s, 71.8 s): is the sound

@@ -884,18 +884,16 @@ Not backed by evidence — check in the code instead of assuming:
   `test/core/services/spatial_audio_engine_test.dart`), but nobody has put on
   earbuds yet and confirmed that 'links' is heard on the left, or that the
   0.8 s glide sounds like one sound moving.
-- **The native audio code is not covered by CI** (§7 "Test strategy"): the
-  per-sample ramp, the smoothstep, which cue applies at which frame and the
-  wait for the end all live in `GainPlayer.java`, which no test runs. The Dart
-  side only checks that the target, the duration and the cue list are handed
-  over.
-  - The way to close this: move those parts into a plain Java class without
-    Android dependencies (no `AudioTrack`, no `MediaCodec`), test it with
-    JUnit under `android/app/src/test/` and run `./gradlew test` in CI — it
-    runs on the JVM, no emulator needed. Worth testing: a ramp that starts
-    while another one runs begins at the current value; a cue applies at
-    exactly its frame; no gain jumps between two chunks. Only the writing to
-    `AudioTrack` would stay unchecked.
+- **What is left of the native audio code without a test:** the writing to
+  `AudioTrack`, the decoder and the thread (`GainPlayer`). The arithmetic —
+  the per-sample glide, the smoothstep, which cue applies at which frame, the
+  wait for the end — sits in `GainMixer`, which has no Android classes in it
+  and is covered by JUnit in CI (`android/app/src/test/`, job `native_audio`).
+  - That job runs the test file with javac and JUnit, not with
+    `./gradlew test`: the Gradle wrapper is not in the repository and the
+    Android Gradle plugin would want `google-services.json`. The file sits
+    where Gradle expects it, so `./gradlew :app:testDebugUnitTest` works on a
+    machine that has the wrapper (Android Studio writes it).
 - **The cue times are from a transcription, ±0.2 s,** and nobody has checked
   them by ear on a phone. If a side turns out to come late, the times in
   `marchingCues` are the only thing to change.
