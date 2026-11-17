@@ -16,9 +16,10 @@ public class GainMixerTest {
     private static final int SAMPLE_RATE = 44100;
     private static final int CHUNK = 1024;
 
-    // A ramp arrives at its target asymptotically: after its last frame the
-    // gain is within a few millionths of it, not exactly on it.
-    private static final float EPS = 1e-4f;
+    // Reading a gain back out of the mixed 16 bit samples costs one step of
+    // 1/32767. Where a test reads `currentLeft()` instead, the expected value
+    // is exact and the delta is 0.
+    private static final float QUANTISATION = 1e-4f;
 
     /** A chunk of full scale, so every gain shows up in the output. */
     private static float[] fullScale() {
@@ -43,6 +44,73 @@ public class GainMixerTest {
         return stereo[frame * 2] / (float) Short.MAX_VALUE;
     }
 
+    // ── The curve: smoothstep over a fixed duration ──────────────────────────
+    //
+    // A ramp of n frames is at its target exactly at frame n, which is the
+    // first frame after its own window. The frames inside the window end one
+    // short of it (position n−1), which is why a value read there needs a
+    // tolerance — the curve does not, and a glide is not exponential: it has a
+    // duration, not a time constant.
+
+    @Test
+    public void easedIsOneOnlyOnceTheRampIsUp() {
+        assertEquals(0f, GainMixer.eased(0, 100), 0f);
+        assertTrue("one frame short", GainMixer.eased(99, 100) < 1f);
+        assertEquals(1f, GainMixer.eased(100, 100), 0f);
+        // Past the end it stays there instead of running on.
+        assertEquals(1f, GainMixer.eased(500, 100), 0f);
+    }
+
+    @Test
+    public void easedOnlyEverRisesAndStaysWithinZeroAndOne() {
+        float previous = -1f;
+        for (int position = 0; position <= 100; position++) {
+            final float eased = GainMixer.eased(position, 100);
+
+            assertTrue("eased " + eased, eased >= previous);
+            assertTrue("eased " + eased, eased >= 0f && eased <= 1f);
+            previous = eased;
+        }
+    }
+
+    @Test
+    public void aRampIsExactlyAtItsTargetWhenItsTimeIsUp() {
+        final GainMixer mixer = mixer(1f, 1f);
+        mixChunk(mixer);
+
+        // 100 ms is 4410 frames. Counted from the start of the glide that is
+        // frame 314 of the fifth chunk after it.
+        mixer.glideTo(0.25f, 0.25f, 100);
+        short[] stereo = null;
+        for (int chunk = 0; chunk < 5; chunk++) {
+            stereo = mixChunk(mixer);
+        }
+
+        assertEquals(0.25f, left(stereo, 314), QUANTISATION);
+        // Exactly, not nearly: 100 ms is a duration and it is over.
+        assertEquals(0.25f, mixer.currentLeft(), 0f);
+        assertEquals(0.25f, mixer.currentRight(), 0f);
+    }
+
+    @Test
+    public void halfWayThroughTheDurationIsHalfWayThere() {
+        final GainMixer mixer = mixer(1f, 1f);
+        mixChunk(mixer);
+
+        // A second to the left. Frame 22050 — half of it — is frame 546 of the
+        // 22nd chunk after the glide started.
+        mixer.glideTo(0f, 1f, 1000);
+        short[] stereo = null;
+        for (int chunk = 0; chunk < 22; chunk++) {
+            stereo = mixChunk(mixer);
+        }
+
+        // Smoothstep is symmetric, so half the duration is half the distance.
+        // An exponential glide with a time constant of a second would be at
+        // 0.61 here, and would still not have arrived after the second.
+        assertEquals(0.5f, left(stereo, 546), 2e-3f);
+    }
+
     // ── The glide ────────────────────────────────────────────────────────────
 
     @Test
@@ -53,28 +121,11 @@ public class GainMixerTest {
 
         // A start that jumps straight to the gain clicks, so the first chunk
         // comes up from silence.
-        assertEquals(0f, left(stereo, 0), EPS);
-        assertEquals(1f, left(stereo, CHUNK - 1), 1e-3f);
-        assertEquals(1f, mixer.currentLeft(), EPS);
-    }
-
-    @Test
-    public void easedRunsFromZeroToOneAndOnlyUpwards() {
-        float previous = -1f;
-        for (int position = 0; position <= 100; position++) {
-            final float eased = GainMixer.eased(position, 100);
-
-            assertTrue("eased " + eased, eased >= previous);
-            assertTrue("eased " + eased, eased >= 0f && eased <= 1f);
-            previous = eased;
-        }
-
-        assertEquals(0f, GainMixer.eased(0, 100), 1e-6f);
-        // Smoothstep is symmetric: half way through the ramp, half way there.
-        assertEquals(0.5f, GainMixer.eased(50, 100), 1e-6f);
-        assertEquals(1f, GainMixer.eased(100, 100), 1e-6f);
-        // Past the end it stays there instead of running on.
-        assertEquals(1f, GainMixer.eased(500, 100), 1e-6f);
+        assertEquals(0f, left(stereo, 0), 0f);
+        // One frame short of 1.0 at the end of the chunk; there exactly after.
+        assertEquals(1f, left(stereo, CHUNK - 1), QUANTISATION);
+        mixChunk(mixer);
+        assertEquals(1f, mixer.currentLeft(), 0f);
     }
 
     @Test
@@ -97,7 +148,7 @@ public class GainMixerTest {
         // it was once asked for. That is what makes the sound travel through
         // the middle at 71.4/71.8 s of the marching exercise instead of
         // jumping back first.
-        assertEquals(interrupted, left(stereo, 0), 1e-3f);
+        assertEquals(interrupted, left(stereo, 0), QUANTISATION);
     }
 
     @Test
@@ -107,20 +158,23 @@ public class GainMixerTest {
         // Long enough to run over many chunks.
         mixer.glideTo(0f, 1f, 2000);
 
+        // A gain computed once per chunk would step by 1024 frames' worth of
+        // the curve here, about 0.017 — 17 times this tolerance.
+        final float noStep = 1e-3f;
+
         float lastOfPreviousChunk = mixer.currentLeft();
         for (int chunk = 0; chunk < 40; chunk++) {
             final short[] stereo = mixChunk(mixer);
 
-            // The chunk boundary is where a gain computed per chunk would
-            // show up as a step.
             assertEquals("chunk " + chunk, lastOfPreviousChunk, left(stereo, 0),
-                    1e-3f);
+                    noStep);
 
             // And inside the chunk nothing jumps either.
             float previous = left(stereo, 0);
             for (int frame = 1; frame < CHUNK; frame++) {
                 final float gain = left(stereo, frame);
-                assertTrue("step in chunk " + chunk, Math.abs(gain - previous) < 1e-3f);
+                assertTrue("step in chunk " + chunk,
+                        Math.abs(gain - previous) < noStep);
                 previous = gain;
             }
 
@@ -129,15 +183,16 @@ public class GainMixerTest {
     }
 
     @Test
-    public void aGlideOfZeroIsDoneAfterOneChunk() {
+    public void aGlideOfZeroIsUpAfterOneChunk() {
         final GainMixer mixer = mixer(1f, 1f);
         mixChunk(mixer);
 
         mixer.glideTo(0.25f, 0.75f, 0);
         mixChunk(mixer);
+        mixChunk(mixer);
 
-        assertEquals(0.25f, mixer.currentLeft(), EPS);
-        assertEquals(0.75f, mixer.currentRight(), EPS);
+        assertEquals(0.25f, mixer.currentLeft(), 0f);
+        assertEquals(0.75f, mixer.currentRight(), 0f);
     }
 
     // ── The cues ─────────────────────────────────────────────────────────────
@@ -150,14 +205,16 @@ public class GainMixerTest {
 
         for (int chunk = 0; chunk < 5; chunk++) {
             mixChunk(mixer);
-            assertEquals("chunk " + chunk, 1f, mixer.currentLeft(), EPS);
+            assertEquals("chunk " + chunk, 1f, mixer.currentLeft(), QUANTISATION);
         }
         assertEquals(5L * CHUNK, mixer.framesWritten());
 
+        // The chunk that takes the cue, and the one that completes its glide.
+        mixChunk(mixer);
         mixChunk(mixer);
 
-        assertEquals(0f, mixer.currentLeft(), EPS);
-        assertEquals(1f, mixer.currentRight(), EPS);
+        assertEquals(0f, mixer.currentLeft(), 0f);
+        assertEquals(1f, mixer.currentRight(), 0f);
     }
 
     @Test
@@ -179,9 +236,10 @@ public class GainMixerTest {
 
         mixChunk(mixer);
         mixChunk(mixer);
+        mixChunk(mixer);
 
-        assertEquals(0.5f, mixer.currentLeft(), EPS);
-        assertEquals(0.5f, mixer.currentRight(), EPS);
+        assertEquals(0.5f, mixer.currentLeft(), 0f);
+        assertEquals(0.5f, mixer.currentRight(), 0f);
     }
 
     @Test
@@ -191,9 +249,10 @@ public class GainMixerTest {
         // While a recording has cues, they own the direction.
         mixer.glideTo(1f, 0f, 0);
         mixChunk(mixer);
+        mixChunk(mixer);
 
-        assertEquals(0f, mixer.currentLeft(), EPS);
-        assertEquals(1f, mixer.currentRight(), EPS);
+        assertEquals(0f, mixer.currentLeft(), 0f);
+        assertEquals(1f, mixer.currentRight(), 0f);
     }
 
     @Test
@@ -204,11 +263,13 @@ public class GainMixerTest {
         mixer.fadeOut();
         final short[] stereo = mixChunk(mixer);
 
-        assertEquals(0f, mixer.currentLeft(), EPS);
-        assertEquals(0f, mixer.currentRight(), EPS);
-        // Faded, not cut off: the chunk starts loud and ends silent.
-        assertEquals(1f, left(stereo, 0), EPS);
-        assertEquals(0f, left(stereo, CHUNK - 1), 1e-3f);
+        // Faded, not cut off: the chunk starts loud and ends silent. Its last
+        // frame is the one frame short of 0.0, which the 16 bit sample rounds
+        // away — and there is no next chunk, this was the last one.
+        assertEquals(1f, left(stereo, 0), QUANTISATION);
+        assertEquals(0f, left(stereo, CHUNK - 1), 0f);
+        assertTrue(mixer.currentLeft() < QUANTISATION);
+        assertTrue(mixer.currentRight() < QUANTISATION);
     }
 
     @Test
@@ -220,7 +281,7 @@ public class GainMixerTest {
         mixer.mix(fullScale(), 10, stereo);
 
         // The ten samples that were there, then silence for the rest.
-        assertEquals(1f, left(stereo, 5), EPS);
+        assertEquals(1f, left(stereo, 5), QUANTISATION);
         assertEquals(0f, left(stereo, 20), 0f);
         assertEquals(0f, left(stereo, CHUNK - 1), 0f);
     }

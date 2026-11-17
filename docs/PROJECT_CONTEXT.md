@@ -538,12 +538,18 @@ could not.
     at the volume the user set on the wheel. The ratio — the direction cue —
     is the same either way, so the level is the thing left alone.
 - **A direction glides, it never jumps** (`panRamp`, 0.8 s). The native player
-  eases the glide in and out *per sample* (smoothstep, see `GainPlayer`), and
-  a new glide starts from the gains it is currently at, so an interrupted
-  movement carries on instead of jumping. Never send a series of gains from
-  Dart to make a movement: stepped gains are audible as a faint crackle
-  ("zipper noise"), and no timer there can hit a sample boundary. Dart names
-  the target and the duration, the player does the rest.
+  eases the glide in and out *per sample* (`GainMixer`), and a new glide starts
+  from the gains it is currently at, so an interrupted movement carries on
+  instead of jumping. Never send a series of gains from Dart to make a
+  movement: stepped gains are audible as a faint crackle ("zipper noise"), and
+  no timer there can hit a sample boundary. Dart names the target and the
+  duration, the player does the rest.
+  - **`panRamp` is a duration, not a time constant.** The curve is smoothstep
+    over the frames of the ramp: half way through it is exactly half way
+    there, and at its last frame it is exactly at the new gain. An exponential
+    glide would be at 61 % after its time constant and never quite arrive —
+    worth knowing before anyone turns this number after the hardware test.
+    `GainMixerTest` pins both ends of that sentence.
 - **The calibration is a multiplicative correction on top of it**
   (`StereoGains.withCalibration`): what is played is
   `pan(angle) × calibration`. A quiet ear stays quiet without becoming a
