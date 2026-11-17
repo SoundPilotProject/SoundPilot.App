@@ -98,6 +98,9 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
   /// stopped by the native side when the earbud disconnects.
   bool _playingOnEarbud = false;
 
+  /// Whether the recording ran to its end, as opposed to being stopped.
+  bool _finished = false;
+
   /// Index of the cue that applies, or null while the recording is still
   /// before the first one (and therefore centred).
   int? _cueIndex;
@@ -229,6 +232,7 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
       setState(() {
         _isPlaying = true;
         _playingOnEarbud = onEarbud;
+        _finished = false;
         _cueIndex = null;
       });
       _scheduleCues();
@@ -266,13 +270,19 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
   }
 
   /// The recording has run out on its own.
+  ///
+  /// NOTE: The first of the native event and the fallback timer wins; the
+  /// other one finds nothing playing and does nothing. The same guard covers
+  /// an event that arrives after the user has stopped the exercise.
   void _handleEnd() {
+    if (!_isPlaying) return;
     _cancelTimers();
     _engine.markStopped();
     if (!mounted) return;
     setState(() {
       _isPlaying = false;
       _playingOnEarbud = false;
+      _finished = true;
       _cueIndex = null;
     });
   }
@@ -284,6 +294,7 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
     setState(() {
       _isPlaying = false;
       _playingOnEarbud = false;
+      _finished = false;
       _cueIndex = null;
     });
     await _stopQuietly();
@@ -324,15 +335,31 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
     return null;
   }
 
-  /// The whole state in one sentence, for sight and for the screen reader.
-  String get _status {
-    if (!_isPlaying) {
-      return 'Übung gestoppt – links ${widget.leftVolume}, rechts '
-          '${widget.rightVolume}';
+  /// Whether the exercise runs, in one sentence — the line a screen reader is
+  /// told about.
+  ///
+  /// It changes when the exercise starts and when it is over, and at no point
+  /// in between (see [_details]).
+  String get _runState {
+    if (_isPlaying) {
+      final output = _onEarbud ? 'über die Kopfhörer' : 'über den Lautsprecher';
+      return 'Übung läuft $output';
     }
-    final output = _onEarbud ? 'über die Kopfhörer' : 'über den Lautsprecher';
-    return 'Übung läuft $output – Ton $_side';
+    return _finished ? 'Übung beendet' : 'Übung gestoppt';
   }
+
+  /// Where the sound is right now, or the calibrated volumes while nothing
+  /// plays.
+  ///
+  /// NOTE: Deliberately **not** a live region, unlike [_runState]. A screen
+  /// reader would read this out at every cue — through the same headphones the
+  /// recording is playing on, from the middle, and with the recording turned
+  /// down while it speaks (TalkBack's audio ducking). The announcement would
+  /// cover the very instruction the direction is there to support. Whoever
+  /// wants to know where the sound is puts the focus on this line.
+  String get _details => _isPlaying
+      ? 'Ton $_side'
+      : 'links ${widget.leftVolume}, rechts ${widget.rightVolume}';
 
   @override
   Widget build(BuildContext context) {
@@ -360,12 +387,13 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
                   children: [
                     _SideIndicator(angle: _angle, isPlaying: _isPlaying),
                     const SizedBox(height: 14),
-                    // The indicator is decorative; this line says the same in
-                    // words, so the exercise also works without sight.
+                    // The indicator is decorative; these two lines say the
+                    // same in words, so the exercise also works without
+                    // sight. Only the first one is announced.
                     Semantics(
                       liveRegion: true,
                       child: Text(
-                        _status,
+                        _runState,
                         textAlign: TextAlign.center,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 19,
@@ -373,6 +401,17 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
                           color: AppColors.text(context),
                           height: 1.3,
                         ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _details,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.text(context),
+                        height: 1.3,
                       ),
                     ),
                     const SizedBox(height: 16),

@@ -31,6 +31,12 @@ final class GainPlayer {
     // start and the stop do not click.
     private static final int CHUNK_FRAMES = 1024;
 
+    // Added to the fallback wait for the end of a recording (see
+    // awaitPlayedOut). getPlaybackHeadPosition only counts what the audio HAL
+    // has consumed, so on a device that reports no timestamp the Bluetooth
+    // link still holds a few hundred milliseconds that nothing can measure.
+    private static final int FALLBACK_LATENCY_MS = 300;
+
     // A sound source: mono samples in -1.0..1.0.
     interface Source {
         int sampleRate();
@@ -285,6 +291,12 @@ final class GainPlayer {
 
         // The recording ran out on its own, so whoever asked for it is told —
         // but only once it has really been heard.
+        //
+        // NOTE: Reported after the wait gives up as well (it has a timeout),
+        // because a screen that never hears the end would keep saying that the
+        // exercise is running. Only a stop() cancels the report, and the Dart
+        // side takes the first of event and fallback timer, so the two cannot
+        // end the exercise twice.
         if (ended && !stopRequested && onEnded != null) {
             awaitPlayedOut(framesWritten);
             if (!stopRequested) onEnded.run();
@@ -311,7 +323,7 @@ final class GainPlayer {
                     continue;
                 }
                 if (track.getPlaybackHeadPosition() >= totalFrames) {
-                    sleepSliced(bufferMs);
+                    sleepSliced(bufferMs + FALLBACK_LATENCY_MS);
                     return;
                 }
                 if (!sleepSliced(20)) return;

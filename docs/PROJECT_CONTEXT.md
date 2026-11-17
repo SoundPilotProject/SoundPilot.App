@@ -608,6 +608,22 @@ screen with one pair of controls (§1, one main action per screen).
   The screen's own timer (`MarchingExerciseScreen.endMargin`, 2 s past the
   measured 92.03 s) is only the fallback for where that event cannot arrive.
 
+### What a screen reader is told
+
+The exercises carry their state in **two lines**, and only the first of them
+is a live region:
+
+- "Übung läuft über die Kopfhörer" / "Übung beendet" / "Übung gestoppt" —
+  announced, because it changes when the exercise starts and when it is over.
+- "Ton links – das linke Bein" — **not** announced. It changes while the
+  recording is speaking, and TalkBack would read it out through the same
+  headphones, from the middle, with the recording turned down while it speaks
+  (audio ducking): the announcement would cover the very instruction the
+  direction is there to support. Whoever wants it puts the focus on the line.
+
+The same split is on the test exercise (`TestPage._directionLine`). See
+`docs/SCREEN_READER_PLAN.md` §3.4 for the rule and §3.7 for the device test.
+
 ### Settings that defeat the direction
 
 Two Android accessibility settings switch the whole direction engine off, and
@@ -869,9 +885,17 @@ Not backed by evidence — check in the code instead of assuming:
   earbuds yet and confirmed that 'links' is heard on the left, or that the
   0.8 s glide sounds like one sound moving.
 - **The native audio code is not covered by CI** (§7 "Test strategy"): the
-  per-sample ramp, the smoothstep and playing a file once all live in
-  `GainPlayer.java`, which no test runs. The Dart side only checks that the
-  target and the duration are handed over.
+  per-sample ramp, the smoothstep, which cue applies at which frame and the
+  wait for the end all live in `GainPlayer.java`, which no test runs. The Dart
+  side only checks that the target, the duration and the cue list are handed
+  over.
+  - The way to close this: move those parts into a plain Java class without
+    Android dependencies (no `AudioTrack`, no `MediaCodec`), test it with
+    JUnit under `android/app/src/test/` and run `./gradlew test` in CI — it
+    runs on the JVM, no emulator needed. Worth testing: a ramp that starts
+    while another one runs begins at the current value; a cue applies at
+    exactly its frame; no gain jumps between two chunks. Only the writing to
+    `AudioTrack` would stay unchecked.
 - **The cue times are from a transcription, ±0.2 s,** and nobody has checked
   them by ear on a phone. If a side turns out to come late, the times in
   `marchingCues` are the only thing to change.

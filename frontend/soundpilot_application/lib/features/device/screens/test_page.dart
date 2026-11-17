@@ -308,12 +308,30 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
     return null;
   }
 
-  /// The direction the recording comes from right now, for the status line;
-  /// empty while the centred exercise plays.
-  String get _directionSuffix {
+  /// Whether something is playing and where, in one sentence — the line a
+  /// screen reader is told about.
+  ///
+  /// It changes when the playback starts and when it stops, and at no point in
+  /// between (see [_directionLine]).
+  String get _playbackState => _isPlaying
+      ? 'Wiedergabe läuft ${_onEarbud ? 'über die Kopfhörer' : 'über den '
+          'Lautsprecher'}'
+      : 'Wiedergabe gestoppt';
+
+  /// The calibrated volumes and, during the direction test, where the sound
+  /// comes from.
+  ///
+  /// NOTE: Deliberately **not** a live region, unlike [_playbackState]. A
+  /// screen reader would read it out at every step of the direction test —
+  /// through the same headphones the recording plays on, from the middle, and
+  /// with the recording turned down while it speaks (TalkBack's audio
+  /// ducking). That covers the very sound the user is asked to place. Whoever
+  /// wants the direction read out puts the focus on this line.
+  String get _directionLine {
+    final volumes = 'links ${widget.leftVolume}, rechts ${widget.rightVolume}';
     final step = _directionStep;
-    if (step == null) return '';
-    return ' – Richtung ${earbudDirectionSteps[step].label}, Schritt '
+    if (step == null) return volumes;
+    return '$volumes – Richtung ${earbudDirectionSteps[step].label}, Schritt '
         '${step + 1} von ${earbudDirectionSteps.length}';
   }
 
@@ -430,20 +448,14 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
                       isPlaying: _isPlaying,
                     ),
                     const SizedBox(height: 10),
-                    // The waveform is decorative; this line states the same
-                    // information in words — the direction included, which the
-                    // leaning bars only show — so it also works without sight.
+                    // The waveform is decorative; these two lines state the
+                    // same information in words — the direction included,
+                    // which the leaning bars only show — so the page also
+                    // works without sight. Only the first one is announced.
                     Semantics(
                       liveRegion: true,
                       child: Text(
-                        _isPlaying
-                            ? 'Wiedergabe läuft ${_onEarbud ? 'über die '
-                                'Kopfhörer' : 'über den Lautsprecher'} – '
-                                'links ${widget.leftVolume}, rechts '
-                                '${widget.rightVolume}$_directionSuffix'
-                            : 'Wiedergabe gestoppt – links '
-                                '${widget.leftVolume}, rechts '
-                                '${widget.rightVolume}',
+                        _playbackState,
                         textAlign: TextAlign.center,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 17,
@@ -451,6 +463,17 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
                           color: AppColors.text(context),
                           height: 1.3,
                         ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _directionLine,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.text(context),
+                        height: 1.3,
                       ),
                     ),
                     const SizedBox(height: 16),

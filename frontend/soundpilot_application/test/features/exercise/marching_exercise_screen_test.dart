@@ -4,6 +4,10 @@
 // whole cue list, follows the cues on screen without touching a gain, ends on
 // the native event (and on its own timer if that never comes), and says when a
 // system setting makes the direction inaudible.
+//
+// NOTE: Two lines carry the state. The first one says whether the exercise
+// runs and is announced by a screen reader; the second one says where the
+// sound is and is not (see _details in the screen).
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -128,8 +132,8 @@ void main() {
     expect(arguments['deviceId'], 7);
     // Once: the recording ends with a closing sentence.
     expect(arguments['loop'], isFalse);
-    expect(find.textContaining('Übung läuft über die Kopfhörer – Ton mittig'),
-        findsOneWidget);
+    expect(find.text('Übung läuft über die Kopfhörer'), findsOneWidget);
+    expect(find.text('Ton mittig'), findsOneWidget);
 
     // The directions go along with the start, so the native player can apply
     // them at their point in the samples instead of a timer here guessing.
@@ -158,11 +162,11 @@ void main() {
 
     // 21.4 s: "Verlagern Sie Ihr Gewicht … auf Ihr linkes Bein".
     await advance(tester, marchingCues.first.at);
-    expect(find.textContaining('Ton links – das linke Bein'), findsOneWidget);
+    expect(find.text('Ton links – das linke Bein'), findsOneWidget);
 
     // 28.6 s: the recording moves on and so does the sound.
     await advance(tester, marchingCues[1].at - marchingCues[0].at);
-    expect(find.textContaining('Ton mittig'), findsOneWidget);
+    expect(find.text('Ton mittig'), findsOneWidget);
 
     // The sound itself is the native player's business: nothing is sent.
     expect(calls, isEmpty);
@@ -175,19 +179,14 @@ void main() {
     await _pumpScreen(tester, headphones: Stream.value(const [_pods]));
     await start(tester);
 
-    final seen = <String>[];
     var elapsed = Duration.zero;
     for (final cue in marchingCues) {
       await advance(tester, cue.at - elapsed);
       elapsed = cue.at;
-      seen.add(tester
-          .widgetList<Text>(find.textContaining('Übung läuft'))
-          .first
-          .data!);
-    }
 
-    for (var index = 0; index < marchingCues.length; index++) {
-      expect(seen[index], contains(marchingCues[index].label));
+      expect(find.text('Ton ${cue.label}'), findsOneWidget, reason: '$cue');
+      // The line that is announced does not move with the cues.
+      expect(find.text('Übung läuft über die Kopfhörer'), findsOneWidget);
     }
 
     await tester.tap(find.text('Stop'));
@@ -209,7 +208,9 @@ void main() {
     });
     await tester.pump();
 
-    expect(find.textContaining('Übung gestoppt'), findsOneWidget);
+    // 'beendet', not 'gestoppt': the recording ran to its end, and that is
+    // what a screen reader is told.
+    expect(find.text('Übung beendet'), findsOneWidget);
     // It stopped by itself; nothing has to be stopped here.
     expect(methods(), isNot(contains('stopPlayback')));
   });
@@ -226,8 +227,42 @@ void main() {
 
     await advance(tester, MarchingExerciseScreen.endMargin);
 
-    expect(find.textContaining('Übung gestoppt'), findsOneWidget);
+    expect(find.text('Übung beendet'), findsOneWidget);
     expect(methods(), isNot(contains('stopPlayback')));
+  });
+
+  testWidgets('the end is taken once, whichever of the two arrives first',
+      (tester) async {
+    await _pumpScreen(tester, headphones: Stream.value(const [_pods]));
+    await start(tester);
+
+    await tester.runAsync(() async {
+      endEvents!.success('ended');
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pump();
+    expect(find.text('Übung beendet'), findsOneWidget);
+
+    // The fallback timer comes later and finds nothing to end.
+    await advance(tester, marchingDuration + MarchingExerciseScreen.endMargin);
+    expect(find.text('Übung beendet'), findsOneWidget);
+    expect(methods(), isNot(contains('stopPlayback')));
+  });
+
+  testWidgets('an end that arrives after Stop changes nothing', (tester) async {
+    await _pumpScreen(tester, headphones: Stream.value(const [_pods]));
+    await start(tester);
+    await tester.tap(find.text('Stop'));
+    await tester.pump();
+
+    await tester.runAsync(() async {
+      endEvents!.success('ended');
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pump();
+
+    // Stopped by the user stays stopped, not 'beendet'.
+    expect(find.text('Übung gestoppt'), findsOneWidget);
   });
 
   testWidgets('Stop ends the exercise and its cues', (tester) async {
@@ -240,7 +275,7 @@ void main() {
 
     // No cue and no end timer are left behind.
     await advance(tester, marchingDuration * 2);
-    expect(find.textContaining('Übung gestoppt'), findsOneWidget);
+    expect(find.text('Übung gestoppt'), findsOneWidget);
   });
 
   testWidgets('Start begins the exercise again from its beginning',
@@ -253,7 +288,7 @@ void main() {
     await start(tester);
 
     expect(calls.single.method, 'playTestSound');
-    expect(find.textContaining('Ton mittig'), findsOneWidget);
+    expect(find.text('Ton mittig'), findsOneWidget);
 
     // The first cue comes again, so the old schedule is gone.
     await advance(tester, marchingCues.first.at);
@@ -290,10 +325,10 @@ void main() {
     headphones.add(const []);
     await tester.pump();
 
-    expect(find.textContaining('Übung gestoppt'), findsOneWidget);
+    expect(find.text('Übung gestoppt'), findsOneWidget);
     // No cue moves the status line on after that.
     await advance(tester, marchingDuration);
-    expect(find.textContaining('Übung gestoppt'), findsOneWidget);
+    expect(find.text('Übung gestoppt'), findsOneWidget);
   });
 
   testWidgets('stops when the app goes to the background', (tester) async {

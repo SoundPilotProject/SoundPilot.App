@@ -119,6 +119,15 @@ result, connection lost, write failed), must be spoken.
   only where there is no visible text. Check the API of the pinned Flutter
   3.47.6 first: Android 16 deprecated the platform's announcement call in
   favour of live regions, and Flutter's API has been changing with it.
+- **Never put a live region on something that changes while audio is
+  playing.** TalkBack speaks through the same headphones and turns other audio
+  down while it does ("audio ducking"), so an announcement lands on top of
+  whatever the app is playing — and from the middle, which also takes the
+  direction away. The exercises therefore carry their state in *two* lines: a
+  live region that changes when the playback starts and ends, and a plain text
+  with the direction that is only read when the user puts the focus on it
+  (`MarchingExerciseScreen._details`, `TestPage._directionLine`). The
+  guards for this are in `screen_reader_test.dart`.
 
 Known gap: in the add-device dialog (`add_device_dialog.dart`,
 `_buildScanResults`) only "scan running" is a live region. The end of the scan
@@ -168,6 +177,15 @@ With earbuds on, in the marching exercise:
   the direction against the words.
 - **Both earbuds the right way round:** worn the other way, 'links' is simply
   wrong, and the app cannot tell.
+
+And once with **TalkBack running**, which is how the people this app is for
+will use it:
+
+- At every cue: does TalkBack stay quiet? It must announce the start and the
+  end of the exercise and nothing in between. An announcement at a cue would
+  be spoken over the instruction, from the middle, with the recording ducked.
+- Does the direction line read out sensibly when the focus is put on it?
+- Is the German voice used for the fixed German locale (§3.2)?
 
 And once, on purpose, with Android's own settings in the way:
 
