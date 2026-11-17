@@ -43,6 +43,7 @@ import 'package:soundpilot_application/features/device/widgets/belt_setup_fields
 import 'package:soundpilot_application/features/device/widgets/device_type.dart';
 import 'package:soundpilot_application/features/device/widgets/remove_device_dialog.dart';
 import 'package:soundpilot_application/features/device/widgets/unsynced_logout_dialog.dart';
+import 'package:soundpilot_application/features/exercise/screens/marching_exercise_screen.dart';
 import 'package:soundpilot_application/main.dart';
 import 'package:soundpilot_application/models/user_model.dart';
 
@@ -186,6 +187,13 @@ void main() {
             headphoneChanges: () => Stream.value(_connected),
             soundSupported: true,
           ),
+      'MarchingExerciseScreen': () => MarchingExerciseScreen(
+            leftVolume: 40,
+            rightVolume: 80,
+            address: 'AA',
+            headphoneChanges: () => Stream.value(_connected),
+            soundSupported: true,
+          ),
       'GuestDevicesDialog': () => const GuestDevicesDialog(count: 2),
       'UnsyncedLogoutDialog': () => const UnsyncedLogoutDialog(),
       'RemoveDeviceDialog': () => const RemoveDeviceDialog(name: 'Pods'),
@@ -284,6 +292,63 @@ void main() {
     });
   });
 
+  // ── The direction must not be read out over the instruction ───────────────
+  //
+  // Both screens carry the state in two lines: the first says whether
+  // something is playing and is a live region, the second says where the sound
+  // is and is not. A live region on the second one would make a screen reader
+  // speak at every cue — through the same headphones the recording plays on,
+  // from the middle, and with the recording turned down while it speaks
+  // (TalkBack's audio ducking). It would cover the very instruction the
+  // direction is there to support.
+  group('The direction is not announced by itself', () {
+    _semanticsTest('the marching exercise announces its state only',
+        (tester) async {
+      await _pump(
+        tester,
+        MarchingExerciseScreen(
+          leftVolume: 40,
+          rightVolume: 80,
+          address: 'AA',
+          headphoneChanges: () => Stream.value(_connected),
+          soundSupported: true,
+        ),
+      );
+
+      expect(
+        tester.getSemantics(find.text('Übung gestoppt')),
+        isSemantics(label: 'Übung gestoppt', isLiveRegion: true),
+      );
+      expect(
+        tester.getSemantics(find.text('links 40, rechts 80')),
+        isSemantics(label: 'links 40, rechts 80', isLiveRegion: false),
+      );
+    });
+
+    _semanticsTest('the test exercise announces its state only',
+        (tester) async {
+      await _pump(
+        tester,
+        TestPage(
+          leftVolume: 40,
+          rightVolume: 80,
+          address: 'AA',
+          headphoneChanges: () => Stream.value(_connected),
+          soundSupported: true,
+        ),
+      );
+
+      expect(
+        tester.getSemantics(find.text('Wiedergabe gestoppt')),
+        isSemantics(label: 'Wiedergabe gestoppt', isLiveRegion: true),
+      );
+      expect(
+        tester.getSemantics(find.text('links 40, rechts 80')),
+        isSemantics(label: 'links 40, rechts 80', isLiveRegion: false),
+      );
+    });
+  });
+
   group('BeltVibrationScreen', () {
     _semanticsTest('the selected side is announced on the focused node',
         (tester) async {
@@ -299,6 +364,11 @@ void main() {
         tester.getSemantics(find.text('Links')),
         isSemantics(label: 'Links', isSelected: false, isButton: true),
       );
+
+      // Below the fold on a small phone, since 'Vibration testen' sits above
+      // the side buttons.
+      await tester.ensureVisible(find.text('Links'));
+      await _settle(tester);
 
       await tester.tap(find.text('Links'));
       await _settle(tester);

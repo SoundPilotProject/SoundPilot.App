@@ -289,8 +289,12 @@ void main() {
       await tester.pump();
 
       expect(calls.last.method, 'setPlaybackGain');
-      expect(calls.last.arguments,
-          {'leftGain': wheelToGain(50), 'rightGain': wheelToGain(80)});
+      expect(calls.last.arguments, {
+        'leftGain': wheelToGain(50),
+        'rightGain': wheelToGain(80),
+        // No ramp: the tone has to follow the finger on the wheel.
+        'rampMs': 0,
+      });
     });
 
     testWidgets('stops when the earbud disconnects', (tester) async {

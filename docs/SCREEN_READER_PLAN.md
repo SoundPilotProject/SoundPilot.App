@@ -119,6 +119,15 @@ result, connection lost, write failed), must be spoken.
   only where there is no visible text. Check the API of the pinned Flutter
   3.47.6 first: Android 16 deprecated the platform's announcement call in
   favour of live regions, and Flutter's API has been changing with it.
+- **Never put a live region on something that changes while audio is
+  playing.** TalkBack speaks through the same headphones and turns other audio
+  down while it does ("audio ducking"), so an announcement lands on top of
+  whatever the app is playing — and from the middle, which also takes the
+  direction away. The exercises therefore carry their state in *two* lines: a
+  live region that changes when the playback starts and ends, and a plain text
+  with the direction that is only read when the user puts the focus on it
+  (`MarchingExerciseScreen._details`, `TestPage._directionLine`). The
+  guards for this are in `screen_reader_test.dart`.
 
 Known gap: in the add-device dialog (`add_device_dialog.dart`,
 `_buildScanResults`) only "scan running" is a live region. The end of the scan
@@ -145,6 +154,63 @@ service is running. Use it only where behaviour must differ (e.g. keeping a
 message open), not to build a separate "screen reader mode". Controls that are
 hard for screen reader users are usually hard for motor-impaired users too;
 fix them for everyone.
+
+### 3.7 Device test protocol for the direction
+
+Everything about the left/right direction (`docs/PROJECT_CONTEXT.md` §4) is
+measured in unit tests and has never been heard. This is the checklist for the
+first run on a phone; it belongs next to the protocol of §3.2 and, like it,
+into a short table of results.
+
+Before starting, so the result is reproducible and not an effect of something
+else:
+
+- **Both earbuds in.** With one of them out, many models switch to mono by
+  themselves, and then there is nothing to hear on a side.
+- **Spatial audio off** on the phone ("Raumklang", Dolby Atmos, Samsung's
+  spatial effects). They re-pan what the app pans.
+- **Note the phone and the headphones** by model, and whether the connection
+  is wired or Bluetooth.
+- The player asks Android for `USAGE_MEDIA` and `CONTENT_TYPE_MUSIC`
+  (`GainPlayer`), so a headset should stay in its stereo profile. If there is
+  no direction at all, the cause is one of the three points above or the
+  headset running in the telephony profile (HFP), which is mono — not the pan
+  law.
+
+With earbuds on, in the marching exercise:
+
+- **The four sentence blocks** (21.4 s, 33.5 s, 65.8 s, 71.8 s): is the sound
+  on the right side *before* the word 'links' or 'rechts' falls in the middle
+  of the sentence? If it arrives late, the times in `marchingCues` are the
+  only thing to change.
+- **Clicks:** none when the direction changes, in particular at 71.8 s where
+  one glide replaces another, and none at the fade-out at the end.
+- **The end:** does the closing sentence ("…sicher gehalten vom Stuhl") play
+  to its end before the screen says 'gestoppt'?
+- **Wired headphones against Bluetooth earbuds:** the same impression on both?
+  Bluetooth adds 150–300 ms of latency, which the design says must not shift
+  the direction against the words.
+- **Both earbuds the right way round:** worn the other way, 'links' is simply
+  wrong, and the app cannot tell.
+
+And once with **TalkBack running**, which is how the people this app is for
+will use it:
+
+- At every cue: does TalkBack stay quiet? It must announce the start and the
+  end of the exercise and nothing in between. An announcement at a cue would
+  be spoken over the instruction, from the middle, with the recording ducked.
+- Does the direction line read out sensibly when the focus is put on it?
+- Is the German voice used for the fixed German locale (§3.2)?
+
+And once, on purpose, with Android's own settings in the way:
+
+- **Mono audio** (Settings → Accessibility → Audio → Mono audio) on: does the
+  app say so, on the test exercise *and* in the marching exercise, instead of
+  letting the user conclude that they cannot hear a side? Does the button to
+  the accessibility settings get there?
+- **Audio balance** pushed to one side: the same question.
+- And with both off again: is the hint after the direction test still there
+  (it has to be, because the settings cannot always be read)?
 
 ## 4. Open decisions
 

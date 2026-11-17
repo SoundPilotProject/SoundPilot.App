@@ -98,8 +98,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '450');
     await _tapButton(tester, 'Weiter');
     await tester.enterText(find.byType(TextField), '55');
-    await tester.tap(find.text('Links'));
-    await tester.pumpAndSettle();
+    await _tapButton(tester, 'Links');
     await _tapButton(tester, 'Abschließen');
 
     expect(find.byType(BeltWarningDistanceScreen), findsNothing);
@@ -181,6 +180,24 @@ void main() {
         expect(result(), isNull);
       });
     }
+  });
+
+  testWidgets('"Vibration testen" accepts the same range as "Abschließen"',
+      (tester) async {
+    await _openSetup(tester, _stored);
+    await _tapButton(tester, 'Weiter');
+
+    await tester.enterText(find.byType(TextField), '20');
+    await _tapButton(tester, 'Vibration testen');
+
+    expect(find.text(_strengthError), findsOneWidget);
+    expect(find.textContaining('gespielt'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '80');
+    await _tapButton(tester, 'Vibration testen');
+
+    expect(find.text(_strengthError), findsNothing);
+    expect(find.text('Vibration mit 80 % gespielt.'), findsOneWidget);
   });
 
   testWidgets('the message is a live region with an icon, not colour alone', (
