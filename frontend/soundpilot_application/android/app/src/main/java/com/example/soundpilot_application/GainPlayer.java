@@ -11,6 +11,7 @@ package com.example.soundpilot_application;
 import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
+import android.media.AudioTimestamp;
 import android.media.AudioTrack;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
@@ -55,10 +56,50 @@ final class GainPlayer {
         }
     }
 
+    // One step of an exercise: from [atMs] into the recording, glide to these
+    // gains over [rampMs].
+    //
+    // NOTE: Cues are counted in frames *written*, not in wall time. The gains
+    // are applied to the samples, so the panning and the words travel through
+    // the same buffer and the same Bluetooth link and reach the ear together,
+    // whatever that link's latency is. A timer on the Dart side cannot do
+    // that: it is ahead of the sound by however much is buffered.
+    static final class Cue {
+        final int atMs;
+        final float left;
+        final float right;
+        final int rampMs;
+
+        Cue(int atMs, float left, float right, int rampMs) {
+            this.atMs = atMs;
+            this.left = left;
+            this.right = right;
+            this.rampMs = rampMs;
+        }
+
+        long frame(int sampleRate) {
+            return (long) atMs * sampleRate / 1000;
+        }
+
+        Ramp toRamp(int sampleRate) {
+            return new Ramp(left, right, rampFrames(rampMs, sampleRate));
+        }
+    }
+
     private final Source source;
     private final AudioTrack track;
     private final Thread thread;
     private final int sampleRate;
+
+    // How much audio the AudioTrack buffer holds, in milliseconds.
+    private final int bufferMs;
+
+    // The directions of a recording, in order; empty for a test sound.
+    private final Cue[] cues;
+
+    // Run once the recording has been played to its end *and* heard; null if
+    // nobody wants to know.
+    private final Runnable onEnded;
 
     // Id of the output device the sound is routed to, or -1 for the default
     // output.
@@ -72,8 +113,11 @@ final class GainPlayer {
     // Starts playing [source] at once. With a [device] the sound is routed to
     // it; Android otherwise falls back to the default output, so the caller
     // stops the player when that device disconnects.
-    GainPlayer(Source source, float leftGain, float rightGain, AudioDeviceInfo device) {
+    GainPlayer(Source source, float leftGain, float rightGain, AudioDeviceInfo device,
+               Cue[] cues, Runnable onEnded) {
         this.source = source;
+        this.cues = cues != null ? cues : new Cue[0];
+        this.onEnded = onEnded;
         // The first ramp fades in from silence over one chunk, so the start
         // does not click.
         this.pending = new Ramp(leftGain, rightGain, CHUNK_FRAMES);
@@ -84,6 +128,9 @@ final class GainPlayer {
                 sampleRate,
                 AudioFormat.CHANNEL_OUT_STEREO,
                 AudioFormat.ENCODING_PCM_16BIT);
+        final int bufferBytes = Math.max(minBufSize, CHUNK_FRAMES * 4) * 2;
+        // 4 bytes per frame (stereo, 16 bit).
+        this.bufferMs = (int) ((long) (bufferBytes / 4) * 1000 / sampleRate);
 
         track = new AudioTrack.Builder()
                 .setAudioAttributes(new AudioAttributes.Builder()
@@ -95,7 +142,7 @@ final class GainPlayer {
                         .setSampleRate(sampleRate)
                         .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                         .build())
-                .setBufferSizeInBytes(Math.max(minBufSize, CHUNK_FRAMES * 4) * 2)
+                .setBufferSizeInBytes(bufferBytes)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build();
 
@@ -116,10 +163,14 @@ final class GainPlayer {
     // ("zipper noise"), and a Dart timer cannot hit a sample boundary anyway.
     // Dart says where to go and in how long; the rest happens in this thread.
     void setGains(float left, float right, int rampMs) {
-        final int frames = rampMs > 0
+        pending = new Ramp(left, right, rampFrames(rampMs, sampleRate));
+    }
+
+    // Ramp length in frames; 0 or less is one chunk.
+    private static int rampFrames(int rampMs, int sampleRate) {
+        return rampMs > 0
                 ? (int) Math.min(Integer.MAX_VALUE, (long) rampMs * sampleRate / 1000)
                 : CHUNK_FRAMES;
-        pending = new Ramp(left, right, frames);
     }
 
     // Fades out (one chunk) and releases everything.
@@ -163,6 +214,8 @@ final class GainPlayer {
         int rampPosition = 1;
 
         boolean ended = false;
+        long framesWritten = 0;
+        int cueIndex = 0;
 
         try {
             while (true) {
@@ -184,9 +237,23 @@ final class GainPlayer {
                     rampFrames = CHUNK_FRAMES;
                     rampPosition = 0;
                 } else {
-                    final Ramp next = pending;
-                    if (next != null) {
+                    // Every cue of the recording whose frame has come; if more
+                    // than one is due in the same chunk, the last one wins.
+                    Ramp next = null;
+                    while (cueIndex < cues.length
+                            && cues[cueIndex].frame(sampleRate) <= framesWritten) {
+                        next = cues[cueIndex].toRamp(sampleRate);
+                        cueIndex++;
+                    }
+                    if (next == null) {
+                        next = pending;
+                        if (next != null) pending = null;
+                    } else {
+                        // While a recording has cues, they own the direction:
+                        // a gain that arrived meanwhile is dropped.
                         pending = null;
+                    }
+                    if (next != null) {
                         fromLeft = currentLeft;
                         fromRight = currentRight;
                         toLeft = next.left;
@@ -209,11 +276,61 @@ final class GainPlayer {
                 }
 
                 track.write(stereo, 0, stereo.length);
+                framesWritten += CHUNK_FRAMES;
                 if (stopping) break;
             }
         } catch (Exception e) {
             Log.e(TAG, "Playback failed", e);
         }
+
+        // The recording ran out on its own, so whoever asked for it is told —
+        // but only once it has really been heard.
+        if (ended && !stopRequested && onEnded != null) {
+            awaitPlayedOut(framesWritten);
+            if (!stopRequested) onEnded.run();
+        }
+    }
+
+    // Waits until everything written has been played. At the moment the last
+    // chunk is written, the AudioTrack buffer still holds ~80-180 ms and the
+    // output itself more — on Bluetooth another 150-300 ms.
+    //
+    // NOTE: getTimestamp's nanoTime is when a frame is *presented*, so it
+    // covers what the device still has in the pipe. getPlaybackHeadPosition
+    // only counts what the HAL consumed, which is why the fallback waits one
+    // buffer length on top of it.
+    private void awaitPlayedOut(long totalFrames) {
+        final long giveUpAt = System.currentTimeMillis() + 10_000;
+        try {
+            final AudioTimestamp stamp = new AudioTimestamp();
+            while (!stopRequested && System.currentTimeMillis() < giveUpAt) {
+                if (track.getTimestamp(stamp) && stamp.framePosition > 0) {
+                    final long left = totalFrames - stamp.framePosition;
+                    if (left <= 0) return;
+                    if (!sleepSliced((left * 1000 / sampleRate) + 10)) return;
+                    continue;
+                }
+                if (track.getPlaybackHeadPosition() >= totalFrames) {
+                    sleepSliced(bufferMs);
+                    return;
+                }
+                if (!sleepSliced(20)) return;
+            }
+        } catch (Exception ignored) {
+            // The track was released while waiting, i.e. the screen was left.
+        }
+    }
+
+    // Sleeps in slices, so a stop() is noticed inside one of them instead of
+    // after the whole wait. False if a stop came.
+    private boolean sleepSliced(long millis) throws InterruptedException {
+        final long until = System.currentTimeMillis() + millis;
+        while (!stopRequested) {
+            final long left = until - System.currentTimeMillis();
+            if (left <= 0) return true;
+            Thread.sleep(Math.min(25, left));
+        }
+        return false;
     }
 
     // ── Sources ──────────────────────────────────────────────────────────────

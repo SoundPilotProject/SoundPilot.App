@@ -146,6 +146,39 @@ message open), not to build a separate "screen reader mode". Controls that are
 hard for screen reader users are usually hard for motor-impaired users too;
 fix them for everyone.
 
+### 3.7 Device test protocol for the direction
+
+Everything about the left/right direction (`docs/PROJECT_CONTEXT.md` §4) is
+measured in unit tests and has never been heard. This is the checklist for the
+first run on a phone; it belongs next to the protocol of §3.2 and, like it,
+into a short table of results.
+
+With earbuds on, in the marching exercise:
+
+- **The four sentence blocks** (21.4 s, 33.5 s, 65.8 s, 71.8 s): is the sound
+  on the right side *before* the word 'links' or 'rechts' falls in the middle
+  of the sentence? If it arrives late, the times in `marchingCues` are the
+  only thing to change.
+- **Clicks:** none when the direction changes, in particular at 71.8 s where
+  one glide replaces another, and none at the fade-out at the end.
+- **The end:** does the closing sentence ("…sicher gehalten vom Stuhl") play
+  to its end before the screen says 'gestoppt'?
+- **Wired headphones against Bluetooth earbuds:** the same impression on both?
+  Bluetooth adds 150–300 ms of latency, which the design says must not shift
+  the direction against the words.
+- **Both earbuds the right way round:** worn the other way, 'links' is simply
+  wrong, and the app cannot tell.
+
+And once, on purpose, with Android's own settings in the way:
+
+- **Mono audio** (Settings → Accessibility → Audio → Mono audio) on: does the
+  app say so, on the test exercise *and* in the marching exercise, instead of
+  letting the user conclude that they cannot hear a side? Does the button to
+  the accessibility settings get there?
+- **Audio balance** pushed to one side: the same question.
+- And with both off again: is the hint after the direction test still there
+  (it has to be, because the settings cannot always be read)?
+
 ## 4. Open decisions
 
 - Which phones are available for testing (at least one Android, one iPhone)?

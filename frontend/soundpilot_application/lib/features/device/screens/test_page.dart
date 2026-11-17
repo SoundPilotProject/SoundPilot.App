@@ -15,6 +15,7 @@ import '../../../core/services/spatial_audio_engine.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/playback_button.dart';
+import '../../exercise/direction_hint.dart';
 import '../../exercise/spatial_audio.dart';
 import '../headphone_connection.dart';
 
@@ -100,11 +101,19 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   /// Moves the direction test to its next step.
   Timer? _stepTimer;
 
+  /// Whether a direction test has run on this page, so the hint about the
+  /// system settings is worth showing (see [directionCheckHint]).
+  bool _directionTestRan = false;
+
+  /// Android's mono audio and balance settings, as far as they can be read.
+  AudioAccessibility _audioSettings = AudioAccessibility.unknown;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     if (_soundSupported) {
+      unawaited(_loadAudioSettings());
       _connection = HeadphoneConnection(
         address: widget.address,
         changes: widget.headphoneChanges,
@@ -139,6 +148,17 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed && _isPlaying) _stopAudio();
   }
 
+  /// Reads the accessibility audio settings once: mono audio or a shifted
+  /// balance make the direction test meaningless, and the page has to say so
+  /// rather than let the user conclude that they cannot hear a side.
+  Future<void> _loadAudioSettings() async {
+    final settings = await AudioDeviceService.audioAccessibility();
+    if (mounted) setState(() => _audioSettings = settings);
+  }
+
+  /// A system setting that is known to make left and right inaudible.
+  String? get _blocked => directionBlockedMessage(_audioSettings);
+
   /// Whether 'Start' can be used: anywhere the app can play sound.
   ///
   /// NOTE: It used to need the connected earbud. Without one the exercise
@@ -165,8 +185,10 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
 
   /// Starts the direction test: the same recording, moved through
   /// [earbudDirectionSteps] one step at a time.
-  Future<void> _startDirectionTest() =>
-      _start(angle: earbudDirectionSteps.first.angle, directionTest: true);
+  Future<void> _startDirectionTest() {
+    setState(() => _directionTestRan = true);
+    return _start(angle: earbudDirectionSteps.first.angle, directionTest: true);
+  }
 
   /// Starts the looping playback from [angle], on the earbud if it is
   /// connected and on the phone's default output otherwise.
@@ -274,6 +296,10 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   String? get _note {
     if (_error != null) return _error;
     if (!_soundSupported) return 'Die Aufnahme gibt es nur in der Android-App.';
+    // Before the earbud: a direction nobody can hear is the more fundamental
+    // problem of the two.
+    final blocked = _blocked;
+    if (blocked != null) return blocked;
     if (_connection?.known == true && !_onEarbud) {
       return 'Deine Kopfhörer sind nicht verbunden. Die Aufnahme läuft dann '
           'über den Lautsprecher – links, rechts und der Richtungstest sind '
@@ -344,6 +370,17 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
         textColor: Colors.white,
         onPressed: _isPlaying ? _stopAudio : null,
       ),
+      if (_blocked != null) ...[
+        const SizedBox(height: 10),
+        PlaybackButton(
+          label: 'Bedienungshilfen öffnen',
+          icon: Icons.accessibility_new_rounded,
+          fontSize: 19,
+          color: AppColors.primary(context),
+          textColor: AppColors.onPrimary(context),
+          onPressed: AudioDeviceService.openAccessibilitySettings,
+        ),
+      ],
       if (needsBluetooth) ...[
         const SizedBox(height: 10),
         PlaybackButton(
@@ -434,6 +471,23 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
                       const SizedBox(height: 12),
                     ],
                     ..._buildPlaybackControls(),
+                    // NOTE: Shown whatever the settings say, because they
+                    // cannot always be read (see directionCheckHint). Without
+                    // it, a phone set to mono leaves the user with only one
+                    // explanation for hearing the same thing five times.
+                    if (_directionTestRan && _blocked == null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        directionCheckHint,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.text(context),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 22),
                     Semantics(
                       header: true,

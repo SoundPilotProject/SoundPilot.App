@@ -361,6 +361,7 @@ void main() {
         'deviceId': 4,
         // Loops unless the caller says otherwise.
         'loop': true,
+        'cues': <Object>[],
       });
     });
 
@@ -377,6 +378,58 @@ void main() {
       expect((calls.single.arguments as Map)['loop'], isFalse);
     });
 
+    test('reads mono audio and the balance', () async {
+      mockNative({
+        'getAudioAccessibility': {'mono': true, 'balance': -0.5},
+      });
+
+      final settings = await AudioDeviceService.audioAccessibility();
+
+      expect(settings.monoAudio, isTrue);
+      expect(settings.balance, -0.5);
+      expect(settings.defeatsDirection, isTrue);
+    });
+
+    test('a setting that is not there stays unknown, never "off"', () async {
+      // A setting nobody ever touched is not in the system database at all.
+      mockNative({'getAudioAccessibility': <String, Object>{}});
+
+      final settings = await AudioDeviceService.audioAccessibility();
+
+      expect(settings.monoAudio, isNull);
+      expect(settings.balance, isNull);
+      // Nothing is *known* to be in the way, which is not the same as fine.
+      expect(settings.defeatsDirection, isFalse);
+    });
+
+    test('a balance a hair off the middle is not a problem', () async {
+      mockNative({
+        'getAudioAccessibility': {'mono': false, 'balance': 0.01},
+      });
+
+      final settings = await AudioDeviceService.audioAccessibility();
+
+      expect(settings.balanceOffCentre, isFalse);
+      expect(settings.defeatsDirection, isFalse);
+    });
+
+    test('a shifted balance counts even with mono off', () async {
+      mockNative({
+        'getAudioAccessibility': {'mono': false, 'balance': 0.9},
+      });
+
+      final settings = await AudioDeviceService.audioAccessibility();
+
+      expect(settings.defeatsDirection, isTrue);
+    });
+
+    test('without a native side nothing is claimed', () async {
+      messenger.setMockMethodCallHandler(channel, null);
+
+      expect(await AudioDeviceService.audioAccessibility(),
+          AudioAccessibility.unknown);
+    });
+
     test('changes the gains of the playing sound', () async {
       mockNative({});
 
@@ -386,6 +439,30 @@ void main() {
       // No ramp: the native player takes its own shortest glide.
       expect(calls.single.arguments,
           {'leftGain': 0.2, 'rightGain': 0.9, 'rampMs': 0});
+    });
+
+    test('hands the cues of a recording over with it', () async {
+      mockNative({});
+
+      await AudioDeviceService.playTestSound(
+        asset: 'assets/audio/Marschieren.mp3',
+        leftGain: 1,
+        rightGain: 1,
+        loop: false,
+        cues: const [
+          PlaybackCue(
+            at: Duration(milliseconds: 21400),
+            leftGain: 1,
+            rightGain: 0.4,
+            ramp: Duration(milliseconds: 800),
+          ),
+        ],
+      );
+
+      // The native player applies them itself, at their point in the samples.
+      expect((calls.single.arguments as Map)['cues'], [
+        {'atMs': 21400, 'leftGain': 1.0, 'rightGain': 0.4, 'rampMs': 800},
+      ]);
     });
 
     test('hands a long glide to the native player', () async {

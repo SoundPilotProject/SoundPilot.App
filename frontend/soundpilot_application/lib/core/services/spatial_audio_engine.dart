@@ -55,12 +55,20 @@ class SpatialAudioEngine {
   ///
   /// [loop] false plays the recording once; the engine does not learn about
   /// that end by itself, so the caller marks it with [markStopped].
+  ///
+  /// [cues] are the directions of the recording. They are handed to the native
+  /// player, which applies them itself at their point in the *samples* — the
+  /// only way the panning and the words arrive at the ear together whatever
+  /// the output latency is (see [AudioDeviceService.playTestSound]). A caller
+  /// that follows them on screen says so with [markAngle]; it must not send
+  /// them again with [setAngle].
   Future<void> play({
     required String asset,
     required EarCalibration calibration,
     double angle = angleCentre,
     int? outputDeviceId,
     bool loop = true,
+    List<ExerciseCue> cues = const [],
   }) async {
     _angle = angle;
     _calibration = calibration;
@@ -72,6 +80,19 @@ class SpatialAudioEngine {
       rightGain: target.right,
       outputDeviceId: outputDeviceId,
       loop: loop,
+      cues: [
+        for (final cue in cues)
+          PlaybackCue(
+            at: cue.at,
+            leftGain: StereoGains.forAngle(cue.angle)
+                .withCalibration(calibration)
+                .left,
+            rightGain: StereoGains.forAngle(cue.angle)
+                .withCalibration(calibration)
+                .right,
+            ramp: cue.ramp,
+          ),
+      ],
     );
 
     _playing = true;
@@ -107,6 +128,10 @@ class SpatialAudioEngine {
   /// Notes that the sound has ended without this engine stopping it (the
   /// earbud it was routed to disconnected, and the native side stopped).
   void markStopped() => _playing = false;
+
+  /// Notes that the sound is at [angle] without sending anything: a cue list
+  /// handed to the native player moved it there (see [play]).
+  void markAngle(double angle) => _angle = angle;
 
   Future<void> _applyGains(Duration ramp) async {
     final target = gains;

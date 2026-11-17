@@ -590,13 +590,41 @@ screen with one pair of controls (§1, one main action per screen).
   instruction they never receive. Screen text is no second channel here — the
   users this app is for do not read it. That part needs a recording that says
   "rechtes Bein" and "linkes Bein" (see §7).
+- **The cue list goes to the native player**, which applies each cue at its
+  own point in the *samples* (`GainPlayer.Cue`). That is the only way the
+  panning and the words stay together: a timer in Dart runs ahead of the sound
+  by whatever is buffered (80–180 ms) and cannot be corrected for the output's
+  own latency. The timers on the screen only move the status line, and are
+  allowed to be a little early.
+  - They are all created at the start, each with its own offset, and never as
+    a chain where one cue schedules the next: a timer that fires late would
+    otherwise push every later cue by the same amount.
 - **Played once, not looped** (`loop: false`, down to `GainPlayer`): the
   recording ends with a closing sentence, and starting over would talk through
-  it. The native side does not report that end, so the screen puts itself back
-  to stopped 300 ms after the measured 92.03 s — late on purpose, so it never
-  says 'gestoppt' while the last word is still playing.
-- One timer per cue, chained: the cue times are the only thing that matters,
-  and only the gains move while the recording keeps running.
+  it. The native side reports the end once it has been **heard** — it waits
+  for the playback position to reach the last frame
+  (`AudioTrack.getTimestamp`), because at the moment the last sample is
+  written the buffer and the Bluetooth link still hold the closing sentence.
+  The screen's own timer (`MarchingExerciseScreen.endMargin`, 2 s past the
+  measured 92.03 s) is only the fallback for where that event cannot arrive.
+
+### Settings that defeat the direction
+
+Two Android accessibility settings switch the whole direction engine off, and
+the users this app is for are the ones most likely to have them on:
+**mono audio** mixes both channels together, and the **audio balance** slider
+moves everything to one side.
+
+- `AudioDeviceService.audioAccessibility()` reads both (`master_mono`,
+  `master_balance`). The screens that need a direction say so before the user
+  tries to hear one, with a button to the accessibility settings.
+- **Unknown is never "off".** The keys have no public constants and a setting
+  nobody has ever touched is not in the system database at all, so a value
+  that cannot be read stays `null`.
+- Which is why the test exercise shows `directionCheckHint` after a direction
+  test **whatever** was read: a phone set to mono would otherwise play the
+  same thing five times and leave the user with one conclusion — that they
+  cannot tell left from right.
 
 ### Bluetooth and connection state
 
@@ -855,6 +883,19 @@ Not backed by evidence — check in the code instead of assuming:
   come from "left in front" rather than only "louder in the left ear". It
   needs headphones, is a good deal more work and colours the voice, so it
   would have to be tried with real users against the plain level difference.
+  8D audio is **not** the thing to copy: a sound that circles all the time
+  makes 'links' meaningless, its reverb works against speech, and movement
+  like that is the last thing someone standing on one leg needs.
+- **A glide interpolates the two gains, not the pan position.** On a direct
+  change from one side to the other that costs about 0.7 dB in the middle of
+  the movement (the straight line between the two gain pairs cuts the corner
+  of the equal-power curve). Barely audible, and only 71.4 → 71.8 s does it at
+  all. Interpolating the position instead means handing the native player the
+  position and the calibration separately (`setPan(p, leftCal, rightCal)`)
+  rather than finished gains — worth doing if a glide ever has to be exact.
+- **Mono audio on iOS** has a public API (`UIAccessibility.isMonoAudioEnabled`)
+  and would not need the key-by-name reading the Android side does. Nothing
+  of the audio is implemented for iOS yet.
 - **There is no exercise area in the app.** The marching exercise hangs off
   the calibration screen because that is where the earbud and its volumes are
   known. Where exercises belong once there are several of them — and how they

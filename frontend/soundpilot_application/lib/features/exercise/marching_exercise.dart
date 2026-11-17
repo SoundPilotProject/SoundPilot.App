@@ -3,8 +3,6 @@
 // The marching exercise at the chair: its recording, and where the sound comes
 // from while the recording speaks.
 
-import 'package:flutter/foundation.dart';
-
 import 'spatial_audio.dart';
 
 /// The recording of the exercise (mono, see `docs/PROJECT_CONTEXT.md` §4).
@@ -16,31 +14,6 @@ const String marchingAsset = 'assets/audio/Marschieren.mp3';
 /// 44.1 kHz. The last word ends at 91.8 s, so a timer a little past the end
 /// does not cut the closing sentence.
 const Duration marchingDuration = Duration(milliseconds: 92030);
-
-/// One step of an exercise: from when the sound comes from [angle].
-///
-/// A cue holds until the next one; there is no duration of its own, so two
-/// cues close together simply glide through each other.
-@immutable
-class ExerciseCue {
-  /// How far into the recording this cue applies.
-  final Duration at;
-
-  /// Where the sound comes from (see [StereoGains.forAngle]).
-  final double angle;
-
-  /// German name of the direction, for the status line and the screen reader.
-  final String label;
-
-  const ExerciseCue({
-    required this.at,
-    required this.angle,
-    required this.label,
-  });
-
-  @override
-  String toString() => 'ExerciseCue(${at.inMilliseconds}ms, $angle°)';
-}
 
 /// What the status line says while no cue has anything to add.
 const String cueCentreLabel = 'mittig';

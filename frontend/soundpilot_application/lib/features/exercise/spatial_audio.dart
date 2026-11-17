@@ -161,6 +161,37 @@ const Duration directionStepDuration = Duration(seconds: 4);
 /// has to send a series of gains — that would crackle.
 const Duration panRamp = Duration(milliseconds: 800);
 
+// ── Cues of a recording ──────────────────────────────────────────────────────
+
+/// One step of a recording: from [at] on, the sound comes from [angle].
+///
+/// A cue holds until the next one, so it has no duration of its own and two
+/// cues close together simply glide through each other.
+@immutable
+class ExerciseCue {
+  /// How far into the recording this cue applies.
+  final Duration at;
+
+  /// Where the sound comes from (see [StereoGains.forAngle]).
+  final double angle;
+
+  /// German name of the direction, for the status line and the screen reader.
+  final String label;
+
+  /// How long the glide to [angle] takes.
+  final Duration ramp;
+
+  const ExerciseCue({
+    required this.at,
+    required this.angle,
+    required this.label,
+    this.ramp = panRamp,
+  });
+
+  @override
+  String toString() => 'ExerciseCue(${at.inMilliseconds}ms, $angle°)';
+}
+
 /// The directions of the earbud direction test, in order.
 ///
 /// The same mono recording is moved across the five directions, so the user

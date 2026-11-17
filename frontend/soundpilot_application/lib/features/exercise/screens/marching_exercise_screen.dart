@@ -16,6 +16,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/playback_button.dart';
 import '../../device/headphone_connection.dart';
+import '../direction_hint.dart';
 import '../marching_exercise.dart';
 import '../spatial_audio.dart';
 
@@ -30,9 +31,14 @@ import '../spatial_audio.dart';
 ///
 /// NOTE: The recording is played **once** (`loop: false`): it ends with a
 /// closing sentence, and starting over would talk through it. The native side
-/// does not report that end, so [endMargin] after [marchingDuration] a timer
-/// puts the screen back to stopped — a little late on purpose, so it never
-/// says 'gestoppt' while the last word is still playing.
+/// reports that end once it has really been heard
+/// ([AudioDeviceService.playbackEnded]); the timer of [endMargin] is only the
+/// fallback for where that event cannot arrive.
+///
+/// NOTE: The directions are handed to the native player as a cue list, which
+/// applies them itself at their point in the samples — that is what keeps the
+/// panning and the words together whatever the Bluetooth latency is. The
+/// timers here only move the status line and are allowed to be a little early.
 class MarchingExerciseScreen extends StatefulWidget {
   /// Calibrated volume of the left side (1–100).
   final int leftVolume;
@@ -50,6 +56,16 @@ class MarchingExerciseScreen extends StatefulWidget {
   /// [AudioDeviceService.isSupported].
   final bool? soundSupported;
 
+  /// How long after the end of the recording the screen stops waiting for the
+  /// native end event and says it is over by itself.
+  ///
+  /// NOTE: Generous on purpose. Saying 'läuft' a second too long costs
+  /// nothing; claiming 'gestoppt' while the closing sentence is still playing
+  /// is what must not happen. A short margin would do exactly that, because
+  /// the sound is still in the buffer (80–180 ms) and on its way through
+  /// Bluetooth (another 150–300 ms) when the last sample has been written.
+  static const Duration endMargin = Duration(seconds: 2);
+
   const MarchingExerciseScreen({
     super.key,
     required this.leftVolume,
@@ -66,9 +82,6 @@ class MarchingExerciseScreen extends StatefulWidget {
 
 class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
     with WidgetsBindingObserver {
-  /// How long after the end of the recording the screen says it is over.
-  static const Duration endMargin = Duration(milliseconds: 300);
-
   late final bool _soundSupported =
       widget.soundSupported ?? AudioDeviceService.isSupported;
 
@@ -89,8 +102,14 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
   /// before the first one (and therefore centred).
   int? _cueIndex;
 
-  /// Moves the exercise to its next cue.
-  Timer? _cueTimer;
+  /// One timer per cue, for the status line only (see the class doc).
+  final List<Timer> _cueTimers = [];
+
+  /// The native side reporting that the recording has been heard to its end.
+  StreamSubscription<void>? _endEvents;
+
+  /// Android's mono audio and balance settings, as far as they can be read.
+  AudioAccessibility _audioSettings = AudioAccessibility.unknown;
 
   /// Puts the screen back to stopped once the recording has run out.
   Timer? _endTimer;
@@ -103,6 +122,14 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     if (_soundSupported) {
+      unawaited(_loadAudioSettings());
+      _endEvents = AudioDeviceService.playbackEnded().listen(
+        (_) {
+          if (_isPlaying) _handleEnd();
+        },
+        // Without a native side the channel cannot open; the timer carries it.
+        onError: (Object _) {},
+      );
       _connection = HeadphoneConnection(
         address: widget.address,
         changes: widget.headphoneChanges,
@@ -125,6 +152,7 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _cancelTimers();
+    unawaited(_endEvents?.cancel());
     _connection?.dispose();
     if (_isPlaying) unawaited(_stopQuietly());
     super.dispose();
@@ -136,6 +164,16 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
     // and the sound could not be stopped from there.
     if (state != AppLifecycleState.resumed && _isPlaying) _stop();
   }
+
+  /// Reads the accessibility audio settings once, so the screen can say that
+  /// they are in the way before the user tries to hear a direction.
+  Future<void> _loadAudioSettings() async {
+    final settings = await AudioDeviceService.audioAccessibility();
+    if (mounted) setState(() => _audioSettings = settings);
+  }
+
+  /// A system setting that is known to make left and right inaudible.
+  String? get _blocked => directionBlockedMessage(_audioSettings);
 
   /// Whether 'Start' can be used: anywhere the app can play sound.
   bool get _canPlay => _soundSupported;
@@ -180,6 +218,7 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
         calibration: _calibration,
         angle: angleCentre,
         loop: false,
+        cues: marchingCues,
         // No device: the native side plays on the default output.
         outputDeviceId: _connection?.connected?.outputDeviceId,
       );
@@ -192,8 +231,9 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
         _playingOnEarbud = onEarbud;
         _cueIndex = null;
       });
-      _scheduleCue(0, Duration.zero);
-      _endTimer = Timer(marchingDuration + endMargin, _handleEnd);
+      _scheduleCues();
+      _endTimer = Timer(
+          marchingDuration + MarchingExerciseScreen.endMargin, _handleEnd);
     } on PlatformException catch (e) {
       logger.e('MarchingExerciseScreen: Playback failed', error: e);
       if (!mounted) return;
@@ -206,21 +246,23 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
     }
   }
 
-  /// Schedules the cue at [index], which is due [elapsed] into the recording.
+  /// Schedules the status line for every cue of the recording.
   ///
-  /// NOTE: One timer per cue instead of one that ticks: the cue times are the
-  /// only thing that matters, and a timer chain does not have to be kept in
-  /// step with anything. Only the gains move ([SpatialAudioEngine.setAngle]
-  /// over [panRamp]); the recording keeps running.
-  void _scheduleCue(int index, Duration elapsed) {
-    if (index >= marchingCues.length) return;
-
-    final cue = marchingCues[index];
-    _cueTimer = Timer(cue.at - elapsed, () {
-      setState(() => _cueIndex = index);
-      unawaited(_engine.setAngle(cue.angle, ramp: panRamp));
-      _scheduleCue(index + 1, cue.at);
-    });
+  /// The sound itself is moved by the native player, which has the whole cue
+  /// list (see [_start]); nothing here touches a gain.
+  ///
+  /// NOTE: All timers are created at once, each with its own offset from the
+  /// start, instead of a chain where every cue schedules the next: a timer
+  /// that fires late would otherwise push every later cue by the same amount,
+  /// and over 74 seconds that adds up.
+  void _scheduleCues() {
+    for (var index = 0; index < marchingCues.length; index++) {
+      final cue = marchingCues[index];
+      _cueTimers.add(Timer(cue.at, () {
+        setState(() => _cueIndex = index);
+        _engine.markAngle(cue.angle);
+      }));
+    }
   }
 
   /// The recording has run out on its own.
@@ -258,8 +300,10 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
   }
 
   void _cancelTimers() {
-    _cueTimer?.cancel();
-    _cueTimer = null;
+    for (final timer in _cueTimers) {
+      timer.cancel();
+    }
+    _cueTimers.clear();
     _endTimer?.cancel();
     _endTimer = null;
   }
@@ -269,6 +313,10 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
   String? get _note {
     if (_error != null) return _error;
     if (!_soundSupported) return 'Die Übung gibt es nur in der Android-App.';
+    // Before the earbud: without this the user would look for the fault in
+    // their ears.
+    final blocked = _blocked;
+    if (blocked != null) return blocked;
     if (_connection?.known == true && !_onEarbud) {
       return 'Deine Kopfhörer sind nicht verbunden. Die Übung läuft dann über '
           'den Lautsprecher – links und rechts hörst du nur über die Earbuds.';
@@ -359,6 +407,17 @@ class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
                       textColor: Colors.white,
                       onPressed: _isPlaying ? _stop : null,
                     ),
+                    if (_blocked != null) ...[
+                      const SizedBox(height: 10),
+                      PlaybackButton(
+                        label: 'Bedienungshilfen öffnen',
+                        icon: Icons.accessibility_new_rounded,
+                        fontSize: 19,
+                        color: AppColors.primary(context),
+                        textColor: AppColors.onPrimary(context),
+                        onPressed: AudioDeviceService.openAccessibilitySettings,
+                      ),
+                    ],
                     if (_soundSupported &&
                         _connection?.known == true &&
                         !_onEarbud) ...[

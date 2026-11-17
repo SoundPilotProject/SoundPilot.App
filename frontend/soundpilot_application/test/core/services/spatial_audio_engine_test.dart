@@ -60,6 +60,7 @@ void main() {
         'deviceId': 7,
         // Loops unless the caller says otherwise.
         'loop': true,
+        'cues': <Object>[],
       });
     });
 

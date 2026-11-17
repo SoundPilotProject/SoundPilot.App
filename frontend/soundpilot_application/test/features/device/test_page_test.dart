@@ -74,16 +74,21 @@ void main() {
   const channel = MethodChannel('com.soundpilot/audio_devices');
   final calls = <MethodCall>[];
 
+  /// What the mocked native side answers, per method.
+  final answers = <String, Object?>{};
+
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      calls.add(call);
-      return null;
+      // Asked for when the page opens and of no interest to most tests.
+      if (call.method != 'getAudioAccessibility') calls.add(call);
+      return answers[call.method];
     });
   });
 
   tearDown(() {
     calls.clear();
+    answers.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
   });
@@ -105,6 +110,7 @@ void main() {
       'deviceId': 7,
       // The test sound loops: it is listened to for as long as the user wants.
       'loop': true,
+      'cues': <Object>[],
     });
     expect(find.textContaining('Wiedergabe läuft'), findsOneWidget);
     // 'Start' keeps its colour and restarts the recording; 'Stop' is only
@@ -247,6 +253,7 @@ void main() {
       'rightGain': 0.0,
       'deviceId': 7,
       'loop': true,
+      'cues': <Object>[],
     });
     expect(find.textContaining('Richtung ganz links, Schritt 1 von 5'),
         findsOneWidget);
@@ -326,6 +333,7 @@ void main() {
       'rightGain': wheelToGain(90),
       'deviceId': 7,
       'loop': true,
+      'cues': <Object>[],
     });
     expect(find.textContaining('– Richtung'), findsNothing);
 
@@ -335,6 +343,38 @@ void main() {
 
     await tester.tap(find.text('Stop'));
     await tester.pump();
+  });
+
+  group('the system settings that defeat a direction', () {
+    testWidgets('mono audio is named instead of leaving the user guessing',
+        (tester) async {
+      answers['getAudioAccessibility'] = {'mono': true};
+
+      await _pumpPage(tester, headphones: Stream.value(const [_pods]));
+      await tester.pump();
+
+      expect(find.textContaining('Mono-Audio'), findsOneWidget);
+      expect(_controls(tester), contains('Bedienungshilfen öffnen'));
+    });
+
+    testWidgets('after a direction test the hint comes whatever is known',
+        (tester) async {
+      await _pumpPage(tester, headphones: Stream.value(const [_pods]));
+
+      expect(
+          find.textContaining('prüfe in den Bedienungshilfen'), findsNothing);
+
+      await tester.tap(find.text('Richtungstest'));
+      await tester.pump();
+
+      // Nothing could be read here, so this hint is the only thing that can
+      // explain five identical steps to the user.
+      expect(find.textContaining('prüfe in den Bedienungshilfen'),
+          findsOneWidget);
+
+      await tester.tap(find.text('Stop'));
+      await tester.pump();
+    });
   });
 
   testWidgets('a disconnecting earbud ends the direction test', (tester) async {
