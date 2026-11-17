@@ -7,20 +7,22 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
+import '../../../models/user_model.dart';
 import '../widgets/belt_setup_fields.dart';
 import 'belt_vibration_screen.dart';
 
 /// First step of the belt setup: the user enters the warning distance in cm
-/// (recommended 200–500 cm, default 200), then continues to the
+/// (recommended 200–500 cm, allowed [BeltCalib.minWarningDistanceCm] to
+/// [BeltCalib.maxWarningDistanceCm]), then continues to the
 /// [BeltVibrationScreen].
 ///
-/// Pops with `true` once the second step was finished.
-///
-/// TODO(improve): The entered distance is neither validated nor saved or passed
-/// on to the next step. It should be checked (numeric, sensible range) and
-/// stored with the belt entry.
+/// Starts with the values of [belt]. Pops with the edited [BeltCalib] once the
+/// second step was finished; going back pops with null, so nothing is saved.
 class BeltWarningDistanceScreen extends StatefulWidget {
-  const BeltWarningDistanceScreen({super.key});
+  /// The belt as it is stored.
+  final BeltCalib belt;
+
+  const BeltWarningDistanceScreen({super.key, required this.belt});
 
   @override
   State<BeltWarningDistanceScreen> createState() =>
@@ -28,8 +30,11 @@ class BeltWarningDistanceScreen extends StatefulWidget {
 }
 
 class _BeltWarningDistanceScreenState extends State<BeltWarningDistanceScreen> {
-  final TextEditingController _distanceController =
-      TextEditingController(text: '200');
+  late final TextEditingController _distanceController =
+      TextEditingController(text: '${widget.belt.warningDistanceCm}');
+
+  /// Shown below the field while the typed distance is not allowed.
+  String? _error;
 
   @override
   void dispose() {
@@ -37,20 +42,38 @@ class _BeltWarningDistanceScreenState extends State<BeltWarningDistanceScreen> {
     super.dispose();
   }
 
-  /// Opens the [BeltVibrationScreen]; if that step was finished (`true`), this
-  /// screen pops with `true` as well.
+  /// Checks the distance and opens the [BeltVibrationScreen] with it; if that
+  /// step was finished, this screen pops with its result as well.
   Future<void> _goToNextScreen() async {
-    final result = await Navigator.push<bool>(
+    final distance = parseBeltValue(
+      _distanceController.text,
+      min: BeltCalib.minWarningDistanceCm,
+      max: BeltCalib.maxWarningDistanceCm,
+    );
+    if (distance == null) {
+      setState(() {
+        _error = beltValueError(
+          min: BeltCalib.minWarningDistanceCm,
+          max: BeltCalib.maxWarningDistanceCm,
+          unit: 'cm',
+        );
+      });
+      return;
+    }
+
+    final result = await Navigator.push<BeltCalib>(
       context,
       MaterialPageRoute(
-        builder: (_) => const BeltVibrationScreen(),
+        builder: (_) => BeltVibrationScreen(
+          belt: widget.belt.copyWith(warningDistanceCm: distance),
+        ),
       ),
     );
 
     if (!mounted) return;
 
-    if (result == true) {
-      Navigator.pop(context, true);
+    if (result != null) {
+      Navigator.pop(context, result);
     }
   }
 
@@ -102,7 +125,16 @@ class _BeltWarningDistanceScreenState extends State<BeltWarningDistanceScreen> {
                               controller: _distanceController,
                               label: 'Warnentfernung in Zentimetern',
                               suffix: 'cm',
+                              onChanged: (_) {
+                                if (_error != null) {
+                                  setState(() => _error = null);
+                                }
+                              },
                             ),
+                            if (_error != null) ...[
+                              const SizedBox(height: 12),
+                              BeltFieldError(text: _error!),
+                            ],
                             const SizedBox(height: 30),
                             const Spacer(),
                             ElevatedButton(

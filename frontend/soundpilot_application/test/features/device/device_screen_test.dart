@@ -197,6 +197,71 @@ void main() {
     );
   });
 
+  group('belt setup', () {
+    /// Opens the setup of 'Gürtel 1', enters [distance] and [strength] (if
+    /// given) and finishes it.
+    Future<void> finishSetup(
+      WidgetTester tester, {
+      String? distance,
+      String? strength,
+    }) async {
+      await tester.tap(find.text('Gürtel 1'));
+      await tester.pumpAndSettle();
+      if (distance != null) {
+        await tester.enterText(find.byType(TextField), distance);
+      }
+      await tester.ensureVisible(find.text('Weiter'));
+      await tester.tap(find.text('Weiter'));
+      await tester.pumpAndSettle();
+      if (strength != null) {
+        await tester.enterText(find.byType(TextField), strength);
+      }
+      await tester.ensureVisible(find.text('Abschließen'));
+      await tester.tap(find.text('Abschließen'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('finishing saves the belt in one write', (tester) async {
+      final repository = FakeDeviceRepository();
+      await _pumpScreen(tester, repository);
+      repository.devices.add(_devices);
+      await tester.pump();
+
+      await finishSetup(tester, distance: '300', strength: '70');
+
+      expect(repository.writes, ['putBelt bb Gürtel 1 300 70 front']);
+      expect(_isConnected(tester, 'Gürtel 1'), isTrue);
+    });
+
+    testWidgets('finishing without a change writes nothing', (tester) async {
+      final repository = FakeDeviceRepository();
+      await _pumpScreen(tester, repository);
+      repository.devices.add(_devices);
+      await tester.pump();
+
+      await finishSetup(tester);
+
+      expect(repository.writes, isEmpty);
+      expect(_isConnected(tester, 'Gürtel 1'), isTrue);
+    });
+
+    testWidgets('going back writes nothing', (tester) async {
+      final repository = FakeDeviceRepository();
+      await _pumpScreen(tester, repository);
+      repository.devices.add(_devices);
+      await tester.pump();
+
+      await tester.tap(find.text('Gürtel 1'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '300');
+      await tester.tap(find.byTooltip('Zurück').last);
+      await tester.pumpAndSettle();
+
+      expect(repository.writes, isEmpty);
+      expect(_isConnected(tester, 'Gürtel 1'), isFalse);
+    });
+  });
+
   testWidgets('a failed load is reported instead of loading forever',
       (tester) async {
     final repository = FakeDeviceRepository();

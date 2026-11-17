@@ -33,7 +33,8 @@ class FakeDeviceRepository implements DeviceRepository {
 
   @override
   Future<void> putBelt(String key, BeltCalib calib) =>
-      _record('putBelt $key ${calib.modelId}');
+      _record('putBelt $key ${calib.modelId} ${calib.warningDistanceCm} '
+          '${calib.vibrationStrength} ${calib.vibrationSide.firestoreValue}');
 
   @override
   Future<void> removeHeadphone(String key) => _record('removeHeadphone $key');

@@ -85,6 +85,9 @@ void _forEveryScale(
   }
 }
 
+/// A belt with the default values, for the belt setup screens.
+BeltCalib _belt() => BeltCalib(modelId: 'Gürtel');
+
 void main() {
   group('Screens render without overflow', () {
     final screens = <String, Widget Function()>{
@@ -94,8 +97,9 @@ void main() {
       'RegisterScreen': () => const RegisterScreen(),
       'PasswordResetScreen': () =>
           const PasswordResetScreen(initialEmail: 'max@example.com'),
-      'BeltWarningDistanceScreen': () => const BeltWarningDistanceScreen(),
-      'BeltVibrationScreen': () => const BeltVibrationScreen(),
+      'BeltWarningDistanceScreen': () =>
+          BeltWarningDistanceScreen(belt: _belt()),
+      'BeltVibrationScreen': () => BeltVibrationScreen(belt: _belt()),
       // Connected, so 'Start' is enabled; not connected adds a note.
       'TestPage': () => TestPage(
             leftVolume: 40,
@@ -150,6 +154,32 @@ void main() {
         await tester.pumpWidget(_wrap(entry.value(), brightness, scale));
         await tester.pump();
 
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    // The belt steps with their error message below the field.
+    final beltErrors = <String, (Widget Function(), String)>{
+      'BeltWarningDistanceScreen': (
+        () => BeltWarningDistanceScreen(belt: _belt()),
+        'Weiter',
+      ),
+      'BeltVibrationScreen': (
+        () => BeltVibrationScreen(belt: _belt()),
+        'Abschließen',
+      ),
+    };
+    for (final entry in beltErrors.entries) {
+      _forEveryScale('${entry.key} mit Fehlermeldung',
+          (tester, brightness, scale) async {
+        final (screen, button) = entry.value;
+        await tester.pumpWidget(_wrap(screen(), brightness, scale));
+        await tester.enterText(find.byType(TextField), '1');
+        await tester.ensureVisible(find.text(button));
+        await tester.tap(find.text(button));
+        await tester.pump();
+
+        expect(find.textContaining('Bitte einen Wert'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }
