@@ -855,11 +855,8 @@ document that does not exist yet also fails.
 
 Not backed by evidence — check in the code instead of assuming:
 
-- **Not tried on a real phone yet:** the Firestore sync (tested only with
-  `fake_cloud_firestore` and the rules emulator; not offline or on two phones
-  at once), clearing the cache on logout, taking over guest devices, the
-  headphone scan, and Android 13+ predictive back
-  (`enableOnBackInvokedCallback`).
+- **Not tried on a real phone yet:** the headphone scan and Android 13+
+  predictive back (`enableOnBackInvokedCallback`).
 - **The hosting site has not been opened in a browser** (`firebase/web/`, see
   §3), and whether the action URL is set in the Firebase console — without
   which the e-mail links never reach `auth-action.html` — nobody has
