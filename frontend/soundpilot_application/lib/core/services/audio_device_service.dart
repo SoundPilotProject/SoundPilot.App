@@ -381,6 +381,11 @@ class AudioDeviceService {
   /// `assets/audio/Marschieren.mp3`) in a loop until [stopPlayback], with the
   /// left and right gain like [playTestTone].
   ///
+  /// With [loop] the recording starts over at its end; with `false` the native
+  /// side plays it once and stops — what a guided exercise needs, whose
+  /// recording ends with a closing sentence. Nothing reports that end back, so
+  /// the caller keeps its own timer (see `MarchingExerciseScreen`).
+  ///
   /// NOTE: The file is mixed down to mono, so both ears get the same signal
   /// and only the gain differs. That is what a calibration test needs, and it
   /// is what lets one recording be played from any direction: prefer
@@ -391,24 +396,37 @@ class AudioDeviceService {
     required double leftGain,
     required double rightGain,
     int? outputDeviceId,
+    bool loop = true,
   }) async {
     await _channel.invokeMethod('playTestSound', {
       'asset': asset,
       'leftGain': leftGain.clamp(0.0, 1.0),
       'rightGain': rightGain.clamp(0.0, 1.0),
       'deviceId': ?outputDeviceId,
+      'loop': loop,
     });
   }
 
   /// Changes the gains of the playing test tone or test sound; it glides to
   /// them without restarting.
+  ///
+  /// [ramp] is how long that glide takes. The native player eases it in and
+  /// out per sample; [Duration.zero] is its shortest one (~23 ms), which is
+  /// what the calibration wheel wants.
+  ///
+  /// NOTE: Never send a series of gains from here to make a long movement —
+  /// stepped gains crackle ("zipper noise") and a Dart timer cannot hit a
+  /// sample boundary. Name the target and the duration and let the player
+  /// glide.
   static Future<void> setPlaybackGain({
     required double leftGain,
     required double rightGain,
+    Duration ramp = Duration.zero,
   }) async {
     await _channel.invokeMethod('setPlaybackGain', {
       'leftGain': leftGain.clamp(0.0, 1.0),
       'rightGain': rightGain.clamp(0.0, 1.0),
+      'rampMs': ramp.inMilliseconds.clamp(0, 10000),
     });
   }
 

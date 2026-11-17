@@ -2,9 +2,9 @@
 //
 // Plays a mono sound source on both ears with separate left and right gains,
 // optionally on one output device. Used for the calibration test tone and the
-// test exercise (see MainActivity). The two gains carry the whole left/right
-// image, the direction of a sound included (SpatialAudioEngine on the Dart
-// side).
+// exercise recordings (see MainActivity). The two gains carry the whole
+// left/right image, the direction of a sound included (SpatialAudioEngine on
+// the Dart side), and a change of direction is glided here, per sample.
 
 package com.example.soundpilot_application;
 
@@ -30,26 +30,43 @@ final class GainPlayer {
     // start and the stop do not click.
     private static final int CHUNK_FRAMES = 1024;
 
-    // A sound source: mono samples in -1.0..1.0, endless (a file loops).
+    // A sound source: mono samples in -1.0..1.0.
     interface Source {
         int sampleRate();
 
-        // Fills out[0..count) with the next samples.
-        void read(float[] out, int count) throws Exception;
+        // Fills out[0..count) with the next samples and returns how many it
+        // could deliver. Fewer than count means the source has ended; one
+        // that loops never ends.
+        int read(float[] out, int count) throws Exception;
 
         void release();
+    }
+
+    // A pair of gains to glide to, and how many frames that glide takes.
+    private static final class Ramp {
+        final float left;
+        final float right;
+        final int frames;
+
+        Ramp(float left, float right, int frames) {
+            this.left = left;
+            this.right = right;
+            this.frames = Math.max(1, frames);
+        }
     }
 
     private final Source source;
     private final AudioTrack track;
     private final Thread thread;
+    private final int sampleRate;
 
     // Id of the output device the sound is routed to, or -1 for the default
     // output.
     final int deviceId;
 
-    private volatile float leftGain;
-    private volatile float rightGain;
+    // The ramp to start next, set by setGains and taken by the playback thread
+    // at the start of its next chunk; null while there is nothing new.
+    private volatile Ramp pending;
     private volatile boolean stopRequested = false;
 
     // Starts playing [source] at once. With a [device] the sound is routed to
@@ -57,10 +74,12 @@ final class GainPlayer {
     // stops the player when that device disconnects.
     GainPlayer(Source source, float leftGain, float rightGain, AudioDeviceInfo device) {
         this.source = source;
-        this.leftGain = leftGain;
-        this.rightGain = rightGain;
+        // The first ramp fades in from silence over one chunk, so the start
+        // does not click.
+        this.pending = new Ramp(leftGain, rightGain, CHUNK_FRAMES);
 
         final int sampleRate = source.sampleRate();
+        this.sampleRate = sampleRate;
         final int minBufSize = AudioTrack.getMinBufferSize(
                 sampleRate,
                 AudioFormat.CHANNEL_OUT_STEREO,
@@ -88,9 +107,19 @@ final class GainPlayer {
         thread.start();
     }
 
-    void setGains(float left, float right) {
-        leftGain = left;
-        rightGain = right;
+    // Glides to the new gains over rampMs, eased in and out (see run()).
+    // 0 or less takes one chunk (~23 ms), which is what the calibration wheel
+    // wants: the tone has to follow the finger, not drift after it.
+    //
+    // NOTE: The glide belongs here, per sample, and not in a series of gain
+    // values sent from Dart. Stepped gains are audible as a faint crackle
+    // ("zipper noise"), and a Dart timer cannot hit a sample boundary anyway.
+    // Dart says where to go and in how long; the rest happens in this thread.
+    void setGains(float left, float right, int rampMs) {
+        final int frames = rampMs > 0
+                ? (int) Math.min(Integer.MAX_VALUE, (long) rampMs * sampleRate / 1000)
+                : CHUNK_FRAMES;
+        pending = new Ramp(left, right, frames);
     }
 
     // Fades out (one chunk) and releases everything.
@@ -105,29 +134,79 @@ final class GainPlayer {
         if (!thread.isAlive()) source.release();
     }
 
+    // Eased position of a ramp, 0.0 at its start and 1.0 at its end.
+    //
+    // NOTE: Smoothstep, not a straight line: the movement sets in softly and
+    // arrives softly, instead of sliding mechanically from one side to the
+    // other.
+    private static float eased(int position, int frames) {
+        if (position >= frames) return 1f;
+        final float t = position / (float) frames;
+        return t * t * (3f - 2f * t);
+    }
+
     private void run() {
         final float[] mono = new float[CHUNK_FRAMES];
         final short[] stereo = new short[CHUNK_FRAMES * 2];
-        // Start silent: the first chunk fades in.
-        float left = 0f;
-        float right = 0f;
+
+        // The gains as they are applied right now; a new ramp starts from
+        // these, so an interrupted glide carries on from where it was instead
+        // of jumping.
+        float currentLeft = 0f;
+        float currentRight = 0f;
+
+        float fromLeft = 0f;
+        float fromRight = 0f;
+        float toLeft = 0f;
+        float toRight = 0f;
+        int rampFrames = 1;
+        int rampPosition = 1;
+
+        boolean ended = false;
 
         try {
             while (true) {
-                final boolean stopping = stopRequested;
-                // The last chunk fades out to silence.
-                final float targetLeft  = stopping ? 0f : leftGain;
-                final float targetRight = stopping ? 0f : rightGain;
-
-                source.read(mono, CHUNK_FRAMES);
-                for (int i = 0; i < CHUNK_FRAMES; i++) {
-                    final float t = (i + 1) / (float) CHUNK_FRAMES;
-                    final float sample = mono[i] * Short.MAX_VALUE;
-                    stereo[i * 2]     = (short) (sample * (left  + (targetLeft  - left)  * t)); // L
-                    stereo[i * 2 + 1] = (short) (sample * (right + (targetRight - right) * t)); // R
+                int read = source.read(mono, CHUNK_FRAMES);
+                if (read < CHUNK_FRAMES) {
+                    // The source has ended: silence for the rest of the chunk,
+                    // and this chunk fades out.
+                    java.util.Arrays.fill(mono, Math.max(read, 0), CHUNK_FRAMES, 0f);
+                    ended = true;
                 }
-                left = targetLeft;
-                right = targetRight;
+
+                final boolean stopping = stopRequested || ended;
+                if (stopping) {
+                    // The last chunk fades out to silence.
+                    fromLeft = currentLeft;
+                    fromRight = currentRight;
+                    toLeft = 0f;
+                    toRight = 0f;
+                    rampFrames = CHUNK_FRAMES;
+                    rampPosition = 0;
+                } else {
+                    final Ramp next = pending;
+                    if (next != null) {
+                        pending = null;
+                        fromLeft = currentLeft;
+                        fromRight = currentRight;
+                        toLeft = next.left;
+                        toRight = next.right;
+                        rampFrames = next.frames;
+                        rampPosition = 0;
+                    }
+                }
+
+                for (int i = 0; i < CHUNK_FRAMES; i++) {
+                    final float e = eased(rampPosition, rampFrames);
+                    currentLeft = fromLeft + (toLeft - fromLeft) * e;
+                    currentRight = fromRight + (toRight - fromRight) * e;
+
+                    final float sample = mono[i] * Short.MAX_VALUE;
+                    stereo[i * 2]     = (short) (sample * currentLeft);  // L
+                    stereo[i * 2 + 1] = (short) (sample * currentRight); // R
+
+                    if (rampPosition < rampFrames) rampPosition++;
+                }
 
                 track.write(stereo, 0, stereo.length);
                 if (stopping) break;
@@ -151,12 +230,13 @@ final class GainPlayer {
         }
 
         @Override
-        public void read(float[] out, int count) {
+        public int read(float[] out, int count) {
             for (int i = 0; i < count; i++) {
                 out[i] = (float) Math.sin(phase);
                 phase += STEP;
                 if (phase > 2.0 * Math.PI) phase -= 2.0 * Math.PI;
             }
+            return count;
         }
 
         @Override
@@ -164,7 +244,11 @@ final class GainPlayer {
     }
 
     // An audio file (e.g. MP3), decoded with MediaCodec, mixed down to mono
-    // and played in a loop.
+    // and played once or in a loop.
+    //
+    // NOTE: A guided exercise must not loop: its recording ends with a closing
+    // sentence, and starting over would talk through it. A test sound loops,
+    // because it is listened to for as long as the user wants.
     //
     // NOTE: Mixed down on purpose. The calibration compares the two ears, so
     // both get the same signal and only the gain differs — and a direction is
@@ -178,10 +262,14 @@ final class GainPlayer {
         // (10 ms each), instead of blocking the playback thread forever.
         private static final int MAX_EMPTY_ATTEMPTS = 500;
 
+        private final boolean loop;
         private final MediaExtractor extractor = new MediaExtractor();
         private final MediaCodec codec;
         private final int sampleRate;
         private int channels;
+
+        // Set once the file has ended and it is not looping.
+        private boolean finished = false;
 
         private final MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         private short[] pending = new short[0];
@@ -189,7 +277,8 @@ final class GainPlayer {
         private int pendingLen = 0;
         private boolean inputDone = false;
 
-        AudioFile(String path) throws Exception {
+        AudioFile(String path, boolean loop) throws Exception {
+            this.loop = loop;
             extractor.setDataSource(path);
             MediaFormat format = null;
             for (int i = 0; i < extractor.getTrackCount(); i++) {
@@ -219,7 +308,7 @@ final class GainPlayer {
         }
 
         @Override
-        public void read(float[] out, int count) {
+        public int read(float[] out, int count) {
             int filled = 0;
             int emptyAttempts = 0;
             while (filled < count) {
@@ -234,10 +323,14 @@ final class GainPlayer {
                     emptyAttempts = 0;
                     continue;
                 }
+                // Everything decoded is used up: with no loop this is the end
+                // of the file, and the player fades out what it has.
+                if (finished) return filled;
                 if (!decode() && ++emptyAttempts > MAX_EMPTY_ATTEMPTS) {
                     throw new IllegalStateException("Decoder delivers no audio");
                 }
             }
+            return filled;
         }
 
         // Feeds the decoder and takes one output buffer into [pending].
@@ -283,10 +376,14 @@ final class GainPlayer {
             codec.releaseOutputBuffer(out, false);
 
             if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                // Loop: start the file again.
-                extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
-                codec.flush();
-                inputDone = false;
+                if (loop) {
+                    // Start the file again.
+                    extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                    codec.flush();
+                    inputDone = false;
+                } else {
+                    finished = true;
+                }
             }
             return added;
         }

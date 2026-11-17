@@ -1,0 +1,488 @@
+// lib/features/exercise/screens/marching_exercise_screen.dart
+//
+// The guided marching exercise: plays its recording once and moves the sound
+// to the side the recording is talking about.
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../../../core/app_logger.dart';
+import '../../../core/services/audio_device_service.dart';
+import '../../../core/services/spatial_audio_engine.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_top_bar.dart';
+import '../../../core/widgets/playback_button.dart';
+import '../../device/headphone_connection.dart';
+import '../marching_exercise.dart';
+import '../spatial_audio.dart';
+
+/// The marching exercise at the chair (see `docs/PROJECT_CONTEXT.md` §4):
+/// plays [marchingAsset] once, each ear with its calibrated volume, and moves
+/// the sound to the side the recording names ([marchingCues]).
+///
+/// One exercise, one screen, one pair of controls — 'Start' and 'Stop', like
+/// the test exercise. It plays on the calibrated earbud while that is
+/// connected and on the phone's own output otherwise, where left and right are
+/// of course no longer two ears.
+///
+/// NOTE: The recording is played **once** (`loop: false`): it ends with a
+/// closing sentence, and starting over would talk through it. The native side
+/// does not report that end, so [endMargin] after [marchingDuration] a timer
+/// puts the screen back to stopped — a little late on purpose, so it never
+/// says 'gestoppt' while the last word is still playing.
+class MarchingExerciseScreen extends StatefulWidget {
+  /// Calibrated volume of the left side (1–100).
+  final int leftVolume;
+
+  /// Calibrated volume of the right side (1–100).
+  final int rightVolume;
+
+  /// Map key of the earbud (its BD_ADDR), to play on it.
+  final String address;
+
+  /// The connected headphones, again on every change; tests pass a fake.
+  final Stream<List<HeadphoneDevice>> Function() headphoneChanges;
+
+  /// Whether the sound can play here (only the Android app can). Defaults to
+  /// [AudioDeviceService.isSupported].
+  final bool? soundSupported;
+
+  const MarchingExerciseScreen({
+    super.key,
+    required this.leftVolume,
+    required this.rightVolume,
+    required this.address,
+    this.headphoneChanges = AudioDeviceService.headphoneChanges,
+    this.soundSupported,
+  });
+
+  @override
+  State<MarchingExerciseScreen> createState() =>
+      _MarchingExerciseScreenState();
+}
+
+class _MarchingExerciseScreenState extends State<MarchingExerciseScreen>
+    with WidgetsBindingObserver {
+  /// How long after the end of the recording the screen says it is over.
+  static const Duration endMargin = Duration(milliseconds: 300);
+
+  late final bool _soundSupported =
+      widget.soundSupported ?? AudioDeviceService.isSupported;
+
+  /// Plays the recording from a direction; the only thing on this screen that
+  /// reaches the native player.
+  final SpatialAudioEngine _engine = SpatialAudioEngine();
+
+  /// Whether the earbud is connected; null without sound support.
+  HeadphoneConnection? _connection;
+
+  bool _isPlaying = false;
+
+  /// Whether the running playback was sent to the earbud. Only that one is
+  /// stopped by the native side when the earbud disconnects.
+  bool _playingOnEarbud = false;
+
+  /// Index of the cue that applies, or null while the recording is still
+  /// before the first one (and therefore centred).
+  int? _cueIndex;
+
+  /// Moves the exercise to its next cue.
+  Timer? _cueTimer;
+
+  /// Puts the screen back to stopped once the recording has run out.
+  Timer? _endTimer;
+
+  /// Shown if the recording could not be started.
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (_soundSupported) {
+      _connection = HeadphoneConnection(
+        address: widget.address,
+        changes: widget.headphoneChanges,
+        onChanged: () => setState(() {
+          // The native side stops the sound itself when the earbud goes; the
+          // exercise ends with it, cues and all.
+          if (_playingOnEarbud && _connection?.connected == null) {
+            _engine.markStopped();
+            _cancelTimers();
+            _isPlaying = false;
+            _playingOnEarbud = false;
+            _cueIndex = null;
+          }
+        }),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cancelTimers();
+    _connection?.dispose();
+    if (_isPlaying) unawaited(_stopQuietly());
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // NOTE: No exercise in the background: nobody is standing at the chair,
+    // and the sound could not be stopped from there.
+    if (state != AppLifecycleState.resumed && _isPlaying) _stop();
+  }
+
+  /// Whether 'Start' can be used: anywhere the app can play sound.
+  bool get _canPlay => _soundSupported;
+
+  /// True while the sound goes to the calibrated earbud.
+  bool get _onEarbud => _connection?.connected != null;
+
+  /// The user's calibration; the gains of every cue are scaled with it.
+  EarCalibration get _calibration => EarCalibration.fromWheel(
+        leftVolume: widget.leftVolume,
+        rightVolume: widget.rightVolume,
+      );
+
+  /// Where the sound comes from right now, as the status line says it.
+  String get _side {
+    final index = _cueIndex;
+    return index == null ? cueCentreLabel : marchingCues[index].label;
+  }
+
+  /// Angle the sound is at right now, for the indicator.
+  double get _angle {
+    final index = _cueIndex;
+    return index == null ? angleCentre : marchingCues[index].angle;
+  }
+
+  /// Starts the recording from its beginning, centred, and the cue schedule
+  /// with it.
+  ///
+  /// NOTE: Pressing 'Start' while it already plays starts the exercise over —
+  /// the native side stops the running player before it opens the new one
+  /// anyway, and a guided exercise is followed from its beginning.
+  Future<void> _start() async {
+    if (!_canPlay) return;
+
+    final onEarbud = _onEarbud;
+    _cancelTimers();
+
+    setState(() => _error = null);
+    try {
+      await _engine.play(
+        asset: marchingAsset,
+        calibration: _calibration,
+        angle: angleCentre,
+        loop: false,
+        // No device: the native side plays on the default output.
+        outputDeviceId: _connection?.connected?.outputDeviceId,
+      );
+      if (!mounted) {
+        unawaited(_stopQuietly());
+        return;
+      }
+      setState(() {
+        _isPlaying = true;
+        _playingOnEarbud = onEarbud;
+        _cueIndex = null;
+      });
+      _scheduleCue(0, Duration.zero);
+      _endTimer = Timer(marchingDuration + endMargin, _handleEnd);
+    } on PlatformException catch (e) {
+      logger.e('MarchingExerciseScreen: Playback failed', error: e);
+      if (!mounted) return;
+      setState(() {
+        _error = e.code == 'DEVICE_NOT_CONNECTED'
+            ? 'Die Kopfhörer sind nicht mehr verbunden.'
+            : 'Die Übung konnte nicht abgespielt werden. Bitte versuche es '
+                'noch einmal.';
+      });
+    }
+  }
+
+  /// Schedules the cue at [index], which is due [elapsed] into the recording.
+  ///
+  /// NOTE: One timer per cue instead of one that ticks: the cue times are the
+  /// only thing that matters, and a timer chain does not have to be kept in
+  /// step with anything. Only the gains move ([SpatialAudioEngine.setAngle]
+  /// over [panRamp]); the recording keeps running.
+  void _scheduleCue(int index, Duration elapsed) {
+    if (index >= marchingCues.length) return;
+
+    final cue = marchingCues[index];
+    _cueTimer = Timer(cue.at - elapsed, () {
+      setState(() => _cueIndex = index);
+      unawaited(_engine.setAngle(cue.angle, ramp: panRamp));
+      _scheduleCue(index + 1, cue.at);
+    });
+  }
+
+  /// The recording has run out on its own.
+  void _handleEnd() {
+    _cancelTimers();
+    _engine.markStopped();
+    if (!mounted) return;
+    setState(() {
+      _isPlaying = false;
+      _playingOnEarbud = false;
+      _cueIndex = null;
+    });
+  }
+
+  /// Stops the exercise (no-op if nothing is playing).
+  Future<void> _stop() async {
+    if (!_isPlaying) return;
+    _cancelTimers();
+    setState(() {
+      _isPlaying = false;
+      _playingOnEarbud = false;
+      _cueIndex = null;
+    });
+    await _stopQuietly();
+  }
+
+  /// Stops the sound without touching the state (also used in [dispose]).
+  Future<void> _stopQuietly() async {
+    try {
+      await _engine.stop();
+    } on PlatformException catch (e) {
+      logger.e('MarchingExerciseScreen: Stopping the playback failed',
+          error: e);
+    }
+  }
+
+  void _cancelTimers() {
+    _cueTimer?.cancel();
+    _cueTimer = null;
+    _endTimer?.cancel();
+    _endTimer = null;
+  }
+
+  /// What the user has to know before pressing 'Start', or the error; null if
+  /// neither.
+  String? get _note {
+    if (_error != null) return _error;
+    if (!_soundSupported) return 'Die Übung gibt es nur in der Android-App.';
+    if (_connection?.known == true && !_onEarbud) {
+      return 'Deine Kopfhörer sind nicht verbunden. Die Übung läuft dann über '
+          'den Lautsprecher – links und rechts hörst du nur über die Earbuds.';
+    }
+    return null;
+  }
+
+  /// The whole state in one sentence, for sight and for the screen reader.
+  String get _status {
+    if (!_isPlaying) {
+      return 'Übung gestoppt – links ${widget.leftVolume}, rechts '
+          '${widget.rightVolume}';
+    }
+    final output = _onEarbud ? 'über die Kopfhörer' : 'über den Lautsprecher';
+    return 'Übung läuft $output – Ton $_side';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background(context),
+      body: SafeArea(
+        child: Column(
+          children: [
+            AppTopBar(
+              title: 'Marschieren',
+              onBackPressed: () async {
+                // Captured before the await so no BuildContext is used across
+                // the async gap.
+                final navigator = Navigator.of(context);
+                await _stop();
+                if (!mounted) return;
+                navigator.pop();
+              },
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _SideIndicator(angle: _angle, isPlaying: _isPlaying),
+                    const SizedBox(height: 14),
+                    // The indicator is decorative; this line says the same in
+                    // words, so the exercise also works without sight.
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        _status,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.text(context),
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (_note != null) ...[
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          _note!,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.text(context),
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    PlaybackButton(
+                      label: 'Start',
+                      icon: Icons.play_arrow_rounded,
+                      color: AppColors.primary(context),
+                      textColor: AppColors.onPrimary(context),
+                      onPressed: _canPlay ? _start : null,
+                    ),
+                    const SizedBox(height: 10),
+                    PlaybackButton(
+                      label: 'Stop',
+                      icon: Icons.stop_rounded,
+                      color: AppColors.stopRed,
+                      textColor: Colors.white,
+                      onPressed: _isPlaying ? _stop : null,
+                    ),
+                    if (_soundSupported &&
+                        _connection?.known == true &&
+                        !_onEarbud) ...[
+                      const SizedBox(height: 10),
+                      PlaybackButton(
+                        label: 'Bluetooth-Einstellungen öffnen',
+                        icon: Icons.settings_rounded,
+                        fontSize: 19,
+                        color: AppColors.primary(context),
+                        textColor: AppColors.onPrimary(context),
+                        onPressed: AudioDeviceService.openBluetoothSettings,
+                      ),
+                    ],
+                    const SizedBox(height: 22),
+                    Semantics(
+                      header: true,
+                      child: Text(
+                        'Beschreibung',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.text(context),
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Die Aufnahme führt dich durch das Marschieren am '
+                      'Stuhl. Wo sie von einer Seite spricht, wandert der Ton '
+                      'auf diese Seite – so hörst du, welches Bein gemeint '
+                      'ist. Sie läuft einmal durch und endet von selbst.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.text(context),
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Side indicator ───────────────────────────────────────────────────────────
+
+/// Three fields — left, centre, right — of which the one the sound is at is
+/// filled.
+///
+/// Decorative: the status line below it says the same in words, so the
+/// indicator is hidden from screen readers. It is not colour alone either —
+/// the active field carries an icon the others do not have.
+class _SideIndicator extends StatelessWidget {
+  /// Where the sound is right now (see [StereoGains.forAngle]).
+  final double angle;
+
+  /// Grey while nothing plays: an indicator that always shows a side would
+  /// claim the exercise is running.
+  final bool isPlaying;
+
+  const _SideIndicator({required this.angle, required this.isPlaying});
+
+  @override
+  Widget build(BuildContext context) {
+    // −45, 0 and +45 are the only angles the cues use (see marchingCues).
+    final active = angle < angleCentre ? 0 : (angle > angleCentre ? 2 : 1);
+
+    return ExcludeSemantics(
+      child: Row(
+        children: [
+          for (var field = 0; field < 3; field++) ...[
+            if (field > 0) const SizedBox(width: 10),
+            Expanded(
+              child: _IndicatorField(
+                icon: const [
+                  Icons.volume_up_rounded,
+                  Icons.headphones_rounded,
+                  Icons.volume_up_rounded,
+                ][field],
+                filled: isPlaying && field == active,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _IndicatorField extends StatelessWidget {
+  final IconData icon;
+  final bool filled;
+
+  const _IndicatorField({required this.icon, required this.filled});
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        filled ? AppColors.primary(context) : AppColors.surface(context);
+
+    return Container(
+      height: 64,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: filled
+              ? AppColors.primary(context)
+              : AppColors.legendBorder(context),
+          width: 2,
+        ),
+      ),
+      child: filled
+          ? Icon(icon, size: 30, color: AppColors.onPrimary(context))
+          : null,
+    );
+  }
+}

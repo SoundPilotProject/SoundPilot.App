@@ -123,7 +123,7 @@ core/
   app_logger.dart
   theme/app_colors.dart          Colors depending on context (light/dark)
   widgets/                       LoadingScreen, SoundPilotLogo,
-                                 AppTopBar, AuthTextField,
+                                 AppTopBar, AuthTextField, PlaybackButton,
                                  GoogleSignInButton, GoogleLogo,
                                  app_snack_bar.dart (showAppMessage /
                                  showAppError, see §1 "Simple flows")
@@ -155,6 +155,9 @@ features/
                                  unsynced_logout_dialog
   exercise/spatial_audio.dart    angle -> gain per ear, plus the calibration
   exercise/belt_direction.dart   angle and obstacles -> the belt's motors
+  exercise/marching_exercise.dart  the recording and the cue list of the
+                                 marching exercise
+  exercise/screens/              marching_exercise_screen
 ```
 
 - **Fonts:** Plus Jakarta Sans is set once as the `textTheme` of both themes
@@ -522,10 +525,25 @@ could not.
   outside is clamped.
 - **Pan law:** equal-power (`StereoGains.forAngle`). The ratio of the two ears
   is `tan` over the angle, which keeps one apparent loudness while the sound
-  travels. The pair is normalised to the *louder* ear, so the centre comes out
-  at exactly the calibrated gain and no angle is quieter than what the user
-  set. No HRTF: for "which side is this" the ear uses the level difference,
-  and an HRTF would cost latency and a filter per angle for nothing.
+  travels; a linear fade would leave a hole in the middle. The pair is
+  normalised to the *louder* ear, so the centre comes out at exactly the
+  calibrated gain and no angle is quieter than what the user set. No HRTF: for
+  "which side is this" the ear uses the level difference, and an HRTF would
+  cost latency and a filter per angle for nothing — it would also colour the
+  voice, which the ±45° cap below exists to protect.
+  - That normalisation has a price: the total loudness is up to 2.3 dB higher
+    in the centre than at ±45° (3 dB over the full sweep), where textbook
+    equal-power keeps it constant. The alternative is 3 dB *below* the
+    calibrated level everywhere, i.e. a centred exercise that no longer plays
+    at the volume the user set on the wheel. The ratio — the direction cue —
+    is the same either way, so the level is the thing left alone.
+- **A direction glides, it never jumps** (`panRamp`, 0.8 s). The native player
+  eases the glide in and out *per sample* (smoothstep, see `GainPlayer`), and
+  a new glide starts from the gains it is currently at, so an interrupted
+  movement carries on instead of jumping. Never send a series of gains from
+  Dart to make a movement: stepped gains are audible as a faint crackle
+  ("zipper noise"), and no timer there can hit a sample boundary. Dart names
+  the target and the duration, the player does the rest.
 - **The calibration is a multiplicative correction on top of it**
   (`StereoGains.withCalibration`): what is played is
   `pan(angle) × calibration`. A quiet ear stays quiet without becoming a
@@ -548,6 +566,37 @@ could not.
   it. The output path is open — nothing in the app connects to a belt (§7);
   `HapticEngine.pulse` uses the phone's own motor meanwhile, which is what the
   'Vibration testen' button of the belt setup plays.
+
+### The marching exercise
+
+`features/exercise/marching_exercise.dart` holds the recording of the exercise
+at the chair and the directions it is played with; `MarchingExerciseScreen`
+plays it. It is reached from the calibration screen ('Übung: Marschieren'),
+next to the test exercise — an exercise is not a test, so it has its own
+screen with one pair of controls (§1, one main action per screen).
+
+- **The sound goes to the side the recording names, and nowhere else.** The
+  cue times are the sentence blocks of a transcription of the recording: left
+  21.4–28.6 s, right 33.5–36.8 s, right 65.8–71.4 s, left 71.8–73.8 s. Each
+  cue sits at the *start* of its block, so the sound is already on its side
+  before the word 'links' or 'rechts' is said in the middle of the sentence.
+- **±45° for anything spoken, never ±90°.** At ±90° one ear hears nothing, and
+  whoever hears badly on that side loses the instruction — the one thing this
+  app must not do (§1).
+- **The part from 77.1 s ('Der Rhythmus') stays centred,** although that is
+  where a direction would help most. It says "ein Bein" and "das andere" and
+  names no side: panning it would make the app, not the recording, give the
+  instruction, and a user who cannot place the sound would be left with an
+  instruction they never receive. Screen text is no second channel here — the
+  users this app is for do not read it. That part needs a recording that says
+  "rechtes Bein" and "linkes Bein" (see §7).
+- **Played once, not looped** (`loop: false`, down to `GainPlayer`): the
+  recording ends with a closing sentence, and starting over would talk through
+  it. The native side does not report that end, so the screen puts itself back
+  to stopped 300 ms after the measured 92.03 s — late on purpose, so it never
+  says 'gestoppt' while the last word is still playing.
+- One timer per cue, chained: the cue times are the only thing that matters,
+  and only the gains move while the recording keeps running.
 
 ### Bluetooth and connection state
 
@@ -786,14 +835,30 @@ Not backed by evidence — check in the code instead of assuming:
   direction engine needs two streams with a synchronised start instead (one
   timestamped command to both), which changes the architecture. Decide this
   before building exercises on the engine.
-- **Direction is measured in tests, never heard:** the pan law and the engine
-  have unit tests (`test/features/exercise/`,
+- **Direction is measured in tests, never heard:** the pan law, the engine and
+  the cue list have unit tests (`test/features/exercise/`,
   `test/core/services/spatial_audio_engine_test.dart`), but nobody has put on
-  earbuds yet and confirmed that 'ganz links' is heard on the left.
-- **`Marschieren.mp3` has no cue points,** so the direction test can only move
-  the whole recording. An instruction that has to come from one side ("stell
-  dich auf das linke Bein") needs its own asset or a time-coded list of
-  (time, angle) steps; which of the two is open.
+  earbuds yet and confirmed that 'links' is heard on the left, or that the
+  0.8 s glide sounds like one sound moving.
+- **The native audio code is not covered by CI** (§7 "Test strategy"): the
+  per-sample ramp, the smoothstep and playing a file once all live in
+  `GainPlayer.java`, which no test runs. The Dart side only checks that the
+  target and the duration are handed over.
+- **The cue times are from a transcription, ±0.2 s,** and nobody has checked
+  them by ear on a phone. If a side turns out to come late, the times in
+  `marchingCues` are the only thing to change.
+- **'Der Rhythmus' needs a new recording.** The part that would gain the most
+  from a direction is the one that names no side. A version that says "rechtes
+  Bein hoch … linkes Bein hoch" would let the cue list cover it; panning the
+  recording as it is would be the app inventing an instruction.
+- **HRTF is not used and may be worth testing later:** it would make a sound
+  come from "left in front" rather than only "louder in the left ear". It
+  needs headphones, is a good deal more work and colours the voice, so it
+  would have to be tried with real users against the plain level difference.
+- **There is no exercise area in the app.** The marching exercise hangs off
+  the calibration screen because that is where the earbud and its volumes are
+  known. Where exercises belong once there are several of them — and how they
+  are reached without calibrating first — is undecided.
 - **The belt has no output path:** `BeltSectors` computes per-motor
   intensities and nothing sends them anywhere, and how many motors a belt has
   is a guess (`motorCount` defaults to 8). `HapticEngine` pulses the phone's

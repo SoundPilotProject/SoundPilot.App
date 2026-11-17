@@ -43,6 +43,7 @@ import 'package:soundpilot_application/features/device/widgets/belt_setup_fields
 import 'package:soundpilot_application/features/device/widgets/device_type.dart';
 import 'package:soundpilot_application/features/device/widgets/remove_device_dialog.dart';
 import 'package:soundpilot_application/features/device/widgets/unsynced_logout_dialog.dart';
+import 'package:soundpilot_application/features/exercise/screens/marching_exercise_screen.dart';
 import 'package:soundpilot_application/main.dart';
 import 'package:soundpilot_application/models/user_model.dart';
 
@@ -176,6 +177,13 @@ void main() {
             toneSupported: true,
           ),
       'TestPage': () => TestPage(
+            leftVolume: 40,
+            rightVolume: 80,
+            address: 'AA',
+            headphoneChanges: () => Stream.value(_connected),
+            soundSupported: true,
+          ),
+      'MarchingExerciseScreen': () => MarchingExerciseScreen(
             leftVolume: 40,
             rightVolume: 80,
             address: 'AA',

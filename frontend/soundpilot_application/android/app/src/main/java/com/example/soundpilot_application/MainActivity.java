@@ -90,7 +90,9 @@ public class MainActivity extends FlutterActivity {
 
                 case "playTestSound":
                     final String asset = call.argument("asset");
-                    handlePlay(() -> new GainPlayer.AudioFile(assetFile(asset)),
+                    final Boolean loop = call.argument("loop");
+                    handlePlay(() -> new GainPlayer.AudioFile(assetFile(asset),
+                                    loop == null || loop),
                             call.argument("leftGain"), call.argument("rightGain"),
                             call.argument("deviceId"), result);
                     break;
@@ -98,7 +100,8 @@ public class MainActivity extends FlutterActivity {
                 case "setPlaybackGain":
                     if (player != null) {
                         player.setGains(gainArgument(call.argument("leftGain")),
-                                gainArgument(call.argument("rightGain")));
+                                gainArgument(call.argument("rightGain")),
+                                rampArgument(call.argument("rampMs")));
                     }
                     result.success(null);
                     break;
@@ -242,6 +245,10 @@ public class MainActivity extends FlutterActivity {
     // being calibrated) and fails with DEVICE_NOT_CONNECTED if it is not
     // connected, instead of falling back to the speaker; it stops when that
     // device disconnects. Without a deviceId it plays on the default output.
+    //
+    // A test sound loops; an exercise recording is played once ("loop" false),
+    // because it ends with a closing sentence that starting over would talk
+    // through. setPlaybackGain glides to its new gains over "rampMs".
 
     interface SourceFactory {
         GainPlayer.Source create() throws Exception;
@@ -251,6 +258,14 @@ public class MainActivity extends FlutterActivity {
     private static float gainArgument(Object value) {
         float gain = value instanceof Number ? ((Number) value).floatValue() : 0.5f;
         return Math.max(0f, Math.min(1f, gain));
+    }
+
+    // Ramp length from a channel argument (a Dart int, in milliseconds). 0 is
+    // the player's own shortest glide; the cap keeps a wrong value from
+    // leaving the gains stuck on their way somewhere.
+    private static int rampArgument(Object value) {
+        final int ms = value instanceof Number ? ((Number) value).intValue() : 0;
+        return Math.max(0, Math.min(10_000, ms));
     }
 
     private void handlePlay(SourceFactory factory, Object leftGain, Object rightGain,

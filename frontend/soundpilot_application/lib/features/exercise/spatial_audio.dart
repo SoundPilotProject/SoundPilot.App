@@ -153,6 +153,14 @@ class DirectionStep {
 /// How long one [DirectionStep] is played before the next one.
 const Duration directionStepDuration = Duration(seconds: 4);
 
+/// How long a direction change takes to glide to its new side.
+///
+/// A sound that jumps from one ear to the other is heard as two sounds; over
+/// about this long it is heard as one sound that moved. The native player
+/// eases the glide in and out per sample (see `GainPlayer`), so nothing here
+/// has to send a series of gains — that would crackle.
+const Duration panRamp = Duration(milliseconds: 800);
+
 /// The directions of the earbud direction test, in order.
 ///
 /// The same mono recording is moved across the five directions, so the user

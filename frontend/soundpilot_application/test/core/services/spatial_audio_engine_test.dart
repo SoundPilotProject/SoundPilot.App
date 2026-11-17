@@ -58,6 +58,8 @@ void main() {
         'leftGain': wheelToGain(30),
         'rightGain': wheelToGain(90),
         'deviceId': 7,
+        // Loops unless the caller says otherwise.
+        'loop': true,
       });
     });
 
@@ -72,6 +74,18 @@ void main() {
       expect(gain(0, 'right'), 0);
       // No device: the native side plays on the default output.
       expect((calls.single.arguments as Map)['deviceId'], isNull);
+    });
+
+    test('plays once when the caller asks for it', () async {
+      // A guided exercise must not start over: its recording ends with a
+      // closing sentence.
+      await SpatialAudioEngine().play(
+        asset: _asset,
+        calibration: calibration,
+        loop: false,
+      );
+
+      expect((calls.single.arguments as Map)['loop'], isFalse);
     });
 
     test('a failed start leaves the engine stopped', () async {
@@ -105,6 +119,30 @@ void main() {
       expect(gain(1, 'right'),
           closeTo(math.tan(math.pi / 8) * wheelToGain(90), 1e-12));
       expect(engine.angle, angleHalfLeft);
+    });
+
+    test('a ramp lets the native player glide, it does not step the gains',
+        () async {
+      final engine = SpatialAudioEngine();
+      await engine.play(asset: _asset, calibration: calibration);
+
+      await engine.setAngle(angleHalfRight,
+          ramp: const Duration(milliseconds: 800));
+
+      // One call that names the target and the duration — not a series of
+      // gains, which would crackle.
+      expect(calls.length, 2);
+      expect((calls[1].arguments as Map)['rampMs'], 800);
+    });
+
+    test('the shortest glide is the default, for the calibration wheel',
+        () async {
+      final engine = SpatialAudioEngine();
+      await engine.play(asset: _asset, calibration: EarCalibration.neutral);
+
+      await engine.setCalibration(calibration);
+
+      expect((calls[1].arguments as Map)['rampMs'], 0);
     });
 
     test('a direction while nothing plays is only remembered', () async {

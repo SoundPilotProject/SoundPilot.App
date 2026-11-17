@@ -14,6 +14,7 @@ import '../../../core/services/audio_device_service.dart';
 import '../../../core/services/spatial_audio_engine.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
+import '../../../core/widgets/playback_button.dart';
 import '../../exercise/spatial_audio.dart';
 import '../headphone_connection.dart';
 
@@ -219,8 +220,8 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
   /// its next direction; after the last one it stops.
   ///
   /// NOTE: Only the gains change ([SpatialAudioEngine.setAngle]), and they
-  /// glide: the recording keeps running, so the sound travels from one ear to
-  /// the other instead of starting over on every step.
+  /// glide over [panRamp]: the recording keeps running, so the sound is heard
+  /// travelling from one ear to the other instead of jumping there.
   void _scheduleNextStep() {
     _stepTimer = Timer(directionStepDuration, () {
       final next = (_directionStep ?? 0) + 1;
@@ -230,7 +231,8 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
       }
 
       setState(() => _directionStep = next);
-      unawaited(_engine.setAngle(earbudDirectionSteps[next].angle));
+      unawaited(
+          _engine.setAngle(earbudDirectionSteps[next].angle, ramp: panRamp));
       _scheduleNextStep();
     });
   }
@@ -316,7 +318,7 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
     return [
       // Always in the app's colour where there is sound at all: 'Start' is
       // what the screen is for, and it also restarts a running playback.
-      _PlaybackButton(
+      PlaybackButton(
         label: 'Start',
         icon: Icons.play_arrow_rounded,
         color: AppColors.primary(context),
@@ -326,7 +328,7 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
       const SizedBox(height: 10),
       // The second exercise. Usable wherever 'Start' is; that the directions
       // themselves need the earbuds is what the note says.
-      _PlaybackButton(
+      PlaybackButton(
         label: 'Richtungstest',
         icon: Icons.compare_arrows_rounded,
         color: AppColors.primary(context),
@@ -335,7 +337,7 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
       ),
       const SizedBox(height: 10),
       // Grey until there is something to stop, red while the sound runs.
-      _PlaybackButton(
+      PlaybackButton(
         label: 'Stop',
         icon: Icons.stop_rounded,
         color: AppColors.stopRed,
@@ -344,7 +346,7 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
       ),
       if (needsBluetooth) ...[
         const SizedBox(height: 10),
-        _PlaybackButton(
+        PlaybackButton(
           label: 'Bluetooth-Einstellungen öffnen',
           icon: Icons.settings_rounded,
           fontSize: 19,
@@ -506,81 +508,6 @@ class _TestPageState extends State<TestPage> with WidgetsBindingObserver {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ── Playback buttons ─────────────────────────────────────────────────────────
-
-/// Wide button with an icon and a centred label, used for the playback
-/// controls of the [TestPage] (see `_buildPlaybackControls`).
-///
-/// Disabled while its control does not apply ([onPressed] null); the note on
-/// the page then says why.
-class _PlaybackButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-
-  final Color color;
-  final Color textColor;
-
-  /// `null` while this control does not apply; the button is then disabled,
-  /// and [_note] on the page says why.
-  final VoidCallback? onPressed;
-
-  /// Smaller for the long label of the Bluetooth settings.
-  final double fontSize;
-
-  const _PlaybackButton({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.textColor,
-    required this.onPressed,
-    this.fontSize = 23,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    // White on the inactive grey is the pair the contrast test measures.
-    final contentColor = enabled ? textColor : Colors.white;
-
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: textColor,
-        disabledBackgroundColor: AppColors.inactiveButton(context),
-        disabledForegroundColor: Colors.white,
-        elevation: enabled ? 4 : 0,
-        shadowColor: Colors.black.withValues(alpha: 0.15),
-        minimumSize: const Size(double.infinity, 64),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(40),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: contentColor, size: 30),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              // Two lines instead of being cut off at large font sizes.
-              maxLines: 2,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: fontSize,
-                fontWeight: FontWeight.w800,
-                color: contentColor,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

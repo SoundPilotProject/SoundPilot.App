@@ -103,6 +103,8 @@ void main() {
       'leftGain': wheelToGain(30),
       'rightGain': wheelToGain(90),
       'deviceId': 7,
+      // The test sound loops: it is listened to for as long as the user wants.
+      'loop': true,
     });
     expect(find.textContaining('Wiedergabe läuft'), findsOneWidget);
     // 'Start' keeps its colour and restarts the recording; 'Stop' is only
@@ -244,6 +246,7 @@ void main() {
       'leftGain': wheelToGain(30),
       'rightGain': 0.0,
       'deviceId': 7,
+      'loop': true,
     });
     expect(find.textContaining('Richtung ganz links, Schritt 1 von 5'),
         findsOneWidget);
@@ -267,6 +270,8 @@ void main() {
     expect(arguments['leftGain'], wheelToGain(30));
     expect(arguments['rightGain'],
         closeTo(math.tan(math.pi / 8) * wheelToGain(90), 1e-12));
+    // The native player glides there; nothing is stepped from here.
+    expect(arguments['rampMs'], panRamp.inMilliseconds);
     expect(find.textContaining('Richtung halb links, Schritt 2 von 5'),
         findsOneWidget);
 
@@ -320,6 +325,7 @@ void main() {
       'leftGain': wheelToGain(30),
       'rightGain': wheelToGain(90),
       'deviceId': 7,
+      'loop': true,
     });
     expect(find.textContaining('– Richtung'), findsNothing);
 

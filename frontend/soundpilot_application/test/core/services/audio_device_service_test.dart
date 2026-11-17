@@ -359,7 +359,22 @@ void main() {
         'leftGain': 0.3,
         'rightGain': 1.0,
         'deviceId': 4,
+        // Loops unless the caller says otherwise.
+        'loop': true,
       });
+    });
+
+    test('plays an asset once for a guided exercise', () async {
+      mockNative({});
+
+      await AudioDeviceService.playTestSound(
+        asset: 'assets/audio/Marschieren.mp3',
+        leftGain: 0.5,
+        rightGain: 0.5,
+        loop: false,
+      );
+
+      expect((calls.single.arguments as Map)['loop'], isFalse);
     });
 
     test('changes the gains of the playing sound', () async {
@@ -368,7 +383,35 @@ void main() {
       await AudioDeviceService.setPlaybackGain(leftGain: 0.2, rightGain: 0.9);
 
       expect(calls.single.method, 'setPlaybackGain');
-      expect(calls.single.arguments, {'leftGain': 0.2, 'rightGain': 0.9});
+      // No ramp: the native player takes its own shortest glide.
+      expect(calls.single.arguments,
+          {'leftGain': 0.2, 'rightGain': 0.9, 'rampMs': 0});
+    });
+
+    test('hands a long glide to the native player', () async {
+      mockNative({});
+
+      await AudioDeviceService.setPlaybackGain(
+        leftGain: 0.2,
+        rightGain: 0.9,
+        ramp: const Duration(milliseconds: 800),
+      );
+
+      // One call with the target and the duration; sending a series of gains
+      // from here would crackle.
+      expect((calls.single.arguments as Map)['rampMs'], 800);
+    });
+
+    test('an absurd glide is cut down instead of hanging the gains', () async {
+      mockNative({});
+
+      await AudioDeviceService.setPlaybackGain(
+        leftGain: 0.2,
+        rightGain: 0.9,
+        ramp: const Duration(hours: 1),
+      );
+
+      expect((calls.single.arguments as Map)['rampMs'], 10000);
     });
   });
 }

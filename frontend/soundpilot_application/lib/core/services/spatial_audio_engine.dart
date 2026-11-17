@@ -52,11 +52,15 @@ class SpatialAudioEngine {
   /// uses whatever the phone plays on by default. Throws a `PlatformException`
   /// like [AudioDeviceService.playTestSound], and the engine then stays
   /// stopped.
+  ///
+  /// [loop] false plays the recording once; the engine does not learn about
+  /// that end by itself, so the caller marks it with [markStopped].
   Future<void> play({
     required String asset,
     required EarCalibration calibration,
     double angle = angleCentre,
     int? outputDeviceId,
+    bool loop = true,
   }) async {
     _angle = angle;
     _calibration = calibration;
@@ -67,22 +71,30 @@ class SpatialAudioEngine {
       leftGain: target.left,
       rightGain: target.right,
       outputDeviceId: outputDeviceId,
+      loop: loop,
     );
 
     _playing = true;
   }
 
-  /// Moves the running sound to [angle]. The gains glide, the sound does not
-  /// restart; while nothing plays only the angle is remembered.
-  Future<void> setAngle(double angle) async {
+  /// Moves the running sound to [angle] over [ramp]. The gains glide, the
+  /// sound does not restart; while nothing plays only the angle is remembered.
+  ///
+  /// A [ramp] of half a second or so is what a travelling sound wants; the
+  /// default is the player's shortest glide, for a direction that should
+  /// simply be there (see [AudioDeviceService.setPlaybackGain]).
+  Future<void> setAngle(double angle, {Duration ramp = Duration.zero}) async {
     _angle = angle;
-    if (_playing) await _applyGains();
+    if (_playing) await _applyGains(ramp);
   }
 
   /// Same for a changed calibration, e.g. while the user turns a wheel.
-  Future<void> setCalibration(EarCalibration calibration) async {
+  Future<void> setCalibration(
+    EarCalibration calibration, {
+    Duration ramp = Duration.zero,
+  }) async {
     _calibration = calibration;
-    if (_playing) await _applyGains();
+    if (_playing) await _applyGains(ramp);
   }
 
   /// Stops the sound; does nothing to the native side if nothing is playing.
@@ -96,11 +108,12 @@ class SpatialAudioEngine {
   /// earbud it was routed to disconnected, and the native side stopped).
   void markStopped() => _playing = false;
 
-  Future<void> _applyGains() async {
+  Future<void> _applyGains(Duration ramp) async {
     final target = gains;
     await AudioDeviceService.setPlaybackGain(
       leftGain: target.left,
       rightGain: target.right,
+      ramp: ramp,
     );
   }
 }
