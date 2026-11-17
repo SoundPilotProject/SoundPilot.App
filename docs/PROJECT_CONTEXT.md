@@ -134,6 +134,9 @@ core/
     device_storage_service.dart  local devices of older app versions
     guest_mode_service.dart      guest mode flag (ValueNotifier, this run)
     audio_device_service.dart    MethodChannel com.soundpilot/audio_devices
+    spatial_audio_engine.dart    plays a sound from a direction (see §4)
+    haptic_engine.dart           vibration: the phone's own motor, since
+                                 there is no belt to send it to (§7)
 features/
   auth/auth_service.dart
   auth/auth_flow.dart            shared sign-in flow of login + register
@@ -150,6 +153,8 @@ features/
                                  remove_device_dialog (asks before a
                                  device is removed), belt_setup_fields,
                                  unsynced_logout_dialog
+  exercise/spatial_audio.dart    angle -> gain per ear, plus the calibration
+  exercise/belt_direction.dart   angle and obstacles -> the belt's motors
 ```
 
 - **Fonts:** Plus Jakarta Sans is set once as the `textTheme` of both themes
@@ -487,7 +492,13 @@ written, and **only if the user agrees**:
   earbuds, and the status line names the output as well. The test tone keeps
   requiring the earbud, because setting one ear's volume without that ear is
   meaningless.
-- **'Start' and 'Stop' are both always on the screen**
+- **The `TestPage` holds two exercises.** 'Start' plays the recording centred
+  (0°): the calibration and nothing else. 'Richtungstest' plays the same
+  recording through five directions — full left, half left, centre, half
+  right, full right (`earbudDirectionSteps`) — four seconds each, and names
+  the current one in the status line, so it is spoken too. 'Stop' ends either;
+  starting one replaces the other.
+- **'Start', 'Richtungstest' and 'Stop' are all always on the screen**
   (`_buildPlaybackControls`, see §7), plus the button to the Bluetooth
   settings while no earbud is connected. 'Start' keeps the app's colour
   wherever there is sound at all and restarts the recording when it is already
@@ -496,7 +507,47 @@ written, and **only if the user agrees**:
   it runs. Only a playback that went to the earbud is stopped when the earbud
   disconnects (`_playingOnEarbud`); sound on the phone itself keeps running.
 - Both sounds go through `GainPlayer.java` (decoded with `MediaCodec`, mixed
-  to mono, a gain per side).
+  to mono, a gain per side). The two gains carry the whole left/right image,
+  the direction included — see below.
+
+### Direction
+
+An exercise sound is an **event with a direction**, not a finished stereo
+file: the asset stays mono and the left/right image is made while it plays
+(`SpatialAudioEngine`, `features/exercise/spatial_audio.dart`). One recording
+can therefore be played from every direction, which a pre-panned stereo file
+could not.
+
+- **Angle:** −90° full left, 0° centred (in front), +90° full right; anything
+  outside is clamped.
+- **Pan law:** equal-power (`StereoGains.forAngle`). The ratio of the two ears
+  is `tan` over the angle, which keeps one apparent loudness while the sound
+  travels. The pair is normalised to the *louder* ear, so the centre comes out
+  at exactly the calibrated gain and no angle is quieter than what the user
+  set. No HRTF: for "which side is this" the ear uses the level difference,
+  and an HRTF would cost latency and a filter per angle for nothing.
+- **The calibration is a multiplicative correction on top of it**
+  (`StereoGains.withCalibration`): what is played is
+  `pan(angle) × calibration`. A quiet ear stays quiet without becoming a
+  direction of its own.
+- **While it plays** the angle changes with `SpatialAudioEngine.setAngle`,
+  which glides the gains (one chunk, ~23 ms) instead of restarting the
+  recording: the sound travels from one ear to the other without a gap.
+- `Marschieren.mp3` is itself mono (44.1 kHz, ~92 s) and carries no direction.
+  A spoken instruction can only be heard on one side once it is its own asset
+  or a known point in time that an exercise puts at an angle — the engine can
+  place it, the recording cannot say it (see §7).
+- **The belt is split the same way:** `features/exercise/belt_direction.dart`
+  turns one angle into the intensity of the neighbouring motors
+  (`BeltSectors.forDirection`, a linear cross-fade — vibration has no
+  equal-power law the way hearing does), and a list of `BeltObstacle`s (angle
+  plus distance) into one intensity per motor (`forObstacles`): the nearest
+  object of a direction decides, nothing beyond the warning distance is felt,
+  and intensities are never summed, because two far objects must not feel like
+  one close one. That aggregation sits above the direction engine, not inside
+  it. The output path is open — nothing in the app connects to a belt (§7);
+  `HapticEngine.pulse` uses the phone's own motor meanwhile, which is what the
+  'Vibration testen' button of the belt setup plays.
 
 ### Bluetooth and connection state
 
@@ -728,14 +779,36 @@ Not backed by evidence — check in the code instead of assuming:
   without the permission is not checked.
 - **Old `dummy_mac_…` headphones:** devices stored under a placeholder key
   cannot be matched to real headphones; what to do with them is open.
+- **One stereo headset, or two separate earbuds?** The app assumes one: a
+  headset is a single Android output device with one id, and `GainPlayer`
+  writes one stereo stream to it. If the two earbuds of the hardware are
+  really two Bluetooth connections with their own microcontroller each, the
+  direction engine needs two streams with a synchronised start instead (one
+  timestamped command to both), which changes the architecture. Decide this
+  before building exercises on the engine.
+- **Direction is measured in tests, never heard:** the pan law and the engine
+  have unit tests (`test/features/exercise/`,
+  `test/core/services/spatial_audio_engine_test.dart`), but nobody has put on
+  earbuds yet and confirmed that 'ganz links' is heard on the left.
+- **`Marschieren.mp3` has no cue points,** so the direction test can only move
+  the whole recording. An instruction that has to come from one side ("stell
+  dich auf das linke Bein") needs its own asset or a time-coded list of
+  (time, angle) steps; which of the two is open.
+- **The belt has no output path:** `BeltSectors` computes per-motor
+  intensities and nothing sends them anywhere, and how many motors a belt has
+  is a guess (`motorCount` defaults to 8). `HapticEngine` pulses the phone's
+  own motor instead, with Flutter's three fixed strengths and no amplitude
+  (Android's `VibrationEffect` would need a method channel of its own). The
+  belt's direction test and the "Aufstellung" use case need the hardware.
 - **Accessibility: measured in CI, never tested on a device.** Findings of the
   static review are in `docs/ACCESSIBILITY_AUDIT.md` (partly outdated), what
   is still to do in `docs/ACCESSIBILITY_TODO.md`, the screen reader plan (CI
   checks, device test protocol, open gaps) in `docs/SCREEN_READER_PLAN.md`.
   Still open: localisation (texts are hardcoded German; a second language
-  would need `gen-l10n` with ARB files); multiple channels — one
-  `HapticFeedback` call in the whole app, and only on the screen-reader path
-  of the calibration wheel, while the belt warning distance has neither
+  would need `gen-l10n` with ARB files); multiple channels — besides the
+  screen-reader path of the calibration wheel and the belt setup's 'Vibration
+  testen' (`HapticEngine`, which can only pick one of Flutter's three fixed
+  strengths), nothing vibrates, and the belt warning distance has neither
   vibration nor sound; validation of the belt fields; nothing verified with
   TalkBack or VoiceOver on real
   hardware, and whether they pick a German voice for the fixed German locale

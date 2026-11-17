@@ -2,7 +2,9 @@
 //
 // Plays a mono sound source on both ears with separate left and right gains,
 // optionally on one output device. Used for the calibration test tone and the
-// test exercise (see MainActivity).
+// test exercise (see MainActivity). The two gains carry the whole left/right
+// image, the direction of a sound included (SpatialAudioEngine on the Dart
+// side).
 
 package com.example.soundpilot_application;
 
@@ -164,9 +166,13 @@ final class GainPlayer {
     // An audio file (e.g. MP3), decoded with MediaCodec, mixed down to mono
     // and played in a loop.
     //
-    // NOTE: Mixed down on purpose: the calibration compares the two ears, so
-    // both get the same signal and only the gain differs. MediaPlayer's
-    // balance (used by audioplayers before) did not change a mono file.
+    // NOTE: Mixed down on purpose. The calibration compares the two ears, so
+    // both get the same signal and only the gain differs — and a direction is
+    // panned from those gains at playback time (SpatialAudioEngine on the
+    // Dart side), which lets one recording be played from every direction
+    // where a pre-panned stereo file could only ever be the one it was mixed
+    // as. MediaPlayer's balance (used by audioplayers before) did not change
+    // a mono file.
     static final class AudioFile implements Source {
         // Give up if the decoder delivers nothing for this many attempts
         // (10 ms each), instead of blocking the playback thread forever.

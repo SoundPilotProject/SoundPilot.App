@@ -296,6 +296,11 @@ void main() {
         isSemantics(label: 'Links', isSelected: false, isButton: true),
       );
 
+      // Below the fold on a small phone, since 'Vibration testen' sits above
+      // the side buttons.
+      await tester.ensureVisible(find.text('Links'));
+      await _settle(tester);
+
       await tester.tap(find.text('Links'));
       await _settle(tester);
 

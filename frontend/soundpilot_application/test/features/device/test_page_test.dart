@@ -2,9 +2,11 @@
 //
 // Tests that the TestPage plays its sound with the calibrated gains — on the
 // calibrated earbud while that is connected, on the phone itself otherwise —
-// and which of its buttons can be used in each state.
+// which of its buttons can be used in each state, and that the direction test
+// moves the recording from one ear to the other.
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +16,7 @@ import 'package:soundpilot_application/core/app_locale.dart';
 import 'package:soundpilot_application/core/services/audio_device_service.dart';
 import 'package:soundpilot_application/features/device/screens/test_page.dart';
 import 'package:soundpilot_application/features/device/volume_scale.dart';
+import 'package:soundpilot_application/features/exercise/spatial_audio.dart';
 
 const _pods = HeadphoneDevice(
   name: 'Pods',
@@ -50,9 +53,9 @@ Future<void> _pumpPage(
 /// The playback controls on the page: every button but 'Abschließen', which
 /// leaves the page. [onlyUsable] drops the ones that are disabled.
 ///
-/// NOTE: 'Start' and 'Stop' are always on the screen; which of them can be
-/// used is the state. The Bluetooth button only appears while the earbud is
-/// missing, so the screen is never a dead end.
+/// NOTE: 'Start', 'Richtungstest' and 'Stop' are always on the screen; which
+/// of them can be used is the state. The Bluetooth button only appears while
+/// the earbud is missing, so the screen is never a dead end.
 List<String> _controls(WidgetTester tester, {bool onlyUsable = false}) {
   final labels = <String>[];
   final buttons = find.byType(ElevatedButton);
@@ -104,13 +107,14 @@ void main() {
     expect(find.textContaining('Wiedergabe läuft'), findsOneWidget);
     // 'Start' keeps its colour and restarts the recording; 'Stop' is only
     // alive while something plays.
-    expect(_controls(tester), ['Start', 'Stop']);
-    expect(_controls(tester, onlyUsable: true), ['Start', 'Stop']);
+    expect(_controls(tester), ['Start', 'Richtungstest', 'Stop']);
+    expect(_controls(tester, onlyUsable: true),
+        ['Start', 'Richtungstest', 'Stop']);
 
     await tester.tap(find.text('Stop'));
     await tester.pump();
     expect(methods().last, 'stopPlayback');
-    expect(_controls(tester, onlyUsable: true), ['Start']);
+    expect(_controls(tester, onlyUsable: true), ['Start', 'Richtungstest']);
   });
 
   testWidgets('without an earbud it plays on the phone itself',
@@ -127,7 +131,7 @@ void main() {
     expect((calls.single.arguments as Map)['deviceId'], isNull);
     expect(find.textContaining('über den Lautsprecher'), findsWidgets);
     expect(_controls(tester, onlyUsable: true),
-        ['Start', 'Stop', 'Bluetooth-Einstellungen öffnen']);
+        ['Start', 'Richtungstest', 'Stop', 'Bluetooth-Einstellungen öffnen']);
   });
 
   testWidgets('sound on the phone survives a headphone change',
@@ -157,9 +161,9 @@ void main() {
     // 'Start' plays on the phone itself, and the way to the earbud is right
     // there for whoever wants to hear the calibration.
     expect(_controls(tester),
-        ['Start', 'Stop', 'Bluetooth-Einstellungen öffnen']);
+        ['Start', 'Richtungstest', 'Stop', 'Bluetooth-Einstellungen öffnen']);
     expect(_controls(tester, onlyUsable: true),
-        ['Start', 'Bluetooth-Einstellungen öffnen']);
+        ['Start', 'Richtungstest', 'Bluetooth-Einstellungen öffnen']);
 
     // Below the fold on a small phone once the note is there.
     final bluetooth = find.text('Bluetooth-Einstellungen öffnen');
@@ -179,7 +183,7 @@ void main() {
         findsOneWidget);
     // The buttons are shown, but there is no sound at all here, and no
     // Bluetooth settings to send anyone to.
-    expect(_controls(tester), ['Start', 'Stop']);
+    expect(_controls(tester), ['Start', 'Richtungstest', 'Stop']);
     expect(_controls(tester, onlyUsable: true), isEmpty);
   });
 
@@ -198,7 +202,7 @@ void main() {
     // The native side stops the sound itself; the page follows.
     expect(find.textContaining('Wiedergabe gestoppt'), findsOneWidget);
     expect(_controls(tester, onlyUsable: true),
-        ['Start', 'Bluetooth-Einstellungen öffnen']);
+        ['Start', 'Richtungstest', 'Bluetooth-Einstellungen öffnen']);
   });
 
   testWidgets('stops when the app goes to the background', (tester) async {
@@ -222,5 +226,127 @@ void main() {
     await tester.pump();
 
     expect(methods().last, 'stopPlayback');
+  });
+
+  // ── The direction test ─────────────────────────────────────────────────────
+
+  testWidgets('the direction test starts at the left ear', (tester) async {
+    await _pumpPage(tester, headphones: Stream.value(const [_pods]));
+
+    await tester.tap(find.text('Richtungstest'));
+    await tester.pump();
+
+    expect(calls.single.method, 'playTestSound');
+    expect(calls.single.arguments, {
+      'asset': testSoundAsset,
+      // Full left: the left ear keeps its calibrated volume, the right one
+      // hears nothing.
+      'leftGain': wheelToGain(30),
+      'rightGain': 0.0,
+      'deviceId': 7,
+    });
+    expect(find.textContaining('Richtung ganz links, Schritt 1 von 5'),
+        findsOneWidget);
+
+    await tester.tap(find.text('Stop'));
+    await tester.pump();
+  });
+
+  testWidgets('the direction test glides to the next direction',
+      (tester) async {
+    await _pumpPage(tester, headphones: Stream.value(const [_pods]));
+    await tester.tap(find.text('Richtungstest'));
+    await tester.pump();
+    calls.clear();
+
+    await tester.pump(directionStepDuration);
+
+    // The recording keeps running; only the gains move.
+    final arguments = calls.single.arguments as Map;
+    expect(calls.single.method, 'setPlaybackGain');
+    expect(arguments['leftGain'], wheelToGain(30));
+    expect(arguments['rightGain'],
+        closeTo(math.tan(math.pi / 8) * wheelToGain(90), 1e-12));
+    expect(find.textContaining('Richtung halb links, Schritt 2 von 5'),
+        findsOneWidget);
+
+    await tester.tap(find.text('Stop'));
+    await tester.pump();
+  });
+
+  testWidgets('the direction test ends after the last direction',
+      (tester) async {
+    await _pumpPage(tester, headphones: Stream.value(const [_pods]));
+    await tester.tap(find.text('Richtungstest'));
+    await tester.pump();
+
+    // One step per direction, and one more that ends the exercise.
+    for (var i = 0; i < earbudDirectionSteps.length; i++) {
+      await tester.pump(directionStepDuration);
+    }
+
+    expect(methods().last, 'stopPlayback');
+    expect(find.textContaining('Wiedergabe gestoppt'), findsOneWidget);
+    expect(find.textContaining('– Richtung'), findsNothing);
+    expect(_controls(tester, onlyUsable: true), ['Start', 'Richtungstest']);
+  });
+
+  testWidgets('Stop ends a running direction test', (tester) async {
+    await _pumpPage(tester, headphones: Stream.value(const [_pods]));
+    await tester.tap(find.text('Richtungstest'));
+    await tester.pump();
+
+    await tester.tap(find.text('Stop'));
+    await tester.pump();
+    calls.clear();
+
+    // The step timer went with it: nothing moves any more.
+    await tester.pump(directionStepDuration * 3);
+    expect(calls, isEmpty);
+  });
+
+  testWidgets('Start replaces a running direction test with the centred one',
+      (tester) async {
+    await _pumpPage(tester, headphones: Stream.value(const [_pods]));
+    await tester.tap(find.text('Richtungstest'));
+    await tester.pump();
+    calls.clear();
+
+    await tester.tap(find.text('Start'));
+    await tester.pump();
+
+    expect(calls.single.arguments, {
+      'asset': testSoundAsset,
+      'leftGain': wheelToGain(30),
+      'rightGain': wheelToGain(90),
+      'deviceId': 7,
+    });
+    expect(find.textContaining('– Richtung'), findsNothing);
+
+    calls.clear();
+    await tester.pump(directionStepDuration * 2);
+    expect(calls, isEmpty);
+
+    await tester.tap(find.text('Stop'));
+    await tester.pump();
+  });
+
+  testWidgets('a disconnecting earbud ends the direction test', (tester) async {
+    final headphones = StreamController<List<HeadphoneDevice>>(sync: true);
+    addTearDown(headphones.close);
+    await _pumpPage(tester, headphones: headphones.stream);
+    headphones.add(const [_pods]);
+    await tester.pump();
+    await tester.tap(find.text('Richtungstest'));
+    await tester.pump();
+
+    headphones.add(const []);
+    await tester.pump();
+    calls.clear();
+
+    // The native side stopped the sound; no step may move on after that.
+    await tester.pump(directionStepDuration * 3);
+    expect(calls, isEmpty);
+    expect(find.textContaining('Wiedergabe gestoppt'), findsOneWidget);
   });
 }

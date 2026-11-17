@@ -382,7 +382,10 @@ class AudioDeviceService {
   /// left and right gain like [playTestTone].
   ///
   /// NOTE: The file is mixed down to mono, so both ears get the same signal
-  /// and only the gain differs, which is what a calibration test needs.
+  /// and only the gain differs. That is what a calibration test needs, and it
+  /// is what lets one recording be played from any direction: prefer
+  /// `SpatialAudioEngine` over calling this directly, so the direction and the
+  /// calibration stay in one place.
   static Future<void> playTestSound({
     required String asset,
     required double leftGain,
