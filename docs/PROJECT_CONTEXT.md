@@ -689,7 +689,8 @@ creates it:
   "settings": { "language": "system", "theme": "system" },
   "calibration": {
     "headphones": { "<BD_ADDR>": { "modelId": "string", "volLeft": 0.5, "volRight": 0.5 } },
-    "belts":      { "<BD_ADDR>": { "modelId": "string" } }
+    "belts":      { "<BD_ADDR>": { "modelId": "string", "warningDistanceCm": 200,
+                                   "vibrationStrength": 100, "vibrationSide": "front" } }
   }
 }
 ```
@@ -736,7 +737,11 @@ them again cannot reset their calibration.
 ### Dart models (`models/user_model.dart`)
 
 - `HeadphoneCalib` — `modelId`, `volumeLeft`, `volumeRight` (defaults `0.5`)
-- `BeltCalib` — `modelId`
+- `BeltCalib` — `modelId`, `warningDistanceCm` (default `200`, allowed
+  50–500), `vibrationStrength` (percent as typed in the belt setup, default
+  `100`, allowed 50–100), `vibrationSide` (`BeltSide`: one of the belt's three
+  motors, `left`, `front` or `right`; default `front`, shown as 'Mitte'). The
+  allowed ranges are constants on `BeltCalib`.
 - `UserModel` — `id`, `displayName`, `email`,
   `Map<String, HeadphoneCalib> headphones`, `Map<String, BeltCalib> belts`
 

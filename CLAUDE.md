@@ -147,3 +147,20 @@ When the user says a PR was merged:
    work) after asking, and check for other merged or orphaned branches and
    open PRs, as at session start.
 4. If the PR was a step of one of the user's plans, name the next step.
+
+### Plan: Belt calibration (@MightyDax)
+
+Goal: the belt setup stores its values (SOUNDPILOT-31). Decisions: going back
+from a setup step cancels and writes nothing; "Fertig" writes the whole belt
+once with `putBelt`; values outside `BeltCalib`'s ranges block the step with a
+German error text and an icon.
+
+1. `feature/belt-calibration-save`: `BeltCalib` fields, schema, rules tests
+   (SOUNDPILOT-128, 129).
+   Status: PR open
+2. `feature/belt-setup-save`: screens pre-filled with the stored belt, return
+   the edited `BeltCalib`, validation, `BeltSide`, widget tests
+   (SOUNDPILOT-130, 131, 132).
+   Status: open
+3. Test on a real phone, remove this plan (SOUNDPILOT-133).
+   Status: open

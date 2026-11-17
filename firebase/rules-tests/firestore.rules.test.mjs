@@ -146,6 +146,20 @@ describe('update users/{uid}', () => {
       devicePath('belts', 'dummy_mac_1'), {modelId: 'belt'}));
   });
 
+  it('allows putting a belt with its setup values', async () => {
+    // What BeltCalib.toMap() writes (§4).
+    await assertSucceeds(updateDoc(ownRef(),
+      devicePath('belts', 'dummy_mac_1'),
+      {modelId: 'belt', warningDistanceCm: 300, vibrationStrength: 80,
+        vibrationSide: 'left'}));
+  });
+
+  it('allows changing one belt value', async () => {
+    await assertSucceeds(updateDoc(ownRef(),
+      new FieldPath('calibration', 'belts', 'dummy_mac_1',
+        'warningDistanceCm'), 400));
+  });
+
   it('allows removing a device', async () => {
     await assertSucceeds(updateDoc(ownRef(),
       devicePath('headphones', HEADPHONE), deleteField()));

@@ -5,7 +5,8 @@
 ///
 /// STRUCTURE:
 /// 1. HeadphoneCalib: Holds audio-specific settings (volume, model ID).
-/// 2. BeltCalib: Holds sensor-specific settings for the hardware belt.
+/// 2. BeltCalib: Holds sensor-specific settings for the hardware belt
+///    (warning distance, vibration strength and side).
 /// 3. UserModel: The central profile that manages basic user info
 ///    and maps multiple devices by their unique BD_ADDR (Bluetooth Address).
 ///
@@ -121,10 +122,57 @@ class HeadphoneCalib {
   };
 }
 
+/// One of the belt's three vibration motors (front, left, right): the side the
+/// belt vibrates on.
+enum BeltSide {
+  left('left'),
+  front('front'),
+  right('right');
+
+  const BeltSide(this.firestoreValue);
+
+  /// Value stored in Firestore (`vibrationSide`).
+  final String firestoreValue;
+
+  /// The side stored as [value]; anything unknown falls back to [front].
+  static BeltSide fromFirestore(Object? value) => BeltSide.values.firstWhere(
+    (side) => side.firestoreValue == value,
+    orElse: () => BeltSide.front,
+  );
+}
+
 /// Calibration data for the hardware belt
 class BeltCalib {
+  /// Default of [warningDistanceCm].
+  static const int defaultWarningDistanceCm = 200;
+
+  /// Default of [vibrationStrength].
+  static const int defaultVibrationStrength = 100;
+
+  /// Default of [vibrationSide].
+  static const BeltSide defaultVibrationSide = BeltSide.front;
+
+  /// Allowed range of [warningDistanceCm] in the belt setup (team decision).
+  static const int minWarningDistanceCm = 50;
+  static const int maxWarningDistanceCm = 500;
+
+  /// Allowed range of [vibrationStrength] in the belt setup (team decision).
+  static const int minVibrationStrength = 50;
+  static const int maxVibrationStrength = 100;
+
   /// Model name of the device (Firestore: `modelId`).
   final String modelId;
+
+  /// Distance in cm at which the belt starts to warn
+  /// (Firestore: `warningDistanceCm`), default 200.
+  final int warningDistanceCm;
+
+  /// Vibration strength in percent, as typed in the belt setup
+  /// (Firestore: `vibrationStrength`), default 100.
+  final int vibrationStrength;
+
+  /// Motor the belt vibrates with (Firestore: `vibrationSide`), default front.
+  final BeltSide vibrationSide;
 
   // UI & Runtime helpers (Not stored in Firestore)
 
@@ -136,19 +184,51 @@ class BeltCalib {
 
   BeltCalib({
     required this.modelId,
+    this.warningDistanceCm = defaultWarningDistanceCm,
+    this.vibrationStrength = defaultVibrationStrength,
+    this.vibrationSide = defaultVibrationSide,
     this.isConnected = false, // Defaults to disconnected on app start
   });
 
+  /// Converts Firestore Map to Object. Missing fields and fields of the wrong
+  /// type fall back to the defaults, so belts saved before these fields
+  /// existed load with them.
   factory BeltCalib.fromMap(Map<String, dynamic> map) {
+    final distance = map['warningDistanceCm'];
+    final strength = map['vibrationStrength'];
     return BeltCalib(
       modelId: map['modelId'] is String ? map['modelId'] : 'unknown',
+      warningDistanceCm:
+          distance is num ? distance.round() : defaultWarningDistanceCm,
+      vibrationStrength:
+          strength is num ? strength.round() : defaultVibrationStrength,
+      vibrationSide: BeltSide.fromFirestore(map['vibrationSide']),
       isConnected: false,
     );
   }
 
-  /// Only saves the modelId to Firestore
+  /// Copy with the given values replaced; [isConnected] is kept.
+  BeltCalib copyWith({
+    int? warningDistanceCm,
+    int? vibrationStrength,
+    BeltSide? vibrationSide,
+  }) {
+    return BeltCalib(
+      modelId: modelId,
+      warningDistanceCm: warningDistanceCm ?? this.warningDistanceCm,
+      vibrationStrength: vibrationStrength ?? this.vibrationStrength,
+      vibrationSide: vibrationSide ?? this.vibrationSide,
+      isConnected: isConnected,
+    );
+  }
+
+  /// Converts Object to Map for Firestore.
+  /// Note: isConnected and category are EXCLUDED from the map.
   Map<String, dynamic> toMap() => {
     'modelId': modelId,
+    'warningDistanceCm': warningDistanceCm,
+    'vibrationStrength': vibrationStrength,
+    'vibrationSide': vibrationSide.firestoreValue,
   };
 }
 
