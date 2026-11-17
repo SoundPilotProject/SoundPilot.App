@@ -742,6 +742,12 @@ them again cannot reset their calibration.
   `100`, allowed 50–100), `vibrationSide` (`BeltSide`: one of the belt's three
   motors, `left`, `front` or `right`; default `front`, shown as 'Mitte'). The
   allowed ranges are constants on `BeltCalib`.
+  The belt setup (`BeltWarningDistanceScreen` → `BeltVibrationScreen`) starts
+  with the stored values and does not go on while a field is outside its
+  range: a German message with an icon appears below the field
+  (`BeltFieldError`, a live region). "Abschließen" returns the edited belt and
+  `DeviceScreen` writes it with one `putBelt`, and only if a value changed;
+  going back from either step writes nothing.
 - `UserModel` — `id`, `displayName`, `email`,
   `Map<String, HeadphoneCalib> headphones`, `Map<String, BeltCalib> belts`
 
@@ -945,7 +951,7 @@ Not backed by evidence — check in the code instead of assuming:
   screen-reader path of the calibration wheel and the belt setup's 'Vibration
   testen' (`HapticEngine`, which can only pick one of Flutter's three fixed
   strengths), nothing vibrates, and the belt warning distance has neither
-  vibration nor sound; validation of the belt fields; nothing verified with
+  vibration nor sound; nothing verified with
   TalkBack or VoiceOver on real
   hardware, and whether they pick a German voice for the fixed German locale
   (`core/app_locale.dart`).

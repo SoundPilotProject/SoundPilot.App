@@ -157,10 +157,10 @@ German error text and an icon.
 
 1. `feature/belt-calibration-save`: `BeltCalib` fields, schema, rules tests
    (SOUNDPILOT-128, 129).
-   Status: PR open
+   Status: done (#53)
 2. `feature/belt-setup-save`: screens pre-filled with the stored belt, return
    the edited `BeltCalib`, validation, `BeltSide`, widget tests
    (SOUNDPILOT-130, 131, 132).
-   Status: open
+   Status: PR open, stacked on step 1
 3. Test on a real phone, remove this plan (SOUNDPILOT-133).
    Status: open

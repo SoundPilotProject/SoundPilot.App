@@ -1,7 +1,7 @@
 // lib/features/device/widgets/belt_setup_fields.dart
 //
 // Widgets shared by the two belt setup steps (recommendation card, number
-// input).
+// input, its validation and error message).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -66,11 +66,15 @@ class BeltNumberField extends StatelessWidget {
   /// Unit shown at the right edge (e.g. 'cm', '%').
   final String suffix;
 
+  /// Called on every change of the text, e.g. to hide an error message.
+  final ValueChanged<String>? onChanged;
+
   const BeltNumberField({
     super.key,
     required this.controller,
     required this.label,
     required this.suffix,
+    this.onChanged,
   });
 
   @override
@@ -85,6 +89,7 @@ class BeltNumberField extends StatelessWidget {
       label: label,
       child: TextField(
         controller: controller,
+        onChanged: onChanged,
         keyboardType: TextInputType.number,
         // Only digits: the field is read back as a number, and a pasted word
         // would silently become an invalid setting.
@@ -115,6 +120,64 @@ class BeltNumberField extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The whole number in [text] if it lies within [min]..[max], otherwise null
+/// (empty, too small or too large).
+int? parseBeltValue(String text, {required int min, required int max}) {
+  final value = int.tryParse(text.trim());
+  if (value == null || value < min || value > max) return null;
+  return value;
+}
+
+/// The message shown when a belt field holds no value within [min]..[max].
+String beltValueError({
+  required int min,
+  required int max,
+  required String unit,
+}) =>
+    'Bitte einen Wert von $min bis $max $unit eingeben.';
+
+/// Error message below a [BeltNumberField].
+///
+/// Not colour alone: an icon and the text in the normal text colour, like the
+/// errors of the calibration screen. A live region, so a screen reader reads
+/// it out as soon as it appears.
+class BeltFieldError extends StatelessWidget {
+  final String text;
+
+  const BeltFieldError({super.key, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ExcludeSemantics(
+            child: Icon(
+              Icons.error_outline_rounded,
+              color: AppColors.text(context),
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.text(context),
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

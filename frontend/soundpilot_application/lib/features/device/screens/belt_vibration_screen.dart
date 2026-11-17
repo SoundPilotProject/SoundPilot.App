@@ -8,44 +8,49 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/services/haptic_engine.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
+import '../../../models/user_model.dart';
 import '../widgets/belt_setup_fields.dart';
 
 /// Second step of the belt setup (after `BeltWarningDistanceScreen`): the user
-/// enters the vibration strength in % (recommended 60–100 %), can feel it as a
-/// single pulse ('Vibration testen', see `_testVibration`) and picks a side
-/// ('L', 'M' or 'R').
+/// enters the vibration strength in % (recommended 60–100 %, allowed
+/// [BeltCalib.minVibrationStrength] to [BeltCalib.maxVibrationStrength]), can
+/// feel it as a single pulse ('Vibration testen', see `_testVibration`) and
+/// picks the motor ([BeltSide]: 'Links', 'Mitte' or 'Rechts').
 ///
-/// Pops with `true` when the setup is finished.
-///
-/// TODO(improve): The entered strength and the selected side are neither
-/// validated nor saved. `_finishSetup` only pops `true`. The
-/// strength should be checked (0–100) and stored with the belt entry.
+/// Starts with the values of [belt]. Pops with [belt] and the entered values
+/// when the setup is finished; going back pops with null.
 ///
 /// NOTE: The heading above the side buttons used to read 'SUCHE GURT...'
 /// although no search happens here; it now names what the buttons do.
 class BeltVibrationScreen extends StatefulWidget {
-  const BeltVibrationScreen({super.key});
+  /// The belt with the values of the first step.
+  final BeltCalib belt;
+
+  const BeltVibrationScreen({super.key, required this.belt});
 
   @override
   State<BeltVibrationScreen> createState() => _BeltVibrationScreenState();
 }
 
 class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
-  final TextEditingController _strengthController =
-      TextEditingController(text: '100');
+  late final TextEditingController _strengthController =
+      TextEditingController(text: '${widget.belt.vibrationStrength}');
 
-  /// Selected side: one of 'L', 'M' or 'R'.
-  String _selectedSide = 'M';
+  /// Selected motor.
+  late BeltSide _selectedSide = widget.belt.vibrationSide;
+
+  /// Shown below the field while the typed strength is not allowed.
+  String? _error;
 
   /// What the last 'Vibration testen' did, as text; null until it is used.
   String? _pulseNote;
 
-  /// Long names of the sides, used for the button labels and for the
-  /// screen-reader announcement.
-  static const Map<String, String> _sideNames = {
-    'L': 'Links',
-    'M': 'Mitte',
-    'R': 'Rechts',
+  /// Names of the sides in the order of the buttons, used for the button
+  /// labels and for the screen-reader announcement.
+  static const Map<BeltSide, String> _sideNames = {
+    BeltSide.left: 'Links',
+    BeltSide.front: 'Mitte',
+    BeltSide.right: 'Rechts',
   };
 
   @override
@@ -54,33 +59,58 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
     super.dispose();
   }
 
+  /// The typed strength if it is allowed; otherwise shows the error below the
+  /// field and returns null.
+  int? _checkedStrength() {
+    final strength = parseBeltValue(
+      _strengthController.text,
+      min: BeltCalib.minVibrationStrength,
+      max: BeltCalib.maxVibrationStrength,
+    );
+    if (strength == null) {
+      setState(() {
+        _error = beltValueError(
+          min: BeltCalib.minVibrationStrength,
+          max: BeltCalib.maxVibrationStrength,
+          unit: '%',
+        );
+        _pulseNote = null;
+      });
+    }
+    return strength;
+  }
+
   /// Plays one reference pulse at the strength that is typed in — the basic
   /// belt test (see `docs/PROJECT_CONTEXT.md` §4).
   ///
   /// NOTE: It goes to the phone's own motor, because there is no belt to send
   /// it to yet (see [HapticEngine]). The strength is read from the field for
-  /// this pulse only; storing it is the TODO on this class.
+  /// this pulse only; it is stored with 'Abschließen'. It accepts the same
+  /// range as 'Abschließen', so a strength that can be felt can also be kept.
   ///
   /// NOTE: The pulse is reported as text as well, not only felt: a user who
   /// cannot feel it has to be able to tell that the app did play one.
   Future<void> _testVibration() async {
-    final value = int.tryParse(_strengthController.text.trim());
-    if (value == null || value < 0 || value > 100) {
-      setState(() =>
-          _pulseNote = 'Zum Testen eine Zahl von 0 bis 100 eingeben.');
-      return;
-    }
+    final value = _checkedStrength();
+    if (value == null) return;
 
-    setState(() => _pulseNote = value == 0
-        ? 'Bei 0 % vibriert nichts.'
-        : 'Vibration mit $value % gespielt.');
+    setState(() => _pulseNote = 'Vibration mit $value % gespielt.');
 
     await HapticEngine.pulse(intensity: value / 100);
   }
 
-  /// Pops back with `true` (setup done).
+  /// Checks the strength and pops with the finished belt.
   void _finishSetup() {
-    Navigator.pop(context, true);
+    final strength = _checkedStrength();
+    if (strength == null) return;
+
+    Navigator.pop(
+      context,
+      widget.belt.copyWith(
+        vibrationStrength: strength,
+        vibrationSide: _selectedSide,
+      ),
+    );
   }
 
   @override
@@ -122,7 +152,14 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
                       controller: _strengthController,
                       label: 'Vibrationsstärke in Prozent',
                       suffix: '%',
+                      onChanged: (_) {
+                        if (_error != null) setState(() => _error = null);
+                      },
                     ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      BeltFieldError(text: _error!),
+                    ],
                     const SizedBox(height: 14),
                     // One pulse at the strength above, so it can be felt
                     // before it is kept. Below 'Abschließen' in weight: this
@@ -205,7 +242,7 @@ class _BeltVibrationScreenState extends State<BeltVibrationScreen> {
                     Row(
                       children: [
                         for (final side in _sideNames.keys) ...[
-                          if (side != 'L') const SizedBox(width: 12),
+                          if (side != BeltSide.left) const SizedBox(width: 12),
                           Expanded(
                             child: _SideButton(
                               label: _sideNames[side]!,

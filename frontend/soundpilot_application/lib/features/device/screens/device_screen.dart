@@ -324,20 +324,25 @@ class _DeviceScreenState extends State<DeviceScreen> {
     );
   }
 
-  /// Opens the belt setup ([BeltWarningDistanceScreen]) for the belt with the
-  /// map key [key]; if it returns `true`, the belt is marked as connected.
-  ///
-  /// TODO(improve): The setup screens do not return the entered values yet.
-  Future<void> _openBeltSetup(String key) async {
-    final result = await Navigator.push<bool>(
+  /// Opens the belt setup ([BeltWarningDistanceScreen]) for [belt], stored
+  /// under the map key [key]. Once the setup is finished, the belt counts as
+  /// connected and its values are saved in one write, unless nothing changed.
+  /// Going back saves nothing.
+  Future<void> _openBeltSetup(String key, BeltCalib belt) async {
+    final result = await Navigator.push<BeltCalib>(
       context,
-      MaterialPageRoute(builder: (_) => const BeltWarningDistanceScreen()),
+      MaterialPageRoute(
+        builder: (_) => BeltWarningDistanceScreen(belt: belt),
+      ),
     );
 
-    if (!mounted) return;
-    if (result == true) {
-      setState(() => _connectedBelts.add(key));
-    }
+    if (!mounted || result == null) return;
+    setState(() => _connectedBelts.add(key));
+
+    final changed = result.warningDistanceCm != belt.warningDistanceCm ||
+        result.vibrationStrength != belt.vibrationStrength ||
+        result.vibrationSide != belt.vibrationSide;
+    if (changed) _save(_repository.putBelt(key, result));
   }
 
   // ── Add device dialog ──────────────────────────────────────────────────────
@@ -376,15 +381,13 @@ class _DeviceScreenState extends State<DeviceScreen> {
         await _openCalibrationForEarbud(tempMacAddress, calib);
       }
     } else {
-      _save(_repository.putBelt(
-        tempMacAddress,
-        BeltCalib(modelId: result.name),
-      ));
+      final belt = BeltCalib(modelId: result.name);
+      _save(_repository.putBelt(tempMacAddress, belt));
 
       // NOTE: Belts open their setup here as well. The dialog used to ask for
       // this only for earbuds, so a newly added belt was never set up.
       if (result.openCalibration) {
-        await _openBeltSetup(tempMacAddress);
+        await _openBeltSetup(tempMacAddress, belt);
       }
     }
   }
@@ -470,7 +473,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
                 isConnected: _connectedBelts.contains(e.key),
               ),
           },
-          onOpen: _openBeltSetup,
+          onOpen: (key) => _openBeltSetup(key, _belts[key]!),
         ),
         const SizedBox(height: 20),
         const Spacer(),

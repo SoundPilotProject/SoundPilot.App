@@ -151,6 +151,9 @@ Future<FakeDeviceRepository> _pumpDeviceScreen(
   return repository;
 }
 
+/// A belt with the default values, for the belt setup screens.
+BeltCalib _belt() => BeltCalib(modelId: 'Gürtel');
+
 void main() {
   // NOTE: Without this google_fonts tries to download Plus Jakarta Sans at
   // runtime. In a test every HTTP request fails, and the failure surfaces as
@@ -167,8 +170,9 @@ void main() {
       'PasswordResetScreen': () => const PasswordResetScreen(
             initialEmail: 'max@example.com',
           ),
-      'BeltWarningDistanceScreen': () => const BeltWarningDistanceScreen(),
-      'BeltVibrationScreen': () => const BeltVibrationScreen(),
+      'BeltWarningDistanceScreen': () =>
+          BeltWarningDistanceScreen(belt: _belt()),
+      'BeltVibrationScreen': () => BeltVibrationScreen(belt: _belt()),
       'CalibrationScreen': () => CalibrationScreen(
             calib: HeadphoneCalib(modelId: 'Pods'),
             address: 'AA',
@@ -348,7 +352,7 @@ void main() {
   group('BeltVibrationScreen', () {
     _semanticsTest('the selected side is announced on the focused node',
         (tester) async {
-      await _pump(tester, const BeltVibrationScreen());
+      await _pump(tester, BeltVibrationScreen(belt: _belt()));
 
       // 'Mitte' is the default. Label and state have to be on the same node:
       // they used to sit on two different ones, so the selection was silent.
@@ -376,7 +380,7 @@ void main() {
     });
 
     _semanticsTest('the pre-filled strength field has a name', (tester) async {
-      await _pump(tester, const BeltVibrationScreen());
+      await _pump(tester, BeltVibrationScreen(belt: _belt()));
 
       expect(
         tester.getSemantics(find.byType(BeltNumberField)),
@@ -390,7 +394,7 @@ void main() {
   });
 
   _semanticsTest('the pre-filled distance field has a name', (tester) async {
-    await _pump(tester, const BeltWarningDistanceScreen());
+    await _pump(tester, BeltWarningDistanceScreen(belt: _belt()));
 
     // A field that is pre-filled when it is first built used to be announced
     // as a nameless text box: an invisible `labelText` only reaches the
