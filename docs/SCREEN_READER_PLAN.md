@@ -123,10 +123,10 @@ result, connection lost, write failed), must be spoken.
   playing.** TalkBack speaks through the same headphones and turns other audio
   down while it does ("audio ducking"), so an announcement lands on top of
   whatever the app is playing — and from the middle, which also takes the
-  direction away. The exercises therefore carry their state in *two* lines: a
-  live region that changes when the playback starts and ends, and a plain text
-  with the direction that is only read when the user puts the focus on it
-  (`MarchingExerciseScreen._details`, `TestPage._directionLine`). The
+  direction away. The test exercise therefore carries its state in *two*
+  lines: a live region that changes when the playback starts and ends, and a
+  plain text with the direction that is only read when the user puts the
+  focus on it (`TestPage._runState`, `TestPage._details`). The
   guards for this are in `screen_reader_test.dart`.
 
 Known gap: in the add-device dialog (`add_device_dialog.dart`,
@@ -177,7 +177,7 @@ else:
   headset running in the telephony profile (HFP), which is mono — not the pan
   law.
 
-With earbuds on, in the marching exercise:
+With earbuds on, in the test exercise (the marching exercise):
 
 - **The four sentence blocks** (21.4 s, 33.5 s, 65.8 s, 71.8 s): is the sound
   on the right side *before* the word 'links' or 'rechts' falls in the middle
@@ -205,12 +205,12 @@ will use it:
 And once, on purpose, with Android's own settings in the way:
 
 - **Mono audio** (Settings → Accessibility → Audio → Mono audio) on: does the
-  app say so, on the test exercise *and* in the marching exercise, instead of
-  letting the user conclude that they cannot hear a side? Does the button to
-  the accessibility settings get there?
+  app say so on the test exercise, instead of letting the user conclude that
+  they cannot hear a side? Does the button to the accessibility settings get
+  there?
 - **Audio balance** pushed to one side: the same question.
-- And with both off again: is the hint after the direction test still there
-  (it has to be, because the settings cannot always be read)?
+- And with both off again: is the hint after 'Start' still there (it has to
+  be, because the settings cannot always be read)?
 
 ## 4. Open decisions
 

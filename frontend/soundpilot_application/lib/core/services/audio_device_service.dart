@@ -461,7 +461,7 @@ class AudioDeviceService {
   /// With [loop] the recording starts over at its end; with `false` the native
   /// side plays it once and stops — what a guided exercise needs, whose
   /// recording ends with a closing sentence. Nothing reports that end back, so
-  /// the caller keeps its own timer (see `MarchingExerciseScreen`).
+  /// the caller keeps its own timer (see `TestPage`).
   ///
   /// NOTE: The file is mixed down to mono, so both ears get the same signal
   /// and only the gain differs. That is what a calibration test needs, and it

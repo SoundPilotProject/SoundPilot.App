@@ -45,7 +45,7 @@ void main() {
 
     test('says nothing when nothing could be read', () {
       // Unknown is not "in the way", and it is not "fine" either: the hint
-      // after the direction test is what covers this case.
+      // on the test exercise is what covers this case.
       expect(directionBlockedMessage(AudioAccessibility.unknown), isNull);
     });
   });

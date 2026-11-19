@@ -8,8 +8,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_colors.dart';
 
 /// Wide button with an icon and a centred label, used for the playback
-/// controls of the test exercise and the guided exercises: 'Start', 'Stop',
-/// 'Richtungstest' and the way to the Bluetooth settings.
+/// controls of the test exercise: 'Start', 'Stop' and the ways to the
+/// accessibility and Bluetooth settings.
 ///
 /// Disabled while its control does not apply ([onPressed] null); the note on
 /// the screen then says why.

@@ -14,7 +14,6 @@ import '../../../core/services/audio_device_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../models/user_model.dart';
-import '../../exercise/screens/marching_exercise_screen.dart';
 import '../headphone_connection.dart';
 import '../volume_scale.dart';
 import 'test_page.dart';
@@ -271,33 +270,6 @@ class _CalibrationScreenState extends State<CalibrationScreen>
     }
   }
 
-  /// Saves the current values and opens the [MarchingExerciseScreen].
-  ///
-  /// NOTE: Unlike the test page this screen has no result. The test belongs to
-  /// the calibration — finishing it finishes this screen as well — while an
-  /// exercise is something the user does with a calibrated device, so it only
-  /// closes itself.
-  Future<void> _openMarchingExercise() async {
-    // The exercise plays its own sound.
-    if (_toneOn) await _stopTone();
-    await _saveNow();
-
-    if (!mounted) return;
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MarchingExerciseScreen(
-          leftVolume: _leftVolume,
-          rightVolume: _rightVolume,
-          address: widget.address,
-          headphoneChanges: widget.headphoneChanges,
-          soundSupported: widget.toneSupported,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -381,43 +353,6 @@ class _CalibrationScreenState extends State<CalibrationScreen>
                           fontSize: 26,
                           fontWeight: FontWeight.w800,
                           color: AppColors.onPrimary(context),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    // The guided exercise, on its own screen because it is an
-                    // exercise and not part of calibrating (see §4). Below
-                    // 'Test-Übung' in weight: the test is what belongs to this
-                    // screen.
-                    ElevatedButton(
-                      onPressed: _openMarchingExercise,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.surface(context),
-                        foregroundColor: AppColors.text(context),
-                        elevation: 4,
-                        shadowColor: Colors.black.withValues(alpha: 0.18),
-                        minimumSize: const Size(double.infinity, 68),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 14,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(40),
-                          side: BorderSide(
-                            color: AppColors.legendBorder(context),
-                            width: 2,
-                          ),
-                        ),
-                      ),
-                      child: Text(
-                        'Übung: Marschieren',
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.text(context),
                         ),
                       ),
                     ),

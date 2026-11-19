@@ -145,22 +145,4 @@ void main() {
       expect(gains.withCalibration(EarCalibration.neutral), gains);
     });
   });
-
-  group('earbudDirectionSteps', () {
-    test('walk from the left ear to the right one', () {
-      expect(earbudDirectionSteps.map((step) => step.angle).toList(), [
-        angleFullLeft,
-        angleHalfLeft,
-        angleCentre,
-        angleHalfRight,
-        angleFullRight,
-      ]);
-    });
-
-    test('are all named, because the status line reads them out', () {
-      for (final step in earbudDirectionSteps) {
-        expect(step.label, isNotEmpty);
-      }
-    });
-  });
 }

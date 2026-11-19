@@ -157,7 +157,6 @@ features/
   exercise/belt_direction.dart   angle and obstacles -> the belt's motors
   exercise/marching_exercise.dart  the recording and the cue list of the
                                  marching exercise
-  exercise/screens/              marching_exercise_screen
 ```
 
 - **Fonts:** Plus Jakarta Sans is set once as the `textTheme` of both themes
@@ -486,8 +485,9 @@ written, and **only if the user agrees**:
   left, the app goes to the background, the earbud disconnects or the
   `TestPage` opens. Not connected: a note and a button to the Bluetooth
   settings. Outside the Android app there is no tone.
-- The `TestPage` ("Testübung") plays `assets/audio/Marschieren.mp3` the same
-  way, with the calibrated gain per side. **Unlike the calibration's test tone
+- The `TestPage` ("Testübung") is the marching exercise (see "The marching
+  exercise" below): it plays `assets/audio/Marschieren.mp3` the same way,
+  with the calibrated gain per side. **Unlike the calibration's test tone
   it does not need the earbud:** it plays on the calibrated earbud while that
   is connected and on the phone's own output otherwise (`deviceId` null, which
   the native side already understands). The note then says that the recording
@@ -495,19 +495,13 @@ written, and **only if the user agrees**:
   earbuds, and the status line names the output as well. The test tone keeps
   requiring the earbud, because setting one ear's volume without that ear is
   meaningless.
-- **The `TestPage` holds two exercises.** 'Start' plays the recording centred
-  (0°): the calibration and nothing else. 'Richtungstest' plays the same
-  recording through five directions — full left, half left, centre, half
-  right, full right (`earbudDirectionSteps`) — four seconds each, and names
-  the current one in the status line, so it is spoken too. 'Stop' ends either;
-  starting one replaces the other.
-- **'Start', 'Richtungstest' and 'Stop' are all always on the screen**
+- **'Start' and 'Stop' are both always on the screen**
   (`_buildPlaybackControls`, see §7), plus the button to the Bluetooth
   settings while no earbud is connected. 'Start' keeps the app's colour
-  wherever there is sound at all and restarts the recording when it is already
-  playing (the native side stops the running player before it opens the new
-  one anyway); 'Stop' is grey until there is something to stop and red while
-  it runs. Only a playback that went to the earbud is stopped when the earbud
+  wherever there is sound at all and starts the exercise over when it is
+  already playing (the native side stops the running player before it opens
+  the new one anyway); 'Stop' is grey until there is something to stop and
+  red while it runs. Only a playback that went to the earbud is stopped when the earbud
   disconnects (`_playingOnEarbud`); sound on the phone itself keeps running.
 - Both sounds go through `GainPlayer.java` (decoded with `MediaCodec`, mixed
   to mono, a gain per side). The two gains carry the whole left/right image,
@@ -576,10 +570,10 @@ could not.
 ### The marching exercise
 
 `features/exercise/marching_exercise.dart` holds the recording of the exercise
-at the chair and the directions it is played with; `MarchingExerciseScreen`
-plays it. It is reached from the calibration screen ('Übung: Marschieren'),
-next to the test exercise — an exercise is not a test, so it has its own
-screen with one pair of controls (§1, one main action per screen).
+at the chair and the directions it is played with; the `TestPage` plays it.
+It is the test exercise, reached from the calibration screen ('Test-Übung'),
+with one pair of controls (§1, one main action per screen); 'Abschließen'
+finishes the calibration as well.
 
 - **The sound goes to the side the recording names, and nowhere else.** The
   cue times are the sentence blocks of a transcription of the recording: left
@@ -611,13 +605,13 @@ screen with one pair of controls (§1, one main action per screen).
   for the playback position to reach the last frame
   (`AudioTrack.getTimestamp`), because at the moment the last sample is
   written the buffer and the Bluetooth link still hold the closing sentence.
-  The screen's own timer (`MarchingExerciseScreen.endMargin`, 2 s past the
+  The screen's own timer (`TestPage.endMargin`, 2 s past the
   measured 92.03 s) is only the fallback for where that event cannot arrive.
 
 ### What a screen reader is told
 
-The exercises carry their state in **two lines**, and only the first of them
-is a live region:
+The test exercise carries its state in **two lines**, and only the first of
+them is a live region:
 
 - "Übung läuft über die Kopfhörer" / "Übung beendet" / "Übung gestoppt" —
   announced, because it changes when the exercise starts and when it is over.
@@ -627,7 +621,7 @@ is a live region:
   (audio ducking): the announcement would cover the very instruction the
   direction is there to support. Whoever wants it puts the focus on the line.
 
-The same split is on the test exercise (`TestPage._directionLine`). See
+See `TestPage._runState` and `TestPage._details`, and
 `docs/SCREEN_READER_PLAN.md` §3.4 for the rule and §3.7 for the device test.
 
 ### Settings that defeat the direction
@@ -643,10 +637,10 @@ moves everything to one side.
 - **Unknown is never "off".** The keys have no public constants and a setting
   nobody has ever touched is not in the system database at all, so a value
   that cannot be read stays `null`.
-- Which is why the test exercise shows `directionCheckHint` after a direction
-  test **whatever** was read: a phone set to mono would otherwise play the
-  same thing five times and leave the user with one conclusion — that they
-  cannot tell left from right.
+- Which is why the test exercise shows `directionCheckHint` once it has been
+  started, **whatever** was read: on a phone set to mono the sound would
+  never move to a side, and the user would be left with one conclusion —
+  that they cannot tell left from right.
 
 ### Bluetooth and connection state
 
@@ -932,9 +926,9 @@ Not backed by evidence — check in the code instead of assuming:
 - **Mono audio on iOS** has a public API (`UIAccessibility.isMonoAudioEnabled`)
   and would not need the key-by-name reading the Android side does. Nothing
   of the audio is implemented for iOS yet.
-- **There is no exercise area in the app.** The marching exercise hangs off
-  the calibration screen because that is where the earbud and its volumes are
-  known. Where exercises belong once there are several of them — and how they
+- **There is no exercise area in the app.** The marching exercise is the
+  test exercise of the calibration screen, because that is where the earbud
+  and its volumes are known. Where exercises belong once there are several of them — and how they
   are reached without calibrating first — is undecided.
 - **The belt has no output path:** `BeltSectors` computes per-motor
   intensities and nothing sends them anywhere, and how many motors a belt has
@@ -982,6 +976,10 @@ Not backed by evidence — check in the code instead of assuming:
   left two grey buttons as the screen's only offer without an earbud — a dead
   end on the screen that is how the app is shown and tried. Do not take either
   away again.
+- **The test exercise is the marching exercise,** on one screen (`TestPage`).
+  The marching exercise is not a second screen next to it, and there is no
+  separate direction test: the marching cues are what the direction is
+  tested with.
 - **The registration form scrolls; do not try to fit it on one screen again.**
   Fitting it once cost a text-scale cap and small captions and fields — the
   wrong trade for an app about impaired vision. Sizes are bounded from below

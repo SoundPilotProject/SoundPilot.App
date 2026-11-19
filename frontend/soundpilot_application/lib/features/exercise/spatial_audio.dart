@@ -135,23 +135,7 @@ class StereoGains {
   String toString() => 'StereoGains(L $left, R $right)';
 }
 
-// ── The direction exercise ───────────────────────────────────────────────────
-
-/// One step of the direction exercise: the recording comes from [angle] and is
-/// named [label] while it does.
-@immutable
-class DirectionStep {
-  /// Direction of this step, in degrees (see [StereoGains.forAngle]).
-  final double angle;
-
-  /// German name of the direction, for the status line and the screen reader.
-  final String label;
-
-  const DirectionStep({required this.angle, required this.label});
-}
-
-/// How long one [DirectionStep] is played before the next one.
-const Duration directionStepDuration = Duration(seconds: 4);
+// ── Movement ─────────────────────────────────────────────────────────────────
 
 /// How long a direction change takes to glide to its new side.
 ///
@@ -191,16 +175,3 @@ class ExerciseCue {
   @override
   String toString() => 'ExerciseCue(${at.inMilliseconds}ms, $angle°)';
 }
-
-/// The directions of the earbud direction test, in order.
-///
-/// The same mono recording is moved across the five directions, so the user
-/// can tell whether they hear *where* it comes from at all — which is what the
-/// exercises later build on.
-const List<DirectionStep> earbudDirectionSteps = [
-  DirectionStep(angle: angleFullLeft, label: 'ganz links'),
-  DirectionStep(angle: angleHalfLeft, label: 'halb links'),
-  DirectionStep(angle: angleCentre, label: 'Mitte'),
-  DirectionStep(angle: angleHalfRight, label: 'halb rechts'),
-  DirectionStep(angle: angleFullRight, label: 'ganz rechts'),
-];
