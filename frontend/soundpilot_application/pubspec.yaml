@@ -58,6 +58,21 @@ dev_dependencies:
   # In-memory Firestore for the repository tests. Pinned: 4.2.0 and newer
   # require newer cloud_firestore/firebase_core than the app uses.
   fake_cloud_firestore: 4.1.0
+  # Generates the Android launcher icons from assets/icon/ (see the
+  # flutter_launcher_icons section below). Run `dart run flutter_launcher_icons`
+  # after changing the icon.
+  flutter_launcher_icons: 0.14.4
+
+# The app icon: the head of the logo on white. The word SOUNDPILOT is left out
+# because it is unreadable at launcher size. The adaptive foreground keeps the
+# head inside the 66 % every launcher mask leaves visible.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: assets/icon/app_icon.png
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/icon/app_icon_foreground.png
+  min_sdk_android: 21
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

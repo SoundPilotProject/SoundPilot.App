@@ -86,6 +86,7 @@ When in doubt, choose the more accessible option and mention the trade-off.
 | `flutter_localizations` | German labels for Flutter's built-in widgets (see §7) |
 | `google_fonts` | Plus Jakarta Sans font |
 | `logger` | global `logger` in `core/app_logger.dart` |
+| `flutter_launcher_icons` (dev) | Android launcher icons from `assets/icon/` (the head of the logo on white, without the word); run `dart run flutter_launcher_icons` after changing them |
 | `fake_cloud_firestore` (dev) | in-memory Firestore for the repository tests; pinned to 4.1.0, newer versions need newer Firebase packages |
 
 `firebase_database` is **not** included.
