@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 /// values, the static methods pick the right one for the current theme.
 ///
 /// The light-mode colours are tuned for WCAG AA (4.5:1) on top of
-/// [background]; see `docs/ACCESSIBILITY_AUDIT.md`.
+/// [background]; measured in `test/color_contrast_test.dart`.
 ///
 /// NOTE: SoundPilotApp builds the ColorScheme and the TextTheme of both themes
 /// from this palette, so Material widgets that are not styled by hand follow it

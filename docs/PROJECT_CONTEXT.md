@@ -943,9 +943,10 @@ Not backed by evidence — check in the code instead of assuming:
   (Android's `VibrationEffect` would need a method channel of its own). The
   belt's direction test and the "Aufstellung" use case need the hardware.
 - **Accessibility: measured in CI, never tested on a device.** Findings of the
-  static review are in `docs/ACCESSIBILITY_AUDIT.md` (partly outdated), what
-  is still to do in `docs/ACCESSIBILITY_TODO.md`, the screen reader plan (CI
-  checks, device test protocol, open gaps) in `docs/SCREEN_READER_PLAN.md`.
+  first static review are in `docs/ACCESSIBILITY_AUDIT.md` (a snapshot, mostly
+  fixed), what is still to do in `docs/ACCESSIBILITY_TODO.md`, the screen
+  reader plan (CI checks, device test protocols and their results) in
+  `docs/SCREEN_READER_PLAN.md`.
   Still open: localisation (texts are hardcoded German; a second language
   would need `gen-l10n` with ARB files); multiple channels — besides the
   screen-reader path of the calibration wheel and the belt setup's 'Vibration

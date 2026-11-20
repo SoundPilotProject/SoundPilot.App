@@ -1,6 +1,6 @@
 # Accessibility TODO — SoundPilot
 
-Date: 2026-10-12
+Date: 2026-10-12, updated 2026-11-20
 Basis: static code review plus **measured** semantics trees and Flutter
 accessibility guidelines, rendered with the real app theme (AppColors + Plus
 Jakarta Sans) on a 360x720 phone, light and dark, text scale 1.0/1.6/2.0 and
@@ -8,7 +8,7 @@ landscape 720x360. **Nothing verified with TalkBack or VoiceOver on a real
 device.**
 Reference: the guidelines in `docs/PROJECT_CONTEXT.md` §1, the plan in
 `docs/SCREEN_READER_PLAN.md`, the older findings in
-`docs/ACCESSIBILITY_AUDIT.md` (outdated, see §6).
+`docs/ACCESSIBILITY_AUDIT.md` (a snapshot of 2026-09-24, mostly fixed).
 
 ## Where we stand
 
@@ -17,9 +17,9 @@ Reference: the guidelines in `docs/PROJECT_CONTEXT.md` §1, the plan in
 one single violation, the add-device button. No overflow at any text scale, in
 portrait or landscape.
 
-§1, §2, §3 and the first four items of §4 are **done** (2026-10-12), together
-with the safety net in §5; `flutter analyze` is clean and all 332 tests pass.
-What is left is below the line in §4 and in §6.
+§1, §2 and §3 (except focus in dialogs) are **done**, so are the checked items
+of §4 and the safety net in §5, which runs in CI. What is left is the unchecked
+items of §3–§5, and §6, which needs a real phone.
 
 ## 1. Screen reader blockers — done
 
@@ -51,8 +51,7 @@ a separate node and never reaches the node the screen reader focuses.
       `showAppMessage` / `showAppError` (`core/widgets/app_snack_bar.dart`),
       which sets `persist: true` plus an 'OK' action. In Flutter 3.47 the
       timer only looks at `SnackBar.persist`, so a running screen reader no
-      longer keeps a message open by itself; `SCREEN_READER_PLAN.md` §3.3 is
-      out of date on that point.
+      longer keeps a message open by itself.
 - [x] **Connection announcements** — `SemanticsService.sendAnnouncement` is
       only called where `MediaQuery.supportsAnnounceOf` is true, and the
       change is always shown as a line on the screen, which is a live region
@@ -69,8 +68,8 @@ a separate node and never reaches the node the screen reader focuses.
       'Kopfhörer, Pods, nicht verbunden' with the tap hint 'Kalibrierung
       öffnen' / 'Einrichtung öffnen' (`DeviceType.openHint`), so the type no
       longer depends on a group heading that swipe navigation can skip.
-- [x] **Dialogs had no name** — the three dialogs mark their title
-      `namesRoute: true`.
+- [x] **Dialogs had no name** — every dialog (add device, remove device,
+      guest devices, unsynced logout) marks its title `namesRoute: true`.
 - [ ] **Focus handling in dialogs** — focus still does not start at the title
       and does not return to where it was after closing (asked for in
       `SCREEN_READER_PLAN.md` §3.2). Needs a device test to judge.
@@ -103,20 +102,21 @@ a separate node and never reaches the node the screen reader focuses.
       the device and its calibration for good. `RemoveDeviceDialog` now asks
       first and names the device; "Behalten" is the prominent button, and
       back or tapping outside keeps the device.
+- [x] **Belt values were not checked or stored** — both setup steps start
+      with the stored belt, block a value outside `BeltCalib`'s ranges with a
+      German message and an icon below the field (`BeltFieldError`, a live
+      region), and "Abschließen" writes the belt once with `putBelt`.
 
 Still open:
 
-- [ ] **Validation of the belt values** — digits only is in place, but a range
-      check (warning distance, 0–100 %) with a spoken error message is still
-      missing, and the values are still not stored at all (see the
-      `TODO(improve)` in both belt screens).
-- [ ] **Multiple channels is not implemented** (`PROJECT_CONTEXT.md` §1):
-      `HapticFeedback` occurs once in all of `lib/`
-      (`calibration_screen.dart`, and only on the screen-reader path), there
-      is no `VIBRATE` permission and no vibration package, and the belt
-      warning distance — the core feature for blind users — has neither
-      vibration nor sound. This is a feature, not a fix: it needs the real
-      belt hardware and a decision on the package.
+- [ ] **Multiple channels is only partly implemented** (`PROJECT_CONTEXT.md`
+      §1): `HapticEngine.pulse` vibrates the phone's own motor for 'Vibration
+      testen' in the belt setup, with only Flutter's three fixed strengths;
+      `HapticFeedback` is otherwise used once (`calibration_screen.dart`, on
+      the screen-reader path). There is no `VIBRATE` permission and no
+      vibration package, and the belt warning distance — the core feature
+      for blind users — has neither vibration nor sound. That part is a
+      feature, not a fix: it needs the real belt hardware.
 - [ ] **Localisation** — texts are hardcoded German; a second language needs
       `gen-l10n` with ARB files.
 - [ ] **The remaining `AnimatedContainer`s** (180 ms, type selector and scan
@@ -150,9 +150,9 @@ Still open:
       status changes. None of it can be proved in a widget test.
 - [ ] Look at every screen at 200 % system font size on a real phone, the
       calibration wheel first.
-- [ ] Rewrite `docs/ACCESSIBILITY_AUDIT.md`: it still says "nothing has been
-      fixed yet" and its screen-reader findings are stale (tab bars are 72 dp
-      now, not 46; L/M/R read as Links/Mitte/Rechts).
+- [ ] Run the direction protocol from `SCREEN_READER_PLAN.md` §3.7.
+
+Results of both protocols go into `SCREEN_READER_PLAN.md` §3.8.
 
 ## Definition of "done"
 

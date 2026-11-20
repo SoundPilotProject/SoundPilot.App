@@ -1,9 +1,10 @@
 # Screen Reader Support — Plan
 
-Date: 2026-10-08
-Status: **plan only, nothing in this document has been built yet.**
-Reference: the accessibility guidelines in `docs/PROJECT_CONTEXT.md` §1, the
-findings in `docs/ACCESSIBILITY_AUDIT.md`.
+Date: 2026-10-08, updated 2026-11-20
+Status: §3.1, §3.3 and §3.4 are built; the device tests (§3.2, §3.7) have not
+been run yet, their results go into §3.8.
+Reference: the accessibility guidelines in `docs/PROJECT_CONTEXT.md` §1, what
+is still open in `docs/ACCESSIBILITY_TODO.md`.
 
 Goal: when a user has a screen reader switched on on their phone, SoundPilot
 works with it fully — every screen, every action, every status change.
@@ -42,23 +43,22 @@ Already in place:
 - The calibration wheel exposes its value and increase/decrease actions
   (`calibration_screen.dart`, `_VolumeSection`), so the standard swipe up/down works.
 - App locale fixed to German (`core/app_locale.dart`).
+- Automated semantics checks in CI (`test/screen_reader_test.dart`, §3.1).
 
 Not done:
 
 - **Nothing has been tried with TalkBack or VoiceOver on a real phone.**
-- No automated semantics checks in CI (the layout test checks sizes, not
-  labels).
-- `docs/ACCESSIBILITY_AUDIT.md` still says "nothing has been fixed yet"; its
-  findings list is out of date for screen readers.
 
 ## 3. Work items
 
 In suggested order. Each one is small enough for its own PR.
 
-### 3.1 Automated checks in CI
+### 3.1 Automated checks in CI — done
 
-Add Flutter's built-in guidelines to `test/accessibility_layout_test.dart`,
-per screen and per theme:
+Built as `test/screen_reader_test.dart`, per screen and dialog and per theme,
+without `textContrastGuideline` (the palette is measured in
+`test/color_contrast_test.dart` instead, see `ACCESSIBILITY_TODO.md` §5).
+Flutter's built-in guidelines:
 
 ```dart
 final handle = tester.ensureSemantics();
@@ -90,23 +90,22 @@ A written checklist, run on one Android phone (TalkBack) and one iPhone
   the user having to search for them.
 - Nothing has to be done within a time limit.
 
-Results go into a short table (screen × platform × pass/fail + notes), e.g. a
-new section in `ACCESSIBILITY_AUDIT.md`. For the diploma thesis, a session with
+Results go into a short table (screen × platform × pass/fail + notes) in §3.8.
+For the diploma thesis, a session with
 one or two people who use a screen reader every day would be far stronger
 evidence than our own tests.
 
-### 3.3 SnackBars disappear too fast
+### 3.3 SnackBars disappear too fast — done
 
-Every `SnackBar` in the app has no `action` and the default duration (4 s),
-e.g. the failed-write message in `device_screen.dart` and the guest
-take-over result in `guest_devices_offer.dart`. A screen reader may still be
-reading something else when it vanishes, and it breaks "no time-limited
-interactions". Flutter keeps a SnackBar open while a screen reader is on only
-if it has an action. Options:
-
-- give the important ones an action ("OK") — Flutter then keeps them until
-  dismissed when `MediaQuery.accessibleNavigationOf(context)` is true, or
-- show errors as text on the screen (like `PasswordResetScreen` already does).
+A message that vanishes after 4 s may still be unread while a screen reader is
+busy with something else, and it breaks "no time-limited interactions". Every
+message now goes through `showAppMessage` / `showAppError`
+(`core/widgets/app_snack_bar.dart`), which sets `persist: true` and an 'OK'
+action. In Flutter 3.47 the auto-dismiss timer only looks at
+`SnackBar.persist`, so a running screen reader alone does not keep a message
+open (`PROJECT_CONTEXT.md` §1, "Simple flows"). Errors that belong to one
+screen are shown as text on it instead (`PasswordResetScreen`,
+`BeltFieldError`).
 
 ### 3.4 Announcing status changes
 
@@ -129,10 +128,9 @@ result, connection lost, write failed), must be spoken.
   (`MarchingExerciseScreen._details`, `TestPage._directionLine`). The
   guards for this are in `screen_reader_test.dart`.
 
-Known gap: in the add-device dialog (`add_device_dialog.dart`,
-`_buildScanResults`) only "scan running" is a live region. The end of the scan
-("Keine … gefunden" or the list of results) is not spoken, so a screen reader
-user does not learn that the scan has finished.
+The end of the scan in the add-device dialog is a live region as well ('N
+Geräte gefunden. Wähle ein Gerät aus.', on the list's node), so a screen
+reader user learns that the scan has finished.
 
 ### 3.5 When the real Bluetooth and belt features arrive
 
@@ -159,8 +157,7 @@ fix them for everyone.
 
 Everything about the left/right direction (`docs/PROJECT_CONTEXT.md` §4) is
 measured in unit tests and has never been heard. This is the checklist for the
-first run on a phone; it belongs next to the protocol of §3.2 and, like it,
-into a short table of results.
+first run on a phone; its results go into §3.8.
 
 Before starting, so the result is reproducible and not an effect of something
 else:
@@ -211,6 +208,45 @@ And once, on purpose, with Android's own settings in the way:
 - **Audio balance** pushed to one side: the same question.
 - And with both off again: is the hint after the direction test still there
   (it has to be, because the settings cannot always be read)?
+
+### 3.8 Results
+
+One row per run, so a finding can be traced to the phone, the headphones and
+the connection it came from.
+
+#### Screens (§3.2)
+
+| Run | Phone | Platform | Screen | Pass | Notes |
+|---|---|---|---|---|---|
+| | | TalkBack | | | |
+| | | VoiceOver | | | |
+
+#### Direction (§3.7)
+
+Fill in the setup before you start, so a later run can be compared:
+
+| Run | Phone | Headphones | Connection | Spatial audio | TalkBack |
+|---|---|---|---|---|---|
+| 1 | | | wired | off | off |
+| 2 | | | Bluetooth | off | off |
+| 3 | | | Bluetooth | off | on |
+
+And what came out of it. One line per observation, with the time in the
+recording if there is one — that is what a fix needs:
+
+| Run | Time | Observed | Expected | Pass |
+|---|---|---|---|---|
+| | 21.4 s | | sound is left before "linkes Bein" | |
+| | 33.5 s | | sound is right before "rechten Fuß" | |
+| | 65.8 s | | sound is right before "rechte Bein" | |
+| | 71.8 s | | sound travels to the left, no click | |
+| | 77.1 s | | centred from here on, no direction | |
+| | 91.8 s | | closing sentence complete before 'beendet' | |
+| | — | | no click when the sound fades out | |
+| | — | | TalkBack silent at every cue | |
+| | — | | mono audio / balance: the app says so | |
+
+Nothing here yet — the first run is still to be done.
 
 ## 4. Open decisions
 
